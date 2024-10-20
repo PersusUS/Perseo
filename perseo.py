@@ -1,5 +1,5 @@
 import unittest
-from main import process_question
+from algoritm_profound import process_question
 
 class TestDiscussionAI(unittest.TestCase):
 
