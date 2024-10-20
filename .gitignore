@@ -1,0 +1,24 @@
+# Archivos de Python compilados
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Entornos virtuales
+venv/
+ENV/
+env/
+.env/
+venv.bak/
+env.bak/
+
+# Archivos de configuración de entornos
+.env
+.env.local
+
+# Archivos de logs
+*.log
+
+# Archivos específicos del sistema operativo
+.DS_Store
+Thumbs.db
