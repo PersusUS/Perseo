@@ -7,7 +7,8 @@ import time
 openrouter_api_key = 'API-KEY'
 
 # Actualización: Solo se utilizará nousresearch en la lista de modelos
-discussion_model_ids = ['nousresearch/hermes-3-llama-3.1-405b:free', 'liquid/lfm-40b', 'google/gemini-flash-1.5-exp', 'meta-llama/llama-3.1-70b-instruct:free']
+discussion_model_ids = ['nousresearch/hermes-3-llama-3.1-405b:free', 'liquid/lfm-40b', 'google/gemini-flash-1.5-exp', 'meta-llama/llama-3.1-70b-instruct:free',
+                        'google/gemma-2-9b-it:free', 'meta-llama/llama-3.1-405b-instruct:free']
 
 # ID del modelo evaluador
 evaluator_model_id = 'nousresearch/hermes-3-llama-3.1-405b:free'
