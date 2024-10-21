@@ -4,7 +4,7 @@ import re
 import time
 
 
-openrouter_api_key = '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'
+openrouter_api_key = 'API-KEY'
 
 discussion_model_ids = ['nousresearch/hermes-3-llama-3.1-405b:free', 'liquid/lfm-40b', 'google/gemini-flash-1.5-exp', 'meta-llama/llama-3.1-70b-instruct:free',
                         'google/gemma-2-9b-it:free']
