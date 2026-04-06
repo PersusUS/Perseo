@@ -1,0 +1,9 @@
+llama-index-core>=0.10.0
+llama-index-embeddings-gemini
+llama-index-embeddings-ollama
+llama-index-vector-stores-chroma
+llama-index-readers-file
+chromadb>=0.4.22
+watchdog>=4.0.0
+python-dotenv>=1.0.1
+pyyaml>=6.0.1

@@ -98,3 +98,11 @@ venv.bak/
 *.njsproj
 *.sln
 *.sw?
+
+# =========================
+# Media / Custom Assets
+# =========================
+*.mp3
+*.wav
+*.mp4
+*.mkv

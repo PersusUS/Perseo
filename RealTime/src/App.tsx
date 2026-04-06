@@ -7,6 +7,7 @@ import { audioPlayer } from './lib/audio-player';
 import { cameraManager } from './lib/camera-manager';
 import { screenManager } from './lib/screen-manager';
 import { defaultConfig } from './lib/config';
+import autoCallData from './autocall.json';
 
 // ── SVG Icons (clean, white, stroke-only) ──
 
@@ -57,11 +58,20 @@ function App() {
   const [volume, setVolume] = useState(0);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
+  const fullConversationRef = useRef<TranscriptMsg[]>([]);
+
+  // Función preparada para guardar el historial completo
+  const saveConversationHistory = (history: TranscriptMsg[]) => {
+    // Aquí a futuro implementaremos la base de datos o el guardado en local (IndexedDB, archivos, etc.)
+    console.log('[History System] Guardando conversación anterior...', history);
+    // localStorage.setItem('perseo-history-latest', JSON.stringify(history));
+  };
 
   useEffect(() => {
     geminiClient.onConnectionStateChange = (state) => {
       setConnectionState(state as any);
       if (state === 'connected') {
+        audioManager.start(); // Reactivar el micrófono al reconectar
         if (defaultConfig.cameraEnabled) cameraManager.start();
         if (defaultConfig.screenEnabled) {
           screenManager.start();
@@ -76,6 +86,12 @@ function App() {
         setScreenFrame(null);
         setIsScreenSharing(false);
         setIsSpeaking(false);
+        
+        // Guardar conversación si está habilitado mediante config antes de limpiar
+        if (defaultConfig.saveHistoryEnabled && fullConversationRef.current.length > 0) {
+          saveConversationHistory(fullConversationRef.current);
+          fullConversationRef.current = []; // Reiniciamos el registro de la sesión
+        }
       }
     };
 
@@ -98,12 +114,34 @@ function App() {
       }
     };
 
+    // Asignamos la función para obtener el historial a pasar a Gemini en cada conexión/re-conexión
+    geminiClient.getConversationHistory = () => {
+      if (!defaultConfig.saveHistoryEnabled) return "";
+      const pastMessages = fullConversationRef.current
+        .filter(m => m.type === 'ai') // Idealmente podemos filtrar de ambos si la API transcribiese la voz del usuario
+        .map(m => `Tú (Perseo) dijiste: "${m.text}"`)
+        .join('\n');
+      
+      // Solo tomamos el final para que no ocupe un prompt excesivamente gigante.
+      return pastMessages.slice(-2000);
+    };
+
     return () => {
       geminiClient.disconnect();
       audioManager.stop();
       cameraManager.stop();
       screenManager.stop();
     };
+  }, []);
+
+  // Efecto adicional para la auto-llamada cuando se abre desde los aplausos
+  useEffect(() => {
+    if (autoCallData.autoCall && connectionState === 'disconnected') {
+      const timer = setTimeout(() => {
+        handleCall();
+      }, 1500); // 1.5s de gracia tras cargar la UI
+      return () => clearTimeout(timer);
+    }
   }, []);
 
   useEffect(() => {
@@ -115,7 +153,9 @@ function App() {
   }, [cameraStream]);
 
   const addTranscript = (type: TranscriptMsg['type'], text: string) => {
-    setTranscripts(prev => [...prev.slice(-40), { id: `${Date.now()}-${Math.random()}`, text, type }]);
+    const newMessage: TranscriptMsg = { id: `${Date.now()}-${Math.random()}`, text, type };
+    fullConversationRef.current.push(newMessage);
+    setTranscripts(prev => [...prev.slice(-40), newMessage]);
   };
 
   const handleCall = () => {
