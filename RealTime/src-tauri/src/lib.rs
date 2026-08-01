@@ -14,7 +14,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             greet, 
-            commands::capture_screen_base64
+            commands::capture_screen_base64,
+            commands::ejecutar_herramienta_python
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
