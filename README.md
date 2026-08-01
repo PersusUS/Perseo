@@ -33,8 +33,9 @@ Infraestructura en Python para la base de conocimientos y automatización *Retri
 *   **Node.js v18+** y herramientas de red como npm.
 *   **Rust & CLI Build Tools** (para la compilación de `RealTime`).
 *   **Python 3.10+** (para `commands` e IA local).
-*   **Variables de Entorno**: Es obligatorio contar con un archivo `.env` en `RealTime/` con el valor de tu Key secreta:
-    `VITE_GEMINI_API_KEY=AI...`
+*   **Clave de Gemini**: se introduce **una sola vez desde la propia aplicación** (botón ⚙) y queda guardada en el almacén local que gestiona Rust. Alternativamente, puedes definirla como variable de entorno del sistema con `setx GEMINI_API_KEY "AI..."`.
+
+    > No uses `VITE_GEMINI_API_KEY` en un `.env`: Vite incrusta las variables con ese prefijo dentro del JavaScript compilado, de modo que la clave acababa en claro dentro del `.exe`. Ver `bitacora/02_HALLAZGOS.md` (H-17).
 
 ## ⚙️ Cómo Poner a Perseo en Marcha
 
