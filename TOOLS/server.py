@@ -49,13 +49,14 @@ HERRAMIENTAS = {}
 
 def _cargar_herramientas() -> None:
     """Importa los módulos de herramientas. Barato: nada de RAG todavía."""
-    from memory_tool import guardar_recuerdo
+    from memory_tool import guardar_conversacion, guardar_recuerdo
     from pc_tool import controlar_pc
     from rag_tool import consultar_base_vectorial
 
     HERRAMIENTAS.update({
         "consultar_base_vectorial": consultar_base_vectorial,
         "guardar_recuerdo": guardar_recuerdo,
+        "guardar_conversacion": guardar_conversacion,
         "controlar_pc": controlar_pc,
     })
 

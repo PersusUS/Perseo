@@ -26,6 +26,7 @@ logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
 HERRAMIENTAS = {
     "consultar_base_vectorial": ("rag_tool", "consultar_base_vectorial"),
     "guardar_recuerdo": ("memory_tool", "guardar_recuerdo"),
+    "guardar_conversacion": ("memory_tool", "guardar_conversacion"),
     "controlar_pc": ("pc_tool", "controlar_pc"),
 }
 

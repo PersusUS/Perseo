@@ -10,6 +10,10 @@ use tauri_plugin_store::StoreExt;
 const ARCHIVO_AJUSTES: &str = "perseo-ajustes.json";
 const CLAVE_API: &str = "gemini_api_key";
 
+/// Fichero marcador que deja el detector de aplausos para pedir que la
+/// aplicacion entre en llamada sola. Se borra al leerlo.
+const MARCADOR_AUTOLLAMADA: &str = ".perseo-autollamada";
+
 #[tauri::command]
 pub async fn capture_screen_base64(quality: u8) -> Result<String, String> {
     let monitors = Monitor::all().map_err(|e| e.to_string())?;
@@ -57,10 +61,65 @@ pub fn obtener_api_key(app: AppHandle) -> Result<String, String> {
 /// Guarda la clave de API en el almacen local y la persiste en disco.
 #[tauri::command]
 pub fn guardar_api_key(app: AppHandle, clave: String) -> Result<(), String> {
+    guardar_ajuste(app, CLAVE_API.to_string(), serde_json::Value::String(clave))
+}
+
+/// Lee un ajuste cualquiera del almacen local.
+///
+/// Los Ajustes solo mutaban un objeto en memoria, asi que la voz y el prompt se
+/// perdian al cerrar la aplicacion. Ver H-08.
+#[tauri::command]
+pub fn obtener_ajuste(app: AppHandle, clave: String) -> Result<Option<serde_json::Value>, String> {
     let store = app.store(ARCHIVO_AJUSTES).map_err(|e| e.to_string())?;
-    store.set(CLAVE_API, serde_json::Value::String(clave));
+    Ok(store.get(&clave))
+}
+
+/// Guarda un ajuste cualquiera y lo persiste en disco.
+#[tauri::command]
+pub fn guardar_ajuste(
+    app: AppHandle,
+    clave: String,
+    valor: serde_json::Value,
+) -> Result<(), String> {
+    let store = app.store(ARCHIVO_AJUSTES).map_err(|e| e.to_string())?;
+    store.set(&clave, valor);
     store.save().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Consume la senal de autollamada dejada por el detector de aplausos.
+///
+/// Devuelve true una sola vez: el fichero marcador se borra al leerlo. Antes
+/// esto era `src/autocall.json`, importado estaticamente por React, con dos
+/// problemas: Vite congela el valor al compilar (asi que en produccion el
+/// disparo por aplausos no funcionaba) y nadie lo devolvia a false, de modo que
+/// toda apertura manual entraba en llamada sola. Ver H-09.
+#[tauri::command]
+pub fn consumir_autollamada(app: AppHandle) -> bool {
+    for ruta in rutas_marcador_autollamada(&app) {
+        if ruta.is_file() {
+            let _ = std::fs::remove_file(&ruta);
+            return true;
+        }
+    }
+    false
+}
+
+fn rutas_marcador_autollamada(app: &AppHandle) -> Vec<std::path::PathBuf> {
+    use tauri::Manager;
+
+    let mut rutas = Vec::new();
+    if let Ok(dir) = app.path().app_config_dir() {
+        rutas.push(dir.join(MARCADOR_AUTOLLAMADA));
+    }
+    // Arbol de fuentes, para `tauri dev`.
+    rutas.push(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join(MARCADOR_AUTOLLAMADA),
+    );
+    rutas
 }
 
 // `ejecutar_herramienta_python` vive ahora en `puente.rs`, sobre un proceso de

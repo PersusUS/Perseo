@@ -114,16 +114,20 @@ def trigger_action():
         print("[!] La aplicación Perseo ya está corriendo. Se evitará abrir otra instancia.")
         return
 
-    # Inyectar autoCall: true en el archivo de React
+    # Señal de auto-conexión: un fichero marcador en la raíz del proyecto que la
+    # aplicación borra al leerlo. Antes se escribía dentro de src/autocall.json,
+    # que React importaba estáticamente: Vite congelaba el valor al compilar (el
+    # disparo no funcionaba en producción) y nadie lo devolvía a false, así que
+    # toda apertura manual entraba en llamada sola. Ver H-09.
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     realtime_path = os.path.join(base_dir, "RealTime")
-    autocall_json = os.path.join(realtime_path, "src", "autocall.json")
+    marcador = os.path.join(base_dir, ".perseo-autollamada")
     try:
-        with open(autocall_json, 'w', encoding='utf-8') as f:
-            json.dump({"autoCall": True}, f)
-            print("[*] Inyección de 'Auto-Conexión' enviada a React.")
+        with open(marcador, 'w', encoding='utf-8') as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S"))
+        print("[*] Señal de auto-conexión depositada.")
     except Exception as e:
-        print(f"[-] Omitiendo autocall inyeccion, json info: {e}")
+        print(f"[-] No se pudo dejar la señal de auto-conexión: {e}")
 
     # 1. Abrir animacion de carga
     script_dir = os.path.dirname(os.path.abspath(__file__))
