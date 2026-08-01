@@ -2,7 +2,6 @@ use xcap::Monitor;
 use image::codecs::jpeg::JpegEncoder;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use std::io::Cursor;
-use std::process::Command;
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
@@ -64,23 +63,6 @@ pub fn guardar_api_key(app: AppHandle, clave: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-pub async fn ejecutar_herramienta_python(tool_name: String, argumentos: String) -> Result<String, String> {
-    // Usamos la ruta absoluta al script runner de Python para evitar problemas de directorios de trabajo
-    let runner_path = "C:\\Users\\<usuario>\\Perseo\\TOOLS\\runner.py";
-    
-    let output = Command::new("python")
-        .arg(runner_path)
-        .arg(&tool_name)
-        .arg(&argumentos)
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        Ok(stdout)
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        Err(format!("Error en script Python: {}", stderr))
-    }
-}
+// `ejecutar_herramienta_python` vive ahora en `puente.rs`, sobre un proceso de
+// Python persistente. La version anterior lanzaba un interprete nuevo en cada
+// llamada: 7,5 s medidos, contra un timeout de 10 s. Ver H-10 a H-15.

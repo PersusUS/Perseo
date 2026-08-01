@@ -1,9 +1,14 @@
 [package]
 name = "temp-app"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Perseo — asistente personal por voz y pantalla"
+authors = ["Jesús Pérez Bazarot"]
 edition = "2021"
+
+# NOTA: el nombre del paquete sigue siendo `temp-app` a proposito, de momento.
+# `clap_detector.py` y `loading_splash.py` detectan la aplicacion buscando
+# `temp-app.exe` en el tasklist, asi que renombrarlo los rompe en silencio.
+# El cambio va junto en la Fase 5. Ver H-21.
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -27,3 +32,7 @@ tauri-plugin-store = "2"
 xcap = "0.0.13"
 image = "0.25"
 base64 = "0.22"
+# Proceso hijo asincrono para el puente de herramientas. La version anterior
+# usaba std::process::Command, que bloquea el hilo dentro de un comando async
+# de Tauri y secuestraba un worker del runtime durante segundos. Ver H-10.
+tokio = { version = "1", features = ["process", "io-util", "time", "sync"] }

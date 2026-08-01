@@ -35,7 +35,14 @@ export class GeminiLiveClient {
 
     this.isConnecting = true;
     this.onConnectionStateChange('connecting');
-    
+
+    // Arrancar el proceso de herramientas ya, en paralelo a la conexión: así
+    // precarga el índice vectorial mientras el usuario todavía está saludando,
+    // y la primera consulta a la memoria responde en milisegundos.
+    invoke('precalentar_herramientas').catch(e =>
+      console.warn('[Gemini] No se pudo precalentar el puente de herramientas:', e)
+    );
+
     // Asegurarnos de limpiar cualquier sesión residual antes de conectar de nuevo
     if (this.session) {
       try {
@@ -191,21 +198,16 @@ export class GeminiLiveClient {
                 console.log(`[Gemini] IA quiere ejecutar: ${name} con args:`, args);
                 
                 try {
-                    // Timeout preventor: No queremos que Perseo se quede colgado eternamente 
-                    // si Python se bloquea (por ejemplo, fallo en local Ollama o lectura del vault)
-                    const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Timeout: Python tardó más de 10 segundos en responder')), 10000)
-                    );
+                    // El timeout vive ahora en Rust, que además mata el proceso.
+                    // Aquí había un Promise.race de 10 s que abandonaba la promesa
+                    // pero dejaba a Python trabajando para un consumidor que ya no
+                    // existía, y que además saltaba siempre en la primera consulta
+                    // al RAG (7,5 s de arranque en frío). Ver H-11 y H-12.
+                    const result = await invoke("ejecutar_herramienta_python", {
+                        toolName: name,
+                        argumentos: JSON.stringify(args)
+                    }) as string;
 
-                    // Llamamos al backend de Rust (Tauri) para que ejecute el Python
-                    const result = await Promise.race([
-                        invoke("ejecutar_herramienta_python", { 
-                            toolName: name, 
-                            argumentos: JSON.stringify(args)
-                        }),
-                        timeoutPromise
-                    ]) as string;
-                    
                     console.log(`[Gemini] Resultado de ${name}:`, result);
                     functionResponses.push({
                         id,
