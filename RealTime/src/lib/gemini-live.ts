@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality, ThinkingLevel } from '@google/genai';
+import { GoogleGenAI, Modality, ThinkingLevel, Type } from '@google/genai';
 import { invoke } from '@tauri-apps/api/core';
 import { defaultConfig } from './config';
 import { audioPlayer } from './audio-player';
@@ -60,10 +60,10 @@ export class GeminiLiveClient {
                 name: "consultar_base_vectorial",
                 description: "Busca información en la memoria a largo plazo (base vectorial) sobre conocimientos pasados, personas que Perseo ya debió haber conocido, objetos o conceptos.",
                 parameters: {
-                  type: "OBJECT",
+                  type: Type.OBJECT,
                   properties: {
                     query: {
-                      type: "STRING",
+                      type: Type.STRING,
                       description: "La pregunta o búsqueda detallada basada en las características visuales que ves o lo que el usuario pide."
                     }
                   },
@@ -74,18 +74,18 @@ export class GeminiLiveClient {
                 name: "guardar_recuerdo",
                 description: "Guarda un recuerdo, como el nombre de una persona y su rostro/apariencia, en la memoria a largo plazo.",
                 parameters: {
-                  type: "OBJECT",
+                  type: Type.OBJECT,
                   properties: {
                     entidad: {
-                      type: "STRING",
+                      type: Type.STRING,
                       description: "El nombre de la persona, objeto o concepto."
                     },
                     descripcion_visual: {
-                      type: "STRING",
+                      type: Type.STRING,
                       description: "Descripción visual muy detallada de lo que ves actualmente por la cámara."
                     },
                     contexto: {
-                      type: "STRING",
+                      type: Type.STRING,
                       description: "Contexto adicional, relación con el usuario, etc."
                     }
                   },
@@ -96,14 +96,14 @@ export class GeminiLiveClient {
                 name: "controlar_pc",
                 description: "Permite usar la computadora local del usuario (Windows). Sirve para abrir aplicaciones registradas en el sistema, navegar a URLs específicas, escribir texto interactivo (teclear) y ajustar volumen general.",
                 parameters: {
-                  type: "OBJECT",
+                  type: Type.OBJECT,
                   properties: {
                     accion: {
-                      type: "STRING",
+                      type: Type.STRING,
                       description: "La acción a realizar. Valores permitidos: 'abrir_app', 'escribir_teclado', 'atajo_teclado', 'volumen', 'mover_raton', 'click_raton', 'buscar_youtube'"
                     },
                     parametro: {
-                      type: "STRING",
+                      type: Type.STRING,
                       description: "El ejecutable, URL, texto exacto a teclear, atajo, volumen, coordenadas X,Y, clic('izquierdo', 'derecho') o el término exacto de búsqueda para Youtube (ej. 'Mozart Requiem')."
                     }
                   },
