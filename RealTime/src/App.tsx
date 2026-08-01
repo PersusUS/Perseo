@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { PerseoFace } from './components/PerseoFace';
 import { Settings } from './components/Settings';
 import { geminiClient } from './lib/gemini-live';
@@ -56,6 +57,7 @@ function App() {
   const [isMuted, setIsMuted] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [volume, setVolume] = useState(0);
+  const [apiKeyReady, setApiKeyReady] = useState(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
   const fullConversationRef = useRef<TranscriptMsg[]>([]);
@@ -134,15 +136,28 @@ function App() {
     };
   }, []);
 
-  // Efecto adicional para la auto-llamada cuando se abre desde los aplausos
+  // Cargar la API Key desde Rust (almacén local o variable de entorno del
+  // sistema). Ya no viaja dentro del bundle — ver H-17.
   useEffect(() => {
-    if (autoCallData.autoCall && connectionState === 'disconnected') {
+    invoke<string>('obtener_api_key')
+      .then(clave => {
+        defaultConfig.geminiApiKey = clave;
+        if (!clave) addTranscript('system', 'No hay API Key configurada. Pulsa ⚙ para añadirla.');
+      })
+      .catch(e => addTranscript('system', `No se pudo leer la API Key: ${e}`))
+      .finally(() => setApiKeyReady(true));
+  }, []);
+
+  // Efecto adicional para la auto-llamada cuando se abre desde los aplausos.
+  // Espera a que la clave esté cargada: sin ella, handleCall aborta.
+  useEffect(() => {
+    if (apiKeyReady && autoCallData.autoCall && connectionState === 'disconnected') {
       const timer = setTimeout(() => {
         handleCall();
       }, 1500); // 1.5s de gracia tras cargar la UI
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [apiKeyReady]);
 
   useEffect(() => {
     if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;

@@ -3,6 +3,13 @@ use image::codecs::jpeg::JpegEncoder;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use std::io::Cursor;
 use std::process::Command;
+use tauri::AppHandle;
+use tauri_plugin_store::StoreExt;
+
+/// Archivo del almacen cifrado-por-plataforma donde vive la configuracion
+/// sensible. Nunca se empaqueta en el bundle del frontend.
+const ARCHIVO_AJUSTES: &str = "perseo-ajustes.json";
+const CLAVE_API: &str = "gemini_api_key";
 
 #[tauri::command]
 pub async fn capture_screen_base64(quality: u8) -> Result<String, String> {
@@ -22,6 +29,39 @@ pub async fn capture_screen_base64(quality: u8) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
     
     Ok(STANDARD.encode(&jpeg_bytes))
+}
+
+/// Devuelve la clave de API de Gemini.
+///
+/// Orden de busqueda: el almacen local primero (donde la deja el usuario desde
+/// la pantalla de Ajustes) y, si esta vacio, la variable de entorno
+/// GEMINI_API_KEY del sistema, leida en tiempo de ejecucion.
+///
+/// El motivo de que esto viva en Rust y no en el frontend: cualquier variable
+/// con prefijo VITE_ la incrusta Vite dentro del JavaScript compilado, asi que
+/// la clave quedaba en claro dentro del .exe. Ver H-17.
+#[tauri::command]
+pub fn obtener_api_key(app: AppHandle) -> Result<String, String> {
+    let store = app.store(ARCHIVO_AJUSTES).map_err(|e| e.to_string())?;
+
+    if let Some(valor) = store.get(CLAVE_API) {
+        if let Some(clave) = valor.as_str() {
+            if !clave.is_empty() {
+                return Ok(clave.to_string());
+            }
+        }
+    }
+
+    Ok(std::env::var("GEMINI_API_KEY").unwrap_or_default())
+}
+
+/// Guarda la clave de API en el almacen local y la persiste en disco.
+#[tauri::command]
+pub fn guardar_api_key(app: AppHandle, clave: String) -> Result<(), String> {
+    let store = app.store(ARCHIVO_AJUSTES).map_err(|e| e.to_string())?;
+    store.set(CLAVE_API, serde_json::Value::String(clave));
+    store.save().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]

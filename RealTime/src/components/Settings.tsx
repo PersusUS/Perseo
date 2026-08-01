@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { defaultConfig } from '../lib/config';
 
 interface Props {
@@ -8,11 +9,22 @@ interface Props {
 export const Settings: React.FC<Props> = ({ onClose }) => {
   const [apiKey, setApiKey] = useState(defaultConfig.geminiApiKey);
   const [voice, setVoice] = useState(defaultConfig.voiceName);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSave = () => {
-    defaultConfig.geminiApiKey = apiKey;
-    defaultConfig.voiceName = voice;
-    onClose();
+  // La clave se persiste en Rust, no en el bundle ni en localStorage. Ver H-17.
+  const handleSave = async () => {
+    setGuardando(true);
+    setError('');
+    try {
+      await invoke('guardar_api_key', { clave: apiKey });
+      defaultConfig.geminiApiKey = apiKey;
+      defaultConfig.voiceName = voice;
+      onClose();
+    } catch (e) {
+      setError(`No se pudo guardar: ${e}`);
+      setGuardando(false);
+    }
   };
 
   return (
@@ -40,9 +52,13 @@ export const Settings: React.FC<Props> = ({ onClose }) => {
           </select>
         </div>
 
+        {error && <p style={{ color: '#f85149', fontSize: '0.85em' }}>{error}</p>}
+
         <div className="modal-actions">
-          <button onClick={onClose}>Cancelar</button>
-          <button className="primary" onClick={handleSave}>Guardar</button>
+          <button onClick={onClose} disabled={guardando}>Cancelar</button>
+          <button className="primary" onClick={handleSave} disabled={guardando}>
+            {guardando ? 'Guardando…' : 'Guardar'}
+          </button>
         </div>
       </div>
     </div>
