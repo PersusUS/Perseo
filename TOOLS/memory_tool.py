@@ -1,11 +1,18 @@
 import os
+import sys
 import logging
 from datetime import datetime
+
+# El paquete RAG no está instalado, se importa por ruta. Las rutas del vault
+# viven en un único sitio para que el indexador vigile exactamente la carpeta
+# donde esta herramienta escribe. Ver H-22.
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "RAG"))
+
+from paths import VAULT_PATH  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-VAULT_PATH = os.getenv("OBSIDIAN_VAULT_PATH", os.path.join(os.path.dirname(__file__), "..", "obsidian_vault"))
 MEMORIAS_FOLDER = os.path.join(VAULT_PATH, "Memorias_Sistema")
 
 def guardar_recuerdo(entidad: str, descripcion_visual: str, contexto: str, tags: list = None) -> str:
