@@ -57,23 +57,31 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
 .eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
+
+# NOTA: aquí NO van las reglas genéricas de empaquetado de Python
+# (lib/, lib64/, build/, dist/, parts/, var/, downloads/, sdist/, wheels/).
+# Git las aplica a CUALQUIER carpeta con ese nombre en todo el árbol, y `lib/`
+# se estaba tragando RealTime/src/lib/ — el núcleo de la aplicación. Ver H-01.
+# Este proyecto no genera distribuciones de Python, así que no hacen falta.
+
+# =========================
+# Datos personales / privados
+# =========================
+# Memorias generadas por Perseo: contienen nombres reales y descripciones
+# de personas identificables. Nunca deben salir del disco local. Ver H-04.
+obsidian_vault/
+
+# =========================
+# Artefactos regenerables del RAG
+# =========================
+# Base vectorial: se reconstruye indexando el vault. Binario, cambia en cada
+# indexado y contendría los embeddings de las memorias privadas. Ver H-03.
+RAG/chroma_db/
 
 # Environments
 .env/
