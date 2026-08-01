@@ -8,6 +8,7 @@ modelo pida de verdad un recuerdo.
 import logging
 import os
 import sys
+import threading
 from typing import Optional
 
 import chromadb
@@ -24,11 +25,22 @@ logger = logging.getLogger(__name__)
 
 _index: Optional[VectorStoreIndex] = None
 
+# En server.py el precalentamiento corre en un hilo mientras el bucle principal
+# ya atiende peticiones: sin cerrojo, dos hilos podrían construir el índice a la
+# vez y pagar dos veces el arranque.
+_lock = threading.Lock()
+
 
 def _get_lazy_index() -> VectorStoreIndex:
     """Carga diferida del índice vectorial. Solo la primera consulta la paga."""
     global _index
-    if _index is None:
+    if _index is not None:
+        return _index
+
+    with _lock:
+        if _index is not None:  # otro hilo pudo construirlo mientras esperábamos
+            return _index
+
         from embedding_manager import configurar_embeddings
 
         configurar_embeddings()

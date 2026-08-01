@@ -4642,6 +4642,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-screenshots",
  "tauri-plugin-store",
+ "tokio",
  "xcap 0.0.13",
 ]
 
@@ -4784,6 +4785,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",

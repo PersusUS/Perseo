@@ -1,10 +1,5 @@
 mod commands;
-
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+mod puente;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,12 +7,13 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_screenshots::init())
         .plugin(tauri_plugin_opener::init())
+        .manage(puente::EstadoPuente::default())
         .invoke_handler(tauri::generate_handler![
-            greet,
             commands::capture_screen_base64,
-            commands::ejecutar_herramienta_python,
             commands::obtener_api_key,
-            commands::guardar_api_key
+            commands::guardar_api_key,
+            puente::ejecutar_herramienta_python,
+            puente::precalentar_herramientas
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
