@@ -14,6 +14,12 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 MEMORIAS_FOLDER = os.path.join(VAULT_PATH, "Memorias_Sistema")
+CONVERSACIONES_FOLDER = os.path.join(VAULT_PATH, "Conversaciones")
+
+
+def _nombre_seguro(texto: str) -> str:
+    """Deja solo caracteres válidos para un nombre de archivo."""
+    return "".join(c for c in texto if c.isalnum() or c in (" ", "_", "-")).strip()
 
 def guardar_recuerdo(entidad: str, descripcion_visual: str, contexto: str, tags: list = None) -> str:
     """
@@ -32,8 +38,7 @@ def guardar_recuerdo(entidad: str, descripcion_visual: str, contexto: str, tags:
         # Asegurar que el directorio de memorias existe
         os.makedirs(MEMORIAS_FOLDER, exist_ok=True)
         
-        # Limpiar el nombre del archivo para que sea seguro
-        filename = "".join(c for c in entidad if c.isalnum() or c in (' ', '_', '-')).rstrip()
+        filename = _nombre_seguro(entidad)
         file_path = os.path.join(MEMORIAS_FOLDER, f"{filename}.md")
         
         date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -65,6 +70,60 @@ tags: [{tags_str}]
     except Exception as e:
         logger.error(f"Error al guardar recuerdo: {e}")
         return f"Error al guardar el recuerdo: {str(e)}"
+
+def guardar_conversacion(mensajes: list, titulo: str = "") -> str:
+    """Guarda una conversación como Markdown en el vault.
+
+    Se escribe dentro del vault a propósito, y no en una base de datos aparte:
+    así el indexador del RAG la recoge sin hacer nada más, y Perseo puede
+    recordar en sesiones futuras lo que se habló en ésta. Ver H-07.
+
+    Args:
+        mensajes: lista de {"tipo": "ai"|"user"|"system", "texto": "..."}.
+        titulo: título opcional; si falta, se usa la fecha y la hora.
+
+    Returns:
+        Mensaje de confirmación o error.
+    """
+    try:
+        utiles = [
+            m for m in mensajes
+            if m.get("tipo") in ("ai", "user") and (m.get("texto") or "").strip()
+        ]
+        if not utiles:
+            return "Aviso: la conversación no tenía contenido que guardar."
+
+        os.makedirs(CONVERSACIONES_FOLDER, exist_ok=True)
+
+        ahora = datetime.now()
+        marca = ahora.strftime("%Y-%m-%d %H-%M")
+        nombre = _nombre_seguro(titulo) or f"Conversación {marca}"
+        file_path = os.path.join(CONVERSACIONES_FOLDER, f"{nombre}.md")
+
+        lineas = [
+            "---",
+            "tipo: conversacion",
+            f"fecha: {ahora.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"mensajes: {len(utiles)}",
+            "tags: [conversacion, perseo]",
+            "---",
+            f"# {nombre}",
+            "",
+        ]
+        for m in utiles:
+            quien = "Perseo" if m["tipo"] == "ai" else "Señor Persus"
+            lineas.append(f"**{quien}:** {m['texto'].strip()}")
+            lineas.append("")
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lineas))
+
+        logger.info("Conversación guardada: %s", file_path)
+        return f"Éxito: conversación guardada en '{nombre}.md' ({len(utiles)} mensajes)."
+    except Exception as e:
+        logger.error("Error al guardar la conversación: %s", e)
+        return f"Error al guardar la conversación: {e}"
+
 
 if __name__ == "__main__":
     # Test manual

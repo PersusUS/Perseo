@@ -114,3 +114,6 @@ venv.bak/
 *.wav
 *.mp4
 *.mkv
+
+# Senal efimera de auto-llamada que deja el detector de aplausos (H-09)
+.perseo-autollamada

@@ -6,7 +6,9 @@ import { audioPlayer } from './audio-player';
 export class GeminiLiveClient {
   private ai: GoogleGenAI;
   private session: any = null;
-  public onTranscriptChange: (text: string) => void = () => {};
+  /** Fragmento de transcripción. `final` cierra el turno para que el
+   *  siguiente fragmento empiece un mensaje nuevo en vez de alargar el anterior. */
+  public onTranscript: (rol: 'ai' | 'user', delta: string, final: boolean) => void = () => {};
   public onConnectionStateChange: (state: string) => void = () => {};
   public onError: (msg: string) => void = () => {};
   public getConversationHistory: () => string = () => "";
@@ -61,6 +63,12 @@ export class GeminiLiveClient {
         model: 'gemini-3.1-flash-live-preview',
         config: {
           responseModalities: [Modality.AUDIO],
+          // Sin esto no hay transcripción en absoluto: con salida solo de audio
+          // el modelo nunca envía partes de texto, así que el overlay únicamente
+          // mostraba mensajes de sistema pese a que el README anunciaba
+          // "transcripción en tiempo real". Ver H-05.
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
           tools: [{
             functionDeclarations: [
               {
@@ -234,21 +242,38 @@ export class GeminiLiveClient {
         return; // Salimos para no procesar como modelTurn
     }
 
-    if (message.serverContent && message.serverContent.modelTurn) {
-        const parts = message.serverContent.modelTurn.parts || [];
-        for (const part of parts) {
-            if (part.inlineData && part.inlineData.data) {
-                console.log('[Gemini] Received audio data');
+    const contenido = message.serverContent;
+    if (!contenido) return;
+
+    // Transcripciones. Llegan en fragmentos, no como frases completas.
+    if (contenido.inputTranscription?.text) {
+        this.onTranscript('user', contenido.inputTranscription.text, false);
+    }
+    if (contenido.outputTranscription?.text) {
+        this.onTranscript('ai', contenido.outputTranscription.text, false);
+    }
+
+    if (contenido.modelTurn) {
+        for (const part of contenido.modelTurn.parts || []) {
+            if (part.inlineData?.data) {
                 audioPlayer.enqueue(part.inlineData.data);
             }
             if (part.text) {
-                console.log('[Gemini] Received transcript part:', part.text);
-                this.onTranscriptChange(part.text);
+                this.onTranscript('ai', part.text, false);
             }
         }
-    } else if (message.serverContent && message.serverContent.interrupted) {
+    }
+
+    if (contenido.interrupted) {
         console.log('[Gemini] Model turn interrupted');
         audioPlayer.clearQueue();
+        this.onTranscript('ai', '', true);
+    }
+
+    // Fin de turno: cierra los mensajes abiertos de ambos lados.
+    if (contenido.turnComplete) {
+        this.onTranscript('user', '', true);
+        this.onTranscript('ai', '', true);
     }
   }
 

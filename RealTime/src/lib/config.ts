@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core';
+
 export interface PerseoConfig {
   geminiApiKey: string;
   voiceName: string;
@@ -77,3 +79,37 @@ Antes de usar 'controlar_pc' para cualquier acción, verifique que se la ha pedi
 REGLA CRÍTICA DE RESPUESTA:
 Sé conciso y directo. Cuando el señor Persus te hable, responde inmediatamente. No añadas florituras innecesarias. Un buen mayordomo habla lo justo y necesario, con la máxima elegancia y eficacia.`
 };
+
+/** El prompt de fábrica, para poder restaurarlo desde Ajustes. */
+export const SYSTEM_PROMPT_POR_DEFECTO = defaultConfig.systemPrompt;
+
+/** Ajustes que se persisten en el almacén local que gestiona Rust. */
+const AJUSTES_PERSISTIDOS = ['voiceName', 'systemPrompt', 'saveHistoryEnabled'] as const;
+
+/**
+ * Carga los ajustes guardados sobre la configuración por defecto.
+ *
+ * Antes los Ajustes solo mutaban este objeto en memoria, así que la voz y el
+ * prompt volvían a su valor de fábrica al cerrar la aplicación. Ver H-08.
+ */
+export async function cargarAjustesPersistidos(): Promise<void> {
+  for (const clave of AJUSTES_PERSISTIDOS) {
+    try {
+      const valor = await invoke<unknown>('obtener_ajuste', { clave });
+      if (valor !== null && valor !== undefined) {
+        (defaultConfig as any)[clave] = valor;
+      }
+    } catch (e) {
+      console.warn(`[Config] No se pudo leer el ajuste '${clave}':`, e);
+    }
+  }
+}
+
+/** Guarda un ajuste y lo aplica en caliente. */
+export async function guardarAjuste<K extends keyof PerseoConfig>(
+  clave: K,
+  valor: PerseoConfig[K]
+): Promise<void> {
+  defaultConfig[clave] = valor;
+  await invoke('guardar_ajuste', { clave, valor });
+}

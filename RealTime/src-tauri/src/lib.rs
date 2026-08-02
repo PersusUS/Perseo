@@ -12,6 +12,9 @@ pub fn run() {
             commands::capture_screen_base64,
             commands::obtener_api_key,
             commands::guardar_api_key,
+            commands::obtener_ajuste,
+            commands::guardar_ajuste,
+            commands::consumir_autollamada,
             puente::ejecutar_herramienta_python,
             puente::precalentar_herramientas
         ])

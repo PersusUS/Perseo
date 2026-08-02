@@ -7,8 +7,7 @@ import { audioManager } from './lib/audio-manager';
 import { audioPlayer } from './lib/audio-player';
 import { cameraManager } from './lib/camera-manager';
 import { screenManager } from './lib/screen-manager';
-import { defaultConfig } from './lib/config';
-import autoCallData from './autocall.json';
+import { defaultConfig, cargarAjustesPersistidos } from './lib/config';
 
 // ── SVG Icons (clean, white, stroke-only) ──
 
@@ -45,7 +44,11 @@ const IconSettings = () => (
 );
 
 // ── Types ──
-type TranscriptMsg = { id: string; text: string; type: 'ai' | 'user' | 'system' };
+// `abierto` marca un mensaje que aún está recibiendo fragmentos de transcripción.
+type TranscriptMsg = { id: string; text: string; type: 'ai' | 'user' | 'system'; abierto?: boolean };
+
+const MAX_MENSAJES = 400;   // tope de memoria de una sesión
+const MENSAJES_VISIBLES = 40;
 
 function App() {
   const [connectionState, setConnectionState] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
@@ -60,13 +63,32 @@ function App() {
   const [apiKeyReady, setApiKeyReady] = useState(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
-  const fullConversationRef = useRef<TranscriptMsg[]>([]);
 
-  // Función preparada para guardar el historial completo
-  const saveConversationHistory = (history: TranscriptMsg[]) => {
-    // Aquí a futuro implementaremos la base de datos o el guardado en local (IndexedDB, archivos, etc.)
-    console.log('[History System] Guardando conversación anterior...', history);
-    // localStorage.setItem('perseo-history-latest', JSON.stringify(history));
+  // Espejo del estado para poder leerlo desde callbacks sin recrearlos.
+  // Antes había dos almacenes en paralelo (un ref y un estado) y se
+  // desincronizaban: el ref se vaciaba en 'disconnected', que es justo el evento
+  // que emite handleReconnect antes de reconectar, así que el historial que se
+  // inyectaba al reconectar siempre estaba vacío. Ver H-06.
+  const conversacionRef = useRef<TranscriptMsg[]>([]);
+  useEffect(() => { conversacionRef.current = transcripts; }, [transcripts]);
+
+  /** Persiste la conversación como Markdown en el vault, donde el RAG la indexa
+   *  solo. Antes esto era un console.log con la escritura comentada. Ver H-07. */
+  const guardarConversacion = async (mensajes: TranscriptMsg[]) => {
+    const utiles = mensajes.filter(m => m.type !== 'system' && m.text.trim());
+    if (utiles.length === 0) return;
+
+    try {
+      await invoke('ejecutar_herramienta_python', {
+        toolName: 'guardar_conversacion',
+        argumentos: JSON.stringify({
+          mensajes: utiles.map(m => ({ tipo: m.type, texto: m.text })),
+        }),
+      });
+      console.log(`[Historial] Conversación guardada (${utiles.length} mensajes).`);
+    } catch (e) {
+      console.error('[Historial] No se pudo guardar la conversación:', e);
+    }
   };
 
   useEffect(() => {
@@ -88,17 +110,14 @@ function App() {
         setScreenFrame(null);
         setIsScreenSharing(false);
         setIsSpeaking(false);
-        
-        // Guardar conversación si está habilitado mediante config antes de limpiar
-        if (defaultConfig.saveHistoryEnabled && fullConversationRef.current.length > 0) {
-          saveConversationHistory(fullConversationRef.current);
-          fullConversationRef.current = []; // Reiniciamos el registro de la sesión
-        }
+        // La conversación NO se borra aquí: 'disconnected' también se emite en
+        // cada reconexión automática, y borrarla era lo que dejaba sin efecto la
+        // reinyección de contexto. Se guarda y se limpia al colgar. Ver H-06.
       }
     };
 
-    geminiClient.onTranscriptChange = (text) => {
-      addTranscript('ai', text);
+    geminiClient.onTranscript = (rol, delta, final) => {
+      añadirFragmento(rol, delta, final);
     };
 
     geminiClient.onError = (msg) => addTranscript('system', msg);
@@ -116,16 +135,18 @@ function App() {
       }
     };
 
-    // Asignamos la función para obtener el historial a pasar a Gemini en cada conexión/re-conexión
+    // Historial que se reinyecta en el prompt al reconectar. Ahora incluye
+    // también lo que dijo el usuario, porque la transcripción de entrada ya
+    // está activada (H-05); antes solo se recuperaba el monólogo de Perseo.
     geminiClient.getConversationHistory = () => {
       if (!defaultConfig.saveHistoryEnabled) return "";
-      const pastMessages = fullConversationRef.current
-        .filter(m => m.type === 'ai') // Idealmente podemos filtrar de ambos si la API transcribiese la voz del usuario
-        .map(m => `Tú (Perseo) dijiste: "${m.text}"`)
+      const texto = conversacionRef.current
+        .filter(m => m.type !== 'system' && m.text.trim())
+        .map(m => (m.type === 'ai' ? `Perseo: "${m.text}"` : `Señor Persus: "${m.text}"`))
         .join('\n');
-      
-      // Solo tomamos el final para que no ocupe un prompt excesivamente gigante.
-      return pastMessages.slice(-2000);
+
+      // Solo el final, para no inflar el prompt sin límite.
+      return texto.slice(-2000);
     };
 
     return () => {
@@ -139,24 +160,36 @@ function App() {
   // Cargar la API Key desde Rust (almacén local o variable de entorno del
   // sistema). Ya no viaja dentro del bundle — ver H-17.
   useEffect(() => {
-    invoke<string>('obtener_api_key')
-      .then(clave => {
+    (async () => {
+      try {
+        await cargarAjustesPersistidos();
+        const clave = await invoke<string>('obtener_api_key');
         defaultConfig.geminiApiKey = clave;
         if (!clave) addTranscript('system', 'No hay API Key configurada. Pulsa ⚙ para añadirla.');
-      })
-      .catch(e => addTranscript('system', `No se pudo leer la API Key: ${e}`))
-      .finally(() => setApiKeyReady(true));
+      } catch (e) {
+        addTranscript('system', `No se pudieron cargar los ajustes: ${e}`);
+      } finally {
+        setApiKeyReady(true);
+      }
+    })();
   }, []);
 
-  // Efecto adicional para la auto-llamada cuando se abre desde los aplausos.
-  // Espera a que la clave esté cargada: sin ella, handleCall aborta.
+  // Auto-llamada cuando la app se abre desde el detector de aplausos.
+  // La señal se consume en tiempo de ejecución desde Rust (un fichero marcador
+  // que se borra al leerlo), no con un JSON importado estáticamente: Vite
+  // congelaba ese valor al compilar, así que en producción el disparo por
+  // aplausos no funcionaba, y además nunca volvía a false. Ver H-09.
   useEffect(() => {
-    if (apiKeyReady && autoCallData.autoCall && connectionState === 'disconnected') {
-      const timer = setTimeout(() => {
-        handleCall();
-      }, 1500); // 1.5s de gracia tras cargar la UI
-      return () => clearTimeout(timer);
-    }
+    if (!apiKeyReady || connectionState !== 'disconnected') return;
+
+    let cancelado = false;
+    invoke<boolean>('consumir_autollamada').then(pedida => {
+      if (pedida && !cancelado) {
+        setTimeout(() => { if (!cancelado) handleCall(); }, 1500);
+      }
+    }).catch(e => console.warn('[AutoLlamada] No se pudo comprobar la señal:', e));
+
+    return () => { cancelado = true; };
   }, [apiKeyReady]);
 
   useEffect(() => {
@@ -168,9 +201,30 @@ function App() {
   }, [cameraStream]);
 
   const addTranscript = (type: TranscriptMsg['type'], text: string) => {
-    const newMessage: TranscriptMsg = { id: `${Date.now()}-${Math.random()}`, text, type };
-    fullConversationRef.current.push(newMessage);
-    setTranscripts(prev => [...prev.slice(-40), newMessage]);
+    setTranscripts(prev =>
+      [...prev, { id: `${Date.now()}-${Math.random()}`, text, type }].slice(-MAX_MENSAJES)
+    );
+  };
+
+  /** Acumula un fragmento de transcripción sobre el mensaje abierto del mismo
+   *  hablante, o abre uno nuevo. Las transcripciones llegan troceadas, así que
+   *  una línea por fragmento produciría un muro ilegible. */
+  const añadirFragmento = (rol: 'ai' | 'user', delta: string, final: boolean) => {
+    setTranscripts(prev => {
+      if (final) {
+        return prev.map(m => (m.type === rol && m.abierto ? { ...m, abierto: false } : m));
+      }
+      if (!delta) return prev;
+
+      const ultimo = prev[prev.length - 1];
+      if (ultimo && ultimo.type === rol && ultimo.abierto) {
+        return [...prev.slice(0, -1), { ...ultimo, text: ultimo.text + delta }];
+      }
+      return [
+        ...prev,
+        { id: `${Date.now()}-${Math.random()}`, text: delta, type: rol, abierto: true },
+      ].slice(-MAX_MENSAJES);
+    });
   };
 
   const handleCall = () => {
@@ -180,11 +234,18 @@ function App() {
     geminiClient.connect();
   };
 
-  const handleHangup = () => {
+  const handleHangup = async () => {
     geminiClient.disconnect();
     audioManager.stop();
     audioPlayer.clearQueue();
     setIsSpeaking(false);
+
+    // Colgar sí cierra la conversación de verdad: aquí es donde se guarda y se
+    // limpia, no en cada 'disconnected'. Ver H-06 y H-07.
+    if (defaultConfig.saveHistoryEnabled) {
+      await guardarConversacion(conversacionRef.current);
+    }
+    setTranscripts([]);
   };
 
   const toggleMute = () => {
@@ -255,7 +316,7 @@ function App() {
 
       {/* Transcript */}
       <div className="transcript-overlay" ref={transcriptRef}>
-        {transcripts.map(msg => (
+        {transcripts.slice(-MENSAJES_VISIBLES).map(msg => (
           <div key={msg.id} className={`transcript-line ${msg.type}`}>{msg.text}</div>
         ))}
       </div>
@@ -287,7 +348,9 @@ function App() {
         )}
       </div>
 
-      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+      {showSettings && (
+        <Settings onClose={() => setShowSettings(false)} llamadaActiva={isActive} />
+      )}
     </div>
   );
 }
