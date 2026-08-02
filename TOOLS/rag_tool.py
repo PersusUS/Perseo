@@ -92,6 +92,6 @@ def consultar_base_vectorial(query: str, top_k: int = 5) -> str:
 
 
 if __name__ == "__main__":
-    consulta = sys.argv[1] if len(sys.argv) > 1 else "¿quién es Javi?"
+    consulta = sys.argv[1] if len(sys.argv) > 1 else "¿a quién conozco?"
     print(f"Consulta: {consulta}\n")
     print(consultar_base_vectorial(consulta, top_k=2))

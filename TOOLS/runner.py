@@ -4,7 +4,7 @@ Ya NO es el camino que usa la aplicación: Rust habla con `server.py`, un proces
 persistente, porque arrancar un intérprete por llamada costaba 7,5 s. Este script
 se mantiene para pruebas manuales y diagnóstico:
 
-    python TOOLS/runner.py consultar_base_vectorial '{"query": "quién es Javi"}'
+    python TOOLS/runner.py consultar_base_vectorial '{"query": "a quién conozco"}'
 """
 
 import io
