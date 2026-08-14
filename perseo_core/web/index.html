@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#101014">
+<title>Perseo</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<style>
+  /* Un solo fichero a propósito: sin build, sin dependencias y sin una segunda
+     petición que pueda quedarse a medias por el túnel de Tailscale. */
+  :root {
+    color-scheme: dark;
+    --fondo: #101014;
+    --panel: #18181d;
+    --borde: #2a2a33;
+    --texto: #e8e8ec;
+    --tenue: #8a8a99;
+    --acento: #6f8cff;
+    --ok: #4ade80;
+    --aviso: #fbbf24;
+    --malo: #f87171;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--fondo);
+    color: var(--texto);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex;
+    flex-direction: column;
+    /* En el iPhone en pantalla completa, sin esto la barra inferior se come el
+       campo de escribir. */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--borde);
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .02em; }
+  #estado {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--tenue);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #luz {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--tenue);
+  }
+  #luz.viva { background: var(--ok); }
+  #luz.rota { background: var(--malo); }
+
+  nav {
+    display: flex;
+    border-bottom: 1px solid var(--borde);
+  }
+  nav button {
+    flex: 1;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--tenue);
+    padding: 10px;
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  nav button[aria-selected="true"] { color: var(--texto); border-bottom-color: var(--acento); }
+
+  main { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  section[hidden] { display: none; }
+  section { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  .burbuja {
+    max-width: 85%;
+    padding: 9px 12px;
+    border-radius: 14px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .mio { align-self: flex-end; background: var(--acento); color: #0b0b10; }
+  .suyo { align-self: flex-start; background: var(--panel); border: 1px solid var(--borde); }
+  .nota { align-self: center; font-size: 12px; color: var(--tenue); text-align: center; }
+
+  .trabajo {
+    background: var(--panel);
+    border: 1px solid var(--borde);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .trabajo .cabeza {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--tenue);
+  }
+  .trabajo .cuerpo { margin-top: 6px; overflow-wrap: anywhere; }
+  .trabajo .resultado {
+    margin-top: 6px; font-size: 13px; color: var(--tenue);
+    white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .etiqueta {
+    padding: 1px 7px; border-radius: 999px;
+    border: 1px solid currentColor; font-size: 11px;
+  }
+  .pendiente { color: var(--aviso); }
+  .en_curso  { color: var(--acento); }
+  .esperando { color: var(--aviso); }
+  .hecho     { color: var(--ok); }
+  .fallido   { color: var(--malo); }
+  .cancelado { color: var(--tenue); }
+  .rechazado { color: var(--tenue); }
+
+  .pregunta {
+    margin-top: 8px;
+    padding: 8px 10px;
+    border-left: 2px solid var(--aviso);
+    background: rgba(251, 191, 36, .07);
+    border-radius: 0 8px 8px 0;
+  }
+  .pregunta .detalle { margin-top: 4px; font-size: 13px; color: var(--tenue); }
+
+  .acciones { margin-top: 8px; display: flex; gap: 8px; }
+  .acciones button {
+    background: none; border: 1px solid var(--borde); color: var(--texto);
+    border-radius: 8px; padding: 5px 12px; font: inherit; font-size: 13px;
+    cursor: pointer;
+  }
+  .acciones button:hover { border-color: var(--acento); }
+  .acciones .peligro:hover { border-color: var(--malo); color: var(--malo); }
+  .acciones .aprobar { border-color: var(--ok); color: var(--ok); }
+
+  form {
+    display: flex; gap: 8px; padding: 10px 14px;
+    border-top: 1px solid var(--borde);
+  }
+  input, form button {
+    font: inherit;
+    border-radius: 10px;
+    border: 1px solid var(--borde);
+    background: var(--panel);
+    color: var(--texto);
+    padding: 10px 12px;
+  }
+  input { flex: 1; min-width: 0; }
+  input:focus { outline: none; border-color: var(--acento); }
+  form button { background: var(--acento); color: #0b0b10; border-color: transparent; font-weight: 600; }
+  form button:disabled { opacity: .5; }
+
+  #puerta {
+    position: fixed; inset: 0; background: var(--fondo);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 24px; text-align: center;
+  }
+  #puerta p { color: var(--tenue); max-width: 34ch; margin: 0; font-size: 14px; }
+  #puerta form { border: none; width: 100%; max-width: 380px; }
+  #puerta .error { color: var(--malo); font-size: 13px; min-height: 1.2em; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Perseo</h1>
+  <div id="estado"><span id="luz"></span><span id="texto-estado">conectando…</span></div>
+</header>
+
+<nav>
+  <button id="pestana-chat" aria-selected="true">Chat</button>
+  <button id="pestana-cola" aria-selected="false">Cola <span id="contador"></span></button>
+</nav>
+
+<main>
+  <section id="chat"></section>
+  <section id="cola" hidden></section>
+</main>
+
+<form id="escribir">
+  <input id="entrada" placeholder="Escribe a Perseo…" autocomplete="off" enterkeyhint="send">
+  <button type="submit">Enviar</button>
+</form>
+
+<div id="puerta">
+  <h1>Perseo</h1>
+  <p>Pega el token del núcleo. Está en <code>perseo_core/datos/token.txt</code>.</p>
+  <form id="entrar">
+    <input id="token" type="password" placeholder="Token" autocomplete="current-password">
+    <button type="submit">Entrar</button>
+  </form>
+  <div class="error" id="error-puerta"></div>
+</div>
+
+<script>
+"use strict";
+
+// El token solo viaja una vez, a POST /sesion, que lo canjea por una cookie
+// HttpOnly. A partir de ahí el navegador la manda sola y EventSource —que no
+// admite cabeceras propias— queda autenticado sin meter nada en la URL.
+const $ = (id) => document.getElementById(id);
+const puerta = $("puerta");
+const chat = $("chat");
+const cola = $("cola");
+const luz = $("luz");
+const textoEstado = $("texto-estado");
+
+const ESTADOS_ABIERTOS = new Set(["pendiente", "en_curso", "esperando"]);
+let flujo = null;
+
+// --------------------------------------------------------------------- //
+// Acceso
+// --------------------------------------------------------------------- //
+
+async function abrirSesion(token) {
+  const r = await fetch("/sesion", {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + token },
+  });
+  if (!r.ok) throw new Error("Token incorrecto");
+}
+
+async function hayCookie() {
+  // /trabajos exige token; si contesta, la cookie sigue viva.
+  try {
+    const r = await fetch("/trabajos?limite=1");
+    return r.ok;
+  } catch { return false; }
+}
+
+$("entrar").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const error = $("error-puerta");
+  error.textContent = "";
+  try {
+    await abrirSesion($("token").value.trim());
+    $("token").value = "";
+    empezar();
+  } catch (err) {
+    error.textContent = err.message;
+  }
+});
+
+// --------------------------------------------------------------------- //
+// Pestañas
+// --------------------------------------------------------------------- //
+
+function mostrar(cual) {
+  const esChat = cual === "chat";
+  chat.hidden = !esChat;
+  cola.hidden = esChat;
+  $("pestana-chat").setAttribute("aria-selected", String(esChat));
+  $("pestana-cola").setAttribute("aria-selected", String(!esChat));
+  $("escribir").style.display = esChat ? "flex" : "none";
+}
+$("pestana-chat").addEventListener("click", () => mostrar("chat"));
+$("pestana-cola").addEventListener("click", () => { mostrar("cola"); cargarCola(); });
+
+// --------------------------------------------------------------------- //
+// Chat
+// --------------------------------------------------------------------- //
+
+function decir(texto, clase) {
+  const div = document.createElement("div");
+  div.className = clase;
+  div.textContent = texto;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+$("escribir").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const entrada = $("entrada");
+  const texto = entrada.value.trim();
+  if (!texto) return;
+  entrada.value = "";
+  decir(texto, "burbuja mio");
+
+  try {
+    const r = await fetch("/mensaje", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texto, origen: "texto" }),
+    });
+    if (r.status === 401) { puerta.style.display = "flex"; return; }
+    const datos = await r.json();
+    if (datos.destino === "responder") {
+      decir(datos.respuesta || "(sin respuesta)", "burbuja suyo");
+    } else {
+      // No se contesta con un texto inventado: se dice que hay trabajo y la
+      // cola es donde se sigue. Es la diferencia entre un chat y un panel.
+      decir(`Encargado — trabajo #${datos.trabajo.id} (${datos.trabajo.agente})`, "nota");
+      cargarCola();
+    }
+  } catch (err) {
+    decir("No se pudo enviar: " + err.message, "nota");
+  }
+});
+
+// --------------------------------------------------------------------- //
+// Cola
+// --------------------------------------------------------------------- //
+
+function pintarTrabajo(t) {
+  const div = document.createElement("div");
+  div.className = "trabajo";
+  div.dataset.id = t.id;
+
+  const cabeza = document.createElement("div");
+  cabeza.className = "cabeza";
+  const etiqueta = document.createElement("span");
+  etiqueta.className = "etiqueta " + t.estado;
+  etiqueta.textContent = t.estado;
+  cabeza.append(etiqueta, ` #${t.id} · ${t.agente} · ${t.origen}`);
+  div.appendChild(cabeza);
+
+  const cuerpo = document.createElement("div");
+  cuerpo.className = "cuerpo";
+  // `texto` y `accion` son los campos que usan los agentes de hoy. El JSON en
+  // crudo es el respaldo: feo, pero deja ver qué se pidió en vez de nada.
+  cuerpo.textContent = t.peticion?.texto ?? t.peticion?.accion ?? JSON.stringify(t.peticion);
+  div.appendChild(cuerpo);
+
+  if (t.resultado || t.error) {
+    const extra = document.createElement("div");
+    extra.className = "resultado";
+    extra.textContent = t.error
+      ? "Error: " + t.error
+      : (t.resultado?.texto ?? JSON.stringify(t.resultado));
+    div.appendChild(extra);
+  }
+
+  if (t.estado === "esperando" && t.confirmacion) {
+    const pregunta = document.createElement("div");
+    pregunta.className = "pregunta";
+    const resumen = document.createElement("div");
+    resumen.textContent = t.confirmacion.resumen ?? "¿Confirmas?";
+    pregunta.appendChild(resumen);
+    if (t.confirmacion.detalle) {
+      const detalle = document.createElement("div");
+      detalle.className = "detalle";
+      detalle.textContent = t.confirmacion.detalle;
+      pregunta.appendChild(detalle);
+    }
+    div.appendChild(pregunta);
+  }
+
+  if (ESTADOS_ABIERTOS.has(t.estado)) {
+    const acciones = document.createElement("div");
+    acciones.className = "acciones";
+
+    // Contestar desde dos sitios a la vez (esta pantalla y el móvil) es normal.
+    // El núcleo resuelve el empate y devuelve 409 al segundo; aquí basta con
+    // recargar la cola para ver lo que quedó.
+    const responder = async (boton, ruta) => {
+      for (const otro of acciones.children) otro.disabled = true;
+      const r = await fetch(`/trabajos/${t.id}/${ruta}`, { method: "POST" });
+      if (r.status === 409) decir(`El trabajo #${t.id} ya estaba resuelto.`, "nota");
+      cargarCola();
+    };
+
+    if (t.estado === "esperando") {
+      const si = document.createElement("button");
+      si.className = "aprobar";
+      si.textContent = "Aprobar";
+      si.addEventListener("click", () => responder(si, "aprobar"));
+
+      const no = document.createElement("button");
+      no.className = "peligro";
+      no.textContent = "Rechazar";
+      no.addEventListener("click", () => responder(no, "rechazar"));
+
+      acciones.append(si, no);
+    }
+
+    const cancelar = document.createElement("button");
+    cancelar.className = "peligro";
+    cancelar.textContent = "Cancelar";
+    cancelar.addEventListener("click", () => responder(cancelar, "cancelar"));
+    acciones.appendChild(cancelar);
+
+    div.appendChild(acciones);
+  }
+  return div;
+}
+
+async function cargarCola() {
+  let datos;
+  try {
+    const r = await fetch("/trabajos?limite=50");
+    if (r.status === 401) { puerta.style.display = "flex"; return; }
+    datos = await r.json();
+  } catch { return; }
+
+  cola.replaceChildren();
+  if (!datos.trabajos.length) {
+    const vacio = document.createElement("div");
+    vacio.className = "nota";
+    vacio.textContent = "No hay nada en la cola.";
+    cola.appendChild(vacio);
+  } else {
+    for (const t of datos.trabajos) cola.appendChild(pintarTrabajo(t));
+  }
+
+  const abiertos = datos.trabajos.filter((t) => ESTADOS_ABIERTOS.has(t.estado)).length;
+  $("contador").textContent = abiertos ? `(${abiertos})` : "";
+}
+
+// --------------------------------------------------------------------- //
+// Flujo de eventos
+// --------------------------------------------------------------------- //
+
+function conectarEventos() {
+  if (flujo) flujo.close();
+  flujo = new EventSource("/eventos");
+
+  flujo.onopen = () => {
+    luz.className = "viva";
+    textoEstado.textContent = "conectado";
+  };
+
+  flujo.onerror = () => {
+    luz.className = "rota";
+    textoEstado.textContent = "sin conexión";
+    // EventSource reintenta solo; no se cierra a mano para no perder eso.
+  };
+
+  flujo.onmessage = (e) => {
+    let evento;
+    try { evento = JSON.parse(e.data); } catch { return; }
+
+    if (evento.tipo === "mensaje.respondido") return;  // ya pintado al enviar
+    if (evento.tipo?.startsWith("trabajo.")) {
+      cargarCola();
+      const t = evento.datos?.trabajo;
+      if (!t) return;
+      if (evento.tipo === "trabajo.hecho") {
+        decir(`Trabajo #${t.id} terminado.`, "nota");
+      } else if (evento.tipo === "trabajo.fallido") {
+        decir(`Trabajo #${t.id} falló: ${t.error ?? ""}`, "nota");
+      } else if (evento.tipo === "trabajo.espera_confirmacion") {
+        // El aviso lleva a la cola, que es donde están los botones. Aprobar
+        // desde el chat obligaría a duplicar el estado en dos sitios.
+        decir(`El trabajo #${t.id} pide confirmación — míralo en Cola.`, "nota");
+        $("pestana-cola").animate(
+          [{ opacity: 1 }, { opacity: .35 }, { opacity: 1 }],
+          { duration: 600, iterations: 3 }
+        );
+      } else if (evento.tipo === "trabajo.rechazado") {
+        decir(`Trabajo #${t.id} rechazado.`, "nota");
+      }
+    }
+  };
+}
+
+// --------------------------------------------------------------------- //
+// Arranque
+// --------------------------------------------------------------------- //
+
+function empezar() {
+  puerta.style.display = "none";
+  cargarCola();
+  conectarEventos();
+  $("entrada").focus();
+}
+
+(async () => {
+  if (await hayCookie()) empezar();
+  else puerta.style.display = "flex";
+})();
+</script>
+</body>
+</html>

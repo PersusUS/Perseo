@@ -83,6 +83,14 @@ obsidian_vault/
 # indexado y contendría los embeddings de las memorias privadas. Ver H-03.
 RAG/chroma_db/
 
+# =========================
+# Estado del núcleo (perseo-core)
+# =========================
+# Cola de trabajos y token de acceso. La cola guarda el texto literal de lo que
+# le pides a Perseo, y el token es la credencial que abre la API. Ninguno de los
+# dos debe salir del disco local.
+perseo_core/datos/
+
 # Environments
 .env/
 .venv/
