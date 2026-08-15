@@ -39,7 +39,7 @@ from typing import Any
 
 from aiohttp import web
 
-from . import almacen
+from . import almacen, politica
 from .agentes import REGISTRO, Router
 from .bus import Bus
 
@@ -125,7 +125,7 @@ async def _salud(peticion: web.Request) -> web.Response:
         {
             "ok": True,
             "servicio": "perseo-core",
-            "fase": "D",
+            "fase": "E",
             "agentes": sorted(REGISTRO),
             "router_local": router.disponible,
             "trabajos": recuento,
@@ -234,6 +234,42 @@ async def _crear_trabajo(peticion: web.Request) -> web.Response:
 
     peticion.app[CLAVE_BUS].publicar("trabajo.encolado", trabajo=trabajo)
     return web.json_response(trabajo, status=201)
+
+
+async def _ver_confianza(peticion: web.Request) -> web.Response:
+    """Si el modo confianza está encendido y hasta cuándo.
+
+    Va autenticado, no en `/salud`: saber si ahora mismo lo irreversible se
+    ejecuta sin preguntar es justo lo que no debe contarse sin token.
+    """
+    hasta = politica.confianza_hasta()
+    return web.json_response(
+        {"confianza": hasta is not None, "hasta": hasta.isoformat() if hasta else None}
+    )
+
+
+async def _cambiar_confianza(peticion: web.Request) -> web.Response:
+    """Enciende o apaga el modo confianza (§7 del plan).
+
+    Encendido, lo irreversible deja de pedir un sí mientras dura. Caduca solo: un
+    interruptor que se queda puesto para siempre es lo que la política evita.
+    """
+    datos = await _cuerpo_json(peticion)
+    if datos.get("activo") is False:
+        politica.desactivar_confianza()
+        return web.json_response({"confianza": False, "hasta": None})
+
+    try:
+        minutos = float(datos.get("minutos", politica.MINUTOS_CONFIANZA))
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "'minutos' debe ser un número"}),
+            content_type="application/json",
+        )
+
+    hasta = await asyncio.to_thread(politica.activar_confianza, minutos)
+    peticion.app[CLAVE_BUS].publicar("confianza.cambiada", hasta=hasta.isoformat())
+    return web.json_response({"confianza": True, "hasta": hasta.isoformat()})
 
 
 async def _listar_trabajos(peticion: web.Request) -> web.Response:
@@ -376,6 +412,8 @@ def crear_app(cfg: almacen.Configuracion, bus: Bus, router: Router) -> web.Appli
             web.get("/trabajos/{id}", _ver_trabajo),
             web.post("/trabajos/{id}/cancelar", _cancelar_trabajo),
             web.post("/trabajos/{id}/{decision:aprobar|rechazar}", _responder_confirmacion),
+            web.get("/confianza", _ver_confianza),
+            web.post("/confianza", _cambiar_confianza),
             web.get("/eventos", _eventos),
         ]
     )

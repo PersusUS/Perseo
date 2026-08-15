@@ -143,13 +143,22 @@ def comprobar_de_punta_a_punta(raiz: Path) -> None:
     notas = (resultado.get("resultado") or {}).get("notas") or []
     comprobar("Buscar por HTTP la encuentra", len(notas) == 1, f"{len(notas)} nota(s)")
 
-    # 9. Una accion que no existe falla el trabajo, no tumba el trabajador.
+    # 9. Una accion que no existe ni siquiera llega al agente: la politica de §7
+    #    la para antes, porque lo que no esta clasificado es irreversible. Y si
+    #    se aprueba, entonces si falla — sin tumbar al trabajador.
     _, malo = nucleo.pedir(
         "/trabajos", token, "POST", {"agente": "memoria", "peticion": {"accion": "borrar"}}
     )
+    parado = nucleo.esperar_estado(int(malo["id"]), ("esperando", "fallido", "hecho"), intentos=60)
+    comprobar(
+        "Una accion sin clasificar se para y pregunta",
+        parado.get("estado") == "esperando",
+        str(parado.get("estado")),
+    )
+    nucleo.pedir(f"/trabajos/{malo['id']}/aprobar", token, "POST", {})
     fallido = nucleo.esperar_estado(int(malo["id"]), ("fallido", "hecho"), intentos=60)
     comprobar(
-        "Una accion desconocida falla el trabajo",
+        "Y aprobada, falla por desconocida",
         fallido.get("estado") == "fallido",
         str(fallido.get("error")),
     )

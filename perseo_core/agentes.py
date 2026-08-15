@@ -28,7 +28,7 @@ from typing import Any, Awaitable, Callable
 
 import aiohttp
 
-from . import almacen
+from . import almacen, politica
 from .bus import Bus
 
 logger = logging.getLogger(__name__)
@@ -313,6 +313,26 @@ class Trabajador:
             logger.error("%s (trabajo %d)", error, id_trabajo)
             fallido = await asyncio.to_thread(almacen.fallar, id_trabajo, error)
             self._bus.publicar("trabajo.fallido", trabajo=fallido)
+            return
+
+        # La política de §7 se aplica **aquí**, antes de que el agente llegue a
+        # ejecutarse. Hacerlo en un solo sitio es lo que evita que el agente
+        # número siete se olvide de preguntar: el agente decide qué hace, no si
+        # tiene permiso. Tras aprobar, el trabajo vuelve a la cola y pasa por
+        # esta misma comprobación con la decisión ya puesta.
+        if not aprobado(trabajo) and politica.pide_confirmacion(nombre, trabajo.get("peticion")):
+            esperando = await asyncio.to_thread(
+                almacen.pedir_confirmacion,
+                id_trabajo,
+                politica.resumir(nombre, trabajo.get("peticion")),
+                json.dumps(trabajo.get("peticion") or {}, ensure_ascii=False),
+            )
+            self._bus.publicar("trabajo.espera_confirmacion", trabajo=esperando)
+            logger.info(
+                "Trabajo %d parado por la política (%s): espera confirmación.",
+                id_trabajo,
+                politica.nivel(nombre, trabajo.get("peticion")),
+            )
             return
 
         try:
