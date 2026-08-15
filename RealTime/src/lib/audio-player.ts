@@ -8,6 +8,8 @@
  *  3. Only reset the timeline if there's a TRUE gap (>300ms behind), which
  *     signals a new speech turn rather than normal network jitter.
  */
+
+import { decodePCM, mergeChunks } from './audio-pcm';
 export class AudioPlayer {
   private ctx: AudioContext | null = null;
   private nextTime = 0;
@@ -41,7 +43,7 @@ export class AudioPlayer {
     if (!this.ctx) this.initialize();
     if (this.ctx!.state === 'suspended') this.ctx!.resume();
 
-    const pcm = this.decodePCM(base64Pcm);
+    const pcm = decodePCM(base64Pcm);
 
     if (!this.isStreaming) {
       // Accumulate in pre-buffer
@@ -60,7 +62,7 @@ export class AudioPlayer {
     this.isStreaming = true;
 
     // Merge all pre-buffered chunks into one large buffer to minimise node count
-    const merged = this.mergeChunks(this.preBuffer);
+    const merged = mergeChunks(this.preBuffer);
     this.preBuffer = [];
 
     // Start slightly in the future so the very first sample isn't clipped
@@ -102,30 +104,8 @@ export class AudioPlayer {
     this.nextTime += buf.duration;
   }
 
-  // ─── Decode ────────────────────────────────────────────────
-
-  private decodePCM(base64: string): Float32Array {
-    const raw = atob(base64);
-    const len = raw.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) bytes[i] = raw.charCodeAt(i);
-
-    const int16 = new Int16Array(bytes.buffer);
-    const float = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) float[i] = int16[i] / 32768.0;
-    return float;
-  }
-
-  private mergeChunks(chunks: Float32Array[]): Float32Array {
-    const totalLen = chunks.reduce((s, c) => s + c.length, 0);
-    const merged = new Float32Array(totalLen);
-    let offset = 0;
-    for (const c of chunks) {
-      merged.set(c, offset);
-      offset += c.length;
-    }
-    return merged;
-  }
+  // El decodificado y el pegado de trozos viven en `audio-pcm.ts`: son pura
+  // aritmética y así se pueden probar sin levantar un AudioContext. Ver H-28.
 
   // ─── Barge-in ──────────────────────────────────────────────
 

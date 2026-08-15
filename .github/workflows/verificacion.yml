@@ -1,9 +1,9 @@
-# Lo que se ejecuta solo en cada push, para que 227 pruebas y trece verificadores
+# Lo que se ejecuta solo en cada push, para que las pruebas y los verificadores
 # sigan sirviendo de algo cuando pasen semanas sin tocar el proyecto.
 #
-# Tres cosas y en este orden de coste: las pruebas unitarias (segundos), los
-# tipos del frontend (un minuto), y los verificadores, que levantan el nucleo de
-# verdad y tardan varios. Nada de esto necesita secretos: los verificadores se
+# Cuatro cosas, en orden de coste: las pruebas de Python (segundos), las del
+# frontend con los tipos y el build (un minuto), `cargo check`, y los
+# verificadores, que levantan el nucleo de verdad y tardan varios. Nada de esto necesita secretos: los verificadores se
 # montan servidores de mentira para Telegram y para Google, y los que dependen de
 # Ollama o de un microfono se quedan fuera a proposito — no hay GPU en el CI.
 
@@ -67,6 +67,10 @@ jobs:
       - name: Tipos
         working-directory: RealTime
         run: npx tsc --noEmit
+
+      - name: Pruebas del frontend
+        working-directory: RealTime
+        run: npm test
 
       - name: Build
         working-directory: RealTime
