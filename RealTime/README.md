@@ -1,65 +1,116 @@
-# Perseo Live (RealTime)
+# Perseo Live — la cara de voz
 
-**Perseo Live** es un cliente interactivo en tiempo real que permite establecer una comunicación de voz, video y pantalla compartida directamente con el modelo de IA **Gemini**. 
+Esta carpeta es **una de las caras de Perseo**, no el asistente entero. Habla con Gemini
+Live por voz, mira la cámara y la pantalla, y cuando hace falta hacer algo, **encola un
+trabajo en el núcleo** (`perseo_core/`) y espera el resultado.
 
-Está construido utilizando **React.js**, **Vite**, **TypeScript** y encapsulado como una aplicación de escritorio nativa mediante **Tauri**.
+**La regla que gobierna esta carpeta: las caras no piensan.** Aquí no hay memoria, ni
+herramientas, ni decisiones. Hasta agosto de 2026 sí las había —la app arrancaba
+`TOOLS/server.py` y le hablaba por tuberías—, y eso significaba dos sistemas con dos
+memorias: lo que pedías por voz no existía para la web del móvil. Ya no.
 
-## 🚀 Funcionalidades Principales
+Construida con React 19, TypeScript y Vite, empaquetada con Tauri 2.
 
-- 🎙️ **Comunicación Bidireccional por Voz**: Transcripción y respuesta por audio en tiempo real usando `@google/genai` (Gemini Live).
-- 📸 **Streaming de Cámara**: Posibilidad de compartir la cámara local para que el modelo pueda analizar lo que ves.
-- 🖥️ **Captura y Compartición de Pantalla**: Envío de la pantalla entera o aplicaciones específicas en tiempo real para que el modelo interactúe sobre el contexto mostrado.
-- 🤖 **PerseoFace Avatar**: Representación visual y animada del asistente en base al nivel de volumen detectado y los estados de la conexión.
-- ⚙️ **Configuraciones en Tiempo Real**: Cambio directo desde la UI de la API Key, el System Prompt y la Voz sintetizada del modelo.
+---
 
-## 🛠️ Tecnologías Utilizadas
+## Qué hace
 
-- **Frontend Core**: React 19, TypeScript, Vite.
-- **Aplicación de Escritorio**: Tauri v2, Rust (en el directorio `src-tauri`).
-- **Integración con IA**: Protocolo WebSocket oficial a través del Google Gemini SDK (`@google/genai`).
+- **Voz en las dos direcciones**, con transcripción real de ambos lados en el overlay
+  (`inputAudioTranscription` y `outputAudioTranscription`).
+- **Cámara y pantalla** en directo, para que el modelo vea de qué le hablas.
+- **Vive en la bandeja del sistema.** Cerrar la ventana la esconde; se sale desde el menú
+  del icono. El detector de aplausos la despierta sin arrancarla, que es lo que quita los
+  diez segundos de espera.
+- **Sesión reanudable**: si la conexión se cae, se retoma con el testigo guardado en vez
+  de empezar de cero.
+- **Audio proactivo**: puede callarse ante lo que no va con él, que hace falta con un
+  micrófono siempre cerca.
+- **Ajustes que se quedan**: clave, voz, instrucciones del sistema y si se guardan las
+  conversaciones. Se persisten en el almacén local que gestiona Rust.
 
-## 📦 Requisitos Previos
+## Cómo habla con el núcleo
 
-Para desarrollar y compilar este proyecto, necesitas lo siguiente en tu entorno local:
-- **Node.js** (v18 o superior)
-- **Rust y herramientas C/C++** correspondientes (Requerido por Tauri). [Guía de pre-requisitos de Tauri](https://tauri.app/v1/guides/getting-started/prerequisites).
-- **Google GenAI API Key**: Necesitas una clave con acceso al modelo
-  `gemini-2.5-flash-native-audio-latest` por la Live API (`bidiGenerateContent`).
-  Para comprobar que tu clave lo tiene: `node probar_live.mjs`.
+`src-tauri/src/nucleo.rs` es el único sitio que sabe de los dos lados. El modelo declara
+cuatro herramientas y `traducir()` las convierte en trabajos para los agentes:
 
-## ⚙️ Instalación y Uso
+| Lo que ve el modelo | A dónde va |
+|---|---|
+| `consultar_base_vectorial` | Agente `memoria`, acción `buscar` |
+| `guardar_recuerdo` | Agente `memoria`, acción `anotar` |
+| `guardar_conversacion` | Agente `memoria`, acción `conversacion` |
+| `controlar_pc` | Agente `pc` |
 
-1. **Instalar dependencias del proyecto:**
-   Navega a la carpeta de `RealTime` en tu terminal y ejecuta:
-   ```bash
-   npm install
-   ```
+Tres cosas que conviene no deshacer:
 
-2. **Ejecutar en modo Web (solo UI, sin permisos nativos completos):**
-   ```bash
-   npm run dev
-   ```
+- **El token no pasa por el frontend.** Lo lee Rust de `perseo_core/datos/token.txt`, o de
+  `PERSEO_TOKEN`. El navegador embebido nunca lo ve.
+- **Un trabajo que tarda no bloquea la conversación.** A los 30 segundos se contesta
+  "sigue en marcha" y el trabajo continúa en la cola: colgar la llamada no lo mata.
+- **Si el agente pide confirmación, aquí no se espera.** Se devuelve la pregunta y el
+  número de trabajo; el sí se da desde la web o desde Telegram.
 
-3. **Ejecutar la App Nativa de Escritorio (Modo recomendado):**
-   ```bash
-   npm run tauri dev
-   ```
-   *Esto levantará el frontend con Vite y simultáneamente abrirá la ventana nativa de Tauri.*
+Las herramientas se declaran `NON_BLOCKING`, así que Perseo sigue hablando mientras el
+trabajo corre y te cuenta el resultado cuando calla.
 
-4. **Kits para Producción (Build Final):**
-   ```bash
-   npm run tauri build
-   ```
+---
 
-## 🧠 Arquitectura de la Carpeta
+## Requisitos
 
-El núcleo lógico de la aplicación reside en la carpeta `src/lib/`, que está altamente modularizado:
+- **Node.js 18+**
+- **Rust y las herramientas de compilación** que pide Tauri
+  ([prerrequisitos](https://tauri.app/start/prerequisites/))
+- **Clave de Gemini** con acceso a `gemini-2.5-flash-native-audio-latest` por la Live API
+  (`bidiGenerateContent`). Se comprueba con `node probar_live.mjs` — ojo, cada ejecución
+  gasta una conexión de la cuota diaria.
 
-- `gemini-live.ts`: Instancia global del cliente que gestiona el WebSocket con la API de Google, incluyendo la gestión de sesión, manejo de pausas, recepciones de audio continuo (`audioPlayer`) e ingesta de video/fotos.
-- `camera-manager.ts` y `screen-manager.ts`: Obtienen y transforman los *frames* de Video/Pantalla local en una codificación amigable para el envío de datos multimodales al modelo.
-- `audio-manager.ts`: Controlador del micrófono; realiza la captura a la frecuencia deseada y encola los paquetes para emisión.
-- `App.tsx`: Orquesta el UI, enlazando eventos del modelo a la visualización gráfica (componente `<PerseoFace />`), manejando la transcripción de la conversación y controlando la barra de estado.
+  La clave se mete **desde la propia aplicación** (botón ⚙) y la guarda Rust. **No** en un
+  `.env` con prefijo `VITE_`: Vite incrusta esas variables dentro del JavaScript
+  compilado, así que la clave acababa en claro dentro del `.exe`. Ver
+  `bitacora/02_HALLAZGOS.md` (H-17).
 
-## 🤝 Primeros pasos
+## Arrancar
 
-Al abrir la aplicación por primera vez, pulsa sobre el botón del engranaje (⚙️) para insertar tu **API Key** y configurar el System Prompt inicial si lo requieres.
+**El núcleo primero**, o la voz se queda sin memoria y sin manos:
+
+```bash
+python -m perseo_core          # desde la raíz del repositorio
+```
+
+Y luego la app:
+
+```bash
+npm install
+npm run tauri dev
+```
+
+Para compilar: `npm run tauri build`.
+
+`PERSEO_CORE_URL` cambia dónde busca el núcleo; por defecto, `http://127.0.0.1:8787`.
+
+---
+
+## Por dentro
+
+| Fichero | Qué hace |
+|---|---|
+| `src/lib/gemini-live.ts` | La sesión con Gemini: conexión, reanudación, transcripciones y llamadas a herramientas |
+| `src/lib/audio-manager.ts` | El micrófono: captura y encolado |
+| `src/lib/audio-player.ts` | La reproducción. **No juntar los dos `AudioContext`** (16 y 24 kHz): está en la lista de intocables |
+| `src/lib/camera-manager.ts`, `screen-manager.ts` | Los fotogramas de cámara y pantalla |
+| `src/App.tsx` | Orquesta la interfaz, la transcripción y la autollamada |
+| `src-tauri/src/nucleo.rs` | El cliente del núcleo |
+| `src-tauri/src/bandeja.rs` | El icono de la bandeja y el esconder en vez de cerrar |
+| `src-tauri/src/autollamada.rs` | Vigila el marcador que deja el detector de aplausos |
+
+## Verificación
+
+Desde la raíz del repositorio:
+
+```bash
+npx tsc --noEmit          # dentro de RealTime/
+npm run build             # dentro de RealTime/
+cargo check               # dentro de RealTime/src-tauri/
+```
+
+Las tres las corre GitHub en cada push, junto con las pruebas del núcleo. Ver
+`.github/workflows/verificacion.yml`.
