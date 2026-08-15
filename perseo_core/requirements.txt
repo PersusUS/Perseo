@@ -9,3 +9,10 @@
 # SDK.
 
 aiohttp>=3.9
+
+# Opcional, y a propósito fuera de la lista: `pyautogui`, que solo necesita el
+# agente `pc` para teclear y mover el ratón. Sin ella el núcleo arranca igual,
+# abrir aplicaciones y URLs sigue funcionando, y las acciones que la necesitan
+# lo dicen. En la Raspberry Pi del plan no hay escritorio donde instalarla.
+#
+#     pip install pyautogui

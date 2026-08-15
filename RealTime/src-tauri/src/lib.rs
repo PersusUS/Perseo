@@ -1,7 +1,7 @@
 mod autollamada;
 mod bandeja;
 mod commands;
-mod puente;
+mod nucleo;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,7 +24,6 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_screenshots::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(puente::EstadoPuente::default())
         .invoke_handler(tauri::generate_handler![
             commands::capture_screen_base64,
             commands::obtener_api_key,
@@ -32,8 +31,8 @@ pub fn run() {
             commands::obtener_ajuste,
             commands::guardar_ajuste,
             commands::consumir_autollamada,
-            puente::ejecutar_herramienta_python,
-            puente::precalentar_herramientas
+            nucleo::ejecutar_herramienta,
+            nucleo::precalentar_herramientas
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

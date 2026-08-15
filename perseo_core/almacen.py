@@ -123,9 +123,10 @@ class Configuracion:
     agenda_falsa: str
     #: Con cuántos minutos de antelación se avisa de un evento.
     agenda_antelacion: int
-    #: Raíz del vault de Obsidian. Se resuelve con la **misma** variable que
-    #: `RAG/paths.py` para que el indexador vigile donde escribe la memoria: que
-    #: no coincidieran fue H-22.
+    #: Raíz del vault de Obsidian. Se sigue leyendo de `OBSIDIAN_VAULT_PATH`,
+    #: que es la variable que ya usaba el indexador de v1: quien la tuviera
+    #: puesta no tiene que cambiar nada. Que las rutas del vault no coincidieran
+    #: entre módulos fue H-22.
     vault: str
 
     @property

@@ -5,10 +5,13 @@ solo al usuario actual y es reversible desde este mismo script.
 
 Son dos servicios independientes:
   - El detector de aplausos, que despierta la aplicación.
-  - El indexador del vault, que mantiene al día la memoria a largo plazo.
+  - El núcleo (`perseo-core`), que es lo que tiene que estar siempre encendido:
+    sin él no hay cola, ni memoria, ni triaje de correo, y la app se queda sin
+    herramientas.
 
-El indexador no arrancaba en ningún sitio, y era una de las razones por las que
-la base vectorial llevaba meses vacía. Ver H-02.
+Antes el segundo servicio era el indexador del vault (`RAG/automator.py`), que
+se jubiló con el paso a v2: la memoria la lleva ahora el agente `memoria` del
+núcleo, que escribe en el mismo vault sin base vectorial de por medio.
 """
 
 import os
@@ -17,11 +20,9 @@ import winreg
 
 RUTA_CLAVE = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
-# nombre en el registro -> (script, carpeta relativa a la raíz del proyecto)
-SERVICIOS = {
-    "PerseoClapDetector": ("clap_detector.py", "commands"),
-    "PerseoRagIndexer": ("automator.py", "RAG"),
-}
+#: Nombre en el registro -> qué se arranca. El detector es un script suelto; el
+#: núcleo es un paquete y hay que arrancarlo como módulo, que es distinto.
+SERVICIOS = ("PerseoClapDetector", "PerseoNucleo")
 
 
 def _raiz_proyecto() -> str:
@@ -38,15 +39,39 @@ def _pythonw() -> str:
     return ejecutable
 
 
+def _comando(nombre: str) -> str | None:
+    """La línea que se escribe en el registro, o `None` si falta algo.
+
+    El núcleo no se puede arrancar como fichero suelto: `perseo_core` es un
+    paquete y sus módulos se importan entre sí con rutas relativas, así que
+    `pythonw perseo_core\__main__.py` falla con un ImportError que no dice nada
+    del problema real. Se arranca como módulo, y como una entrada del registro no
+    tiene directorio de trabajo, la raíz del proyecto se mete en `sys.path` a
+    mano. Sin shell, que es la regla de toda la casa.
+    """
+    raiz = _raiz_proyecto()
+
+    if nombre == "PerseoClapDetector":
+        ruta = os.path.join(raiz, "commands", "clap_detector.py")
+        if not os.path.isfile(ruta):
+            print(f"[-] No se encuentra el script: {ruta}")
+            return None
+        return f'"{_pythonw()}" "{ruta}"'
+
+    if not os.path.isdir(os.path.join(raiz, "perseo_core")):
+        print(f"[-] No se encuentra el paquete perseo_core en {raiz}")
+        return None
+    arranque = (
+        f"import sys; sys.path.insert(0, r'{raiz}'); "
+        "import runpy; runpy.run_module('perseo_core', run_name='__main__')"
+    )
+    return f'"{_pythonw()}" -c "{arranque}"'
+
+
 def añadir(nombre: str) -> None:
-    script, carpeta = SERVICIOS[nombre]
-    ruta = os.path.join(_raiz_proyecto(), carpeta, script)
-
-    if not os.path.isfile(ruta):
-        print(f"[-] No se encuentra el script: {ruta}")
+    comando = _comando(nombre)
+    if comando is None:
         return
-
-    comando = f'"{_pythonw()}" "{ruta}"'
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUTA_CLAVE, 0, winreg.KEY_SET_VALUE) as clave:
             winreg.SetValueEx(clave, nombre, 0, winreg.REG_SZ, comando)

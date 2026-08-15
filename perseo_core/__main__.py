@@ -18,16 +18,16 @@ import sys
 
 from aiohttp import web
 
-from . import agenda, almacen, api, correo, memoria
+from . import agenda, almacen, api, correo, memoria, pc
 from .agentes import Router, Trabajador
 from .bus import Bus
 from .disparadores import Planificador
 from .telegram import Telegram
 
-# Estos tres se importan por sus efectos: al cargarse registran sus agentes —y
+# Estos cuatro se importan por sus efectos: al cargarse registran sus agentes —y
 # `correo` y `agenda`, además, sus disparadores—. Sin el import el registro está
-# vacío y el núcleo arranca sin Fase D sin decir por qué.
-_ = (agenda, correo, memoria)
+# vacío y el núcleo arranca sin agentes sin decir por qué.
+_ = (agenda, correo, memoria, pc)
 
 logger = logging.getLogger("perseo_core")
 

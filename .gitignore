@@ -77,11 +77,12 @@ MANIFEST
 obsidian_vault/
 
 # =========================
-# Artefactos regenerables del RAG
+# Restos del RAG de v1
 # =========================
-# Base vectorial: se reconstruye indexando el vault. Binario, cambia en cada
-# indexado y contendría los embeddings de las memorias privadas. Ver H-03.
-RAG/chroma_db/
+# La base vectorial se retiro con el paso a v2: la memoria la lleva el agente
+# `memoria` del nucleo, sobre el mismo vault y sin embeddings. La regla se queda
+# por si queda alguna carpeta en discos que vienen de antes. Ver H-03.
+RAG/
 
 # =========================
 # Estado del núcleo (perseo-core)

@@ -1,8 +1,8 @@
 """Verificación del agente `memoria`, sobre un vault de usar y tirar.
 
 Nunca toca el vault de verdad: se monta uno en un directorio temporal y se le
-apunta el núcleo con `OBSIDIAN_VAULT_PATH`, que es la misma variable que usa
-`RAG/paths.py` (ver H-22).
+apunta el núcleo con `OBSIDIAN_VAULT_PATH`, la única variable que resuelve el
+vault en todo el sistema (ver H-22).
 
 Lo que más importa aquí no es que escriba, sino que **no destruya**: que anotar
 dos veces añada en vez de reemplazar, y que ninguna ruta pedida se salga del

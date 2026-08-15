@@ -34,7 +34,10 @@ tauri-plugin-store = "2"
 xcap = "0.0.13"
 image = "0.25"
 base64 = "0.22"
-# Proceso hijo asincrono para el puente de herramientas. La version anterior
-# usaba std::process::Command, que bloquea el hilo dentro de un comando async
-# de Tauri y secuestraba un worker del runtime durante segundos. Ver H-10.
-tokio = { version = "1", features = ["process", "io-util", "time", "sync"] }
+# Espera asincrona entre sondeos al nucleo. Nada bloqueante dentro de un comando
+# async de Tauri: eso secuestraba un worker del runtime durante segundos (H-10).
+tokio = { version = "1", features = ["time"] }
+# Cliente HTTP hacia perseo-core. Sin TLS a proposito: el nucleo escucha en el
+# bucle local y en el tailnet, que ya va cifrado por WireGuard, asi que arrastrar
+# una pila de TLS entera solo anadiria peso al binario.
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
