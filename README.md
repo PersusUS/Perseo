@@ -142,8 +142,17 @@ Todas las variables de entorno están en `bitacora/06_HANDOFF.md` §3.
 
 ## Verificación
 
-Nada de esto se comprueba a ojo. Doce scripts, todos contra el proceso real y ninguno
-tocando el estado de verdad: se montan un directorio de datos temporal.
+Nada de esto se comprueba a ojo, y se comprueba de dos maneras.
+
+**Pruebas unitarias** — cada pieza por separado, sin red y sin subprocesos. Dicen *qué* se
+ha roto:
+
+```bash
+python -m pytest
+```
+
+**Verificadores** — el sistema entero, contra el proceso real. Dicen *si* funciona.
+Ninguno toca el estado de verdad: se montan un directorio de datos temporal.
 
 ```bash
 python perseo_core/verificar_fase_a.py          # el núcleo: cola, reinicios, SSE

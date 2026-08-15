@@ -16,3 +16,7 @@ aiohttp>=3.9
 # lo dicen. En la Raspberry Pi del plan no hay escritorio donde instalarla.
 #
 #     pip install pyautogui
+
+# Y para las pruebas unitarias de `pruebas/`, que tampoco es del nucleo:
+#
+#     pip install pytest
