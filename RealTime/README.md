@@ -23,7 +23,9 @@ Está construido utilizando **React.js**, **Vite**, **TypeScript** y encapsulado
 Para desarrollar y compilar este proyecto, necesitas lo siguiente en tu entorno local:
 - **Node.js** (v18 o superior)
 - **Rust y herramientas C/C++** correspondientes (Requerido por Tauri). [Guía de pre-requisitos de Tauri](https://tauri.app/v1/guides/getting-started/prerequisites).
-- **Google GenAI API Key**: Necesitas una clave con acceso al modelo `gemini-3.1-flash-live-preview`.
+- **Google GenAI API Key**: Necesitas una clave con acceso al modelo
+  `gemini-2.5-flash-native-audio-latest` por la Live API (`bidiGenerateContent`).
+  Para comprobar que tu clave lo tiene: `node probar_live.mjs`.
 
 ## ⚙️ Instalación y Uso
 

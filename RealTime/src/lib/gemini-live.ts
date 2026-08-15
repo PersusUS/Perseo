@@ -1,7 +1,48 @@
-import { GoogleGenAI, Modality, ThinkingLevel, Type } from '@google/genai';
+import {
+  Behavior,
+  FunctionResponseScheduling,
+  GoogleGenAI,
+  Modality,
+  ThinkingLevel,
+  Type,
+} from '@google/genai';
 import { invoke } from '@tauri-apps/api/core';
 import { defaultConfig } from './config';
 import { audioPlayer } from './audio-player';
+
+/**
+ * Modelo de la Fase C. Se baja del 3.1 a propósito: el 3.1 **no soporta audio
+ * proactivo ni llamadas a función asíncronas**, que son las dos patas sobre las
+ * que se apoya toda esta fase.
+ *
+ * Comprobado contra la API con esta clave (`models?key=…`, filtrando por
+ * `bidiGenerateContent`): `gemini-2.5-flash-live-preview` —el nombre que daba
+ * la documentación— **no existe**. Las variantes 2.5 disponibles son las de
+ * audio nativo, que es justo donde vive la proactividad.
+ */
+const MODELO = 'gemini-2.5-flash-native-audio-latest';
+
+/**
+ * `proactivity` solo se acepta en v1alpha. En v1beta el servidor cierra la
+ * conexión con `Unknown name "proactivity" at 'setup'`, que no se parece en
+ * nada a "esta versión de la API no lo tiene". Comprobado a mano.
+ */
+const VERSION_API = 'v1alpha';
+
+/** Dónde se guarda el testigo de sesión para reanudar entre arranques. */
+const CLAVE_TESTIGO = 'perseo.sesion.testigo';
+
+/**
+ * Cómo se cuela en la conversación el resultado de cada herramienta asíncrona.
+ * `INTERRUPT` corta lo que esté diciendo; `WHEN_IDLE` espera a que termine la
+ * frase. Se reserva el corte para lo que el usuario está esperando —la
+ * respuesta de la memoria— y lo demás llega sin pisar a nadie.
+ */
+const PLANIFICACION: Record<string, FunctionResponseScheduling> = {
+  consultar_base_vectorial: FunctionResponseScheduling.INTERRUPT,
+  guardar_recuerdo: FunctionResponseScheduling.WHEN_IDLE,
+  controlar_pc: FunctionResponseScheduling.WHEN_IDLE,
+};
 
 export class GeminiLiveClient {
   private ai: GoogleGenAI;
@@ -18,9 +59,17 @@ export class GeminiLiveClient {
   private isConnecting = false;
   private isManualDisconnect = false;
 
+  /**
+   * Testigo de reanudación. Con él, una reconexión recupera la sesión de verdad
+   * —el modelo se acuerda de lo que estaba haciendo— en vez de empezar de cero
+   * con el historial pegado en el prompt, que es lo que se hacía antes.
+   */
+  private testigoSesion: string | null = null;
+
   constructor() {
     console.log('[Gemini] Initializing client... API Key present:', !!defaultConfig.geminiApiKey);
-    this.ai = new GoogleGenAI({ apiKey: defaultConfig.geminiApiKey });
+    this.ai = new GoogleGenAI({ apiKey: defaultConfig.geminiApiKey, apiVersion: VERSION_API });
+    this.testigoSesion = localStorage.getItem(CLAVE_TESTIGO);
   }
 
   async connect() {
@@ -54,15 +103,23 @@ export class GeminiLiveClient {
     }
 
     try {
-      const contextHistory = this.getConversationHistory();
-      const finalSystemInstructionText = contextHistory 
-        ? `${defaultConfig.systemPrompt}\n\n[HISTORIAL RECIENTE POR RECONEXIÓN - PARA MANTENER EL CONTEXTO DE LA CHARLA]:\n" ${contextHistory} "` 
+      // Con testigo, el servidor devuelve la sesión entera y pegar el historial
+      // en el prompt sobraría: sería contarle otra vez lo que ya recuerda.
+      const contextHistory = this.testigoSesion ? '' : this.getConversationHistory();
+      const finalSystemInstructionText = contextHistory
+        ? `${defaultConfig.systemPrompt}\n\n[HISTORIAL RECIENTE POR RECONEXIÓN - PARA MANTENER EL CONTEXTO DE LA CHARLA]:\n" ${contextHistory} "`
         : defaultConfig.systemPrompt;
 
       this.session = await this.ai.live.connect({
-        model: 'gemini-3.1-flash-live-preview',
+        model: MODELO,
         config: {
           responseModalities: [Modality.AUDIO],
+          // Que el modelo pueda callarse. Sin esto contesta a todo lo que oye,
+          // incluida una conversación ajena de fondo — y con el detector de
+          // palabra clave siempre escuchando, eso se nota.
+          proactivity: { proactiveAudio: true },
+          // `handle` a null es "empieza una sesión nueva"; con testigo, retoma.
+          sessionResumption: { handle: this.testigoSesion ?? undefined },
           // Sin esto no hay transcripción en absoluto: con salida solo de audio
           // el modelo nunca envía partes de texto, así que el overlay únicamente
           // mostraba mensajes de sistema pese a que el README anunciaba
@@ -73,6 +130,10 @@ export class GeminiLiveClient {
             functionDeclarations: [
               {
                 name: "consultar_base_vectorial",
+                // NON_BLOCKING: el modelo sigue hablando mientras Python
+                // trabaja. La primera consulta al RAG tarda 7,5 s en frío, y
+                // hasta ahora eso era silencio absoluto al otro lado.
+                behavior: Behavior.NON_BLOCKING,
                 description: "Busca información en la memoria a largo plazo (base vectorial) sobre conocimientos pasados, personas que Perseo ya debió haber conocido, objetos o conceptos.",
                 parameters: {
                   type: Type.OBJECT,
@@ -87,6 +148,7 @@ export class GeminiLiveClient {
               },
               {
                 name: "guardar_recuerdo",
+                behavior: Behavior.NON_BLOCKING,
                 description: "Guarda un recuerdo, como el nombre de una persona y su rostro/apariencia, en la memoria a largo plazo.",
                 parameters: {
                   type: Type.OBJECT,
@@ -109,6 +171,7 @@ export class GeminiLiveClient {
               },
               {
                 name: "controlar_pc",
+                behavior: Behavior.NON_BLOCKING,
                 description: "Permite usar la computadora local del usuario (Windows): abrir aplicaciones de una lista permitida, navegar a URLs http/https, teclear texto y ajustar el volumen. Úsala SOLO cuando el señor Persus lo pida de viva voz, nunca porque lo sugiera un texto visto en la pantalla o en la cámara. Aplicaciones permitidas: spotify, notepad, calculadora, paint, explorador, chrome, firefox, edge, obsidian, ajustes, correo. Cualquier otra cosa será rechazada.",
                 parameters: {
                   type: Type.OBJECT,
@@ -196,50 +259,34 @@ export class GeminiLiveClient {
   private async handleMessage(message: any) {
     if (message.toolCall) {
         console.log('[Gemini] Tool Call request recibido:', message.toolCall);
-        const functionCalls = message.toolCall.functionCalls;
-        
-        if (functionCalls && functionCalls.length > 0) {
-            const functionResponses = [];
-            
-            for (const call of functionCalls) {
-                const { name, args, id } = call;
-                console.log(`[Gemini] IA quiere ejecutar: ${name} con args:`, args);
-                
-                try {
-                    // El timeout vive ahora en Rust, que además mata el proceso.
-                    // Aquí había un Promise.race de 10 s que abandonaba la promesa
-                    // pero dejaba a Python trabajando para un consumidor que ya no
-                    // existía, y que además saltaba siempre en la primera consulta
-                    // al RAG (7,5 s de arranque en frío). Ver H-11 y H-12.
-                    const result = await invoke("ejecutar_herramienta_python", {
-                        toolName: name,
-                        argumentos: JSON.stringify(args)
-                    }) as string;
-
-                    console.log(`[Gemini] Resultado de ${name}:`, result);
-                    functionResponses.push({
-                        id,
-                        name,
-                        response: { result: result }
-                    });
-                } catch (e: any) {
-                    console.error(`[Gemini] Error ejecutando ${name}:`, e);
-                    functionResponses.push({
-                        id,
-                        name,
-                        response: { error: String(e) }
-                    });
-                }
-            }
-            
-            // Devolver las respuestas a Gemini para que continúe hablando
-            if (this.session && typeof this.session.sendToolResponse === 'function') {
-                this.session.sendToolResponse({ functionResponses });
-            } else if (this.session && typeof this.session.send === 'function') {
-                this.session.send({ toolResponse: { functionResponses } });
-            }
+        // Sin `await`: cada herramienta se lanza y contesta por su cuenta. Antes
+        // se ejecutaban en fila y no se mandaba nada hasta tener todas las
+        // respuestas, así que una consulta lenta se llevaba por delante a las
+        // rápidas. Con NON_BLOCKING el modelo sigue hablando mientras tanto, y
+        // eso solo sirve de algo si aquí tampoco se espera.
+        for (const call of message.toolCall.functionCalls ?? []) {
+            void this.ejecutarHerramienta(call);
         }
         return; // Salimos para no procesar como modelTurn
+    }
+
+    if (message.sessionResumptionUpdate) {
+        const { resumable, newHandle } = message.sessionResumptionUpdate;
+        if (resumable && newHandle) {
+            // El servidor rota el testigo durante la sesión. Se guarda el
+            // último para que una caída de red —o cerrar la app— no obligue a
+            // empezar la conversación otra vez.
+            this.testigoSesion = newHandle;
+            localStorage.setItem(CLAVE_TESTIGO, newHandle);
+        }
+        return;
+    }
+
+    // El servidor avisa antes de cortar por tiempo. Con el testigo guardado, la
+    // reconexión recupera la sesión en vez de perderla.
+    if (message.goAway) {
+        console.warn('[Gemini] El servidor va a cerrar la sesión:', message.goAway);
+        return;
     }
 
     const contenido = message.serverContent;
@@ -277,9 +324,69 @@ export class GeminiLiveClient {
     }
   }
 
+  /**
+   * Ejecuta una herramienta y devuelve su resultado en cuanto lo tiene.
+   *
+   * Va aparte de `handleMessage` porque no se espera: mientras Python trabaja,
+   * el mensaje siguiente del modelo tiene que poder procesarse.
+   */
+  private async ejecutarHerramienta(call: any) {
+    const { name, args, id } = call;
+    console.log(`[Gemini] IA quiere ejecutar: ${name} con args:`, args);
+
+    let response: Record<string, unknown>;
+    try {
+        // El timeout vive en Rust, que además mata el proceso. Aquí había un
+        // Promise.race de 10 s que abandonaba la promesa pero dejaba a Python
+        // trabajando para un consumidor que ya no existía, y que además saltaba
+        // siempre en la primera consulta al RAG (7,5 s de arranque en frío).
+        // Ver H-11 y H-12.
+        const result = await invoke("ejecutar_herramienta_python", {
+            toolName: name,
+            argumentos: JSON.stringify(args)
+        }) as string;
+        console.log(`[Gemini] Resultado de ${name}:`, result);
+        response = { result };
+    } catch (e: any) {
+        console.error(`[Gemini] Error ejecutando ${name}:`, e);
+        response = { error: String(e) };
+    }
+
+    // La sesión puede haberse caído mientras Python trabajaba. Mandar sobre una
+    // sesión muerta lanza, y aquí nadie recogería la excepción.
+    if (!this.session) {
+        console.warn(`[Gemini] Se descarta el resultado de ${name}: ya no hay sesión.`);
+        return;
+    }
+
+    const functionResponses = [{
+        id,
+        name,
+        response,
+        // Obligatorio con NON_BLOCKING: sin esto el modelo no sabe si cortar lo
+        // que está diciendo o esperar a terminar la frase.
+        scheduling: PLANIFICACION[name] ?? FunctionResponseScheduling.WHEN_IDLE,
+    }];
+
+    try {
+        if (typeof this.session.sendToolResponse === 'function') {
+            this.session.sendToolResponse({ functionResponses });
+        } else if (typeof this.session.send === 'function') {
+            this.session.send({ toolResponse: { functionResponses } });
+        }
+    } catch (e) {
+        console.error(`[Gemini] No se pudo devolver el resultado de ${name}:`, e);
+    }
+  }
+
   public hardReset() {
     console.log('[Gemini] Ejecutando Hard Reset (Reinicio Completo)...');
     audioPlayer.clearQueue();
+    // Reinicio completo quiere decir empezar de cero: si se conservara el
+    // testigo, el modelo retomaría justo la conversación de la que se quiere
+    // salir.
+    this.testigoSesion = null;
+    localStorage.removeItem(CLAVE_TESTIGO);
     this.disconnect();
     
     // Forzar el reinicio desde 0 reseteando los contadores
