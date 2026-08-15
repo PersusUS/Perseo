@@ -105,6 +105,12 @@ class FalsoTelegram:
             def log_message(self, *_: Any) -> None:
                 pass  # sin ruido en la salida del script
 
+            def handle_error(self, *_: Any) -> None:
+                # Cerrar el nucleo corta los `getUpdates` a medias, y el servidor
+                # de la biblioteca estandar volcaria un rastro de pila por cada
+                # uno. No es un fallo de nada: es el cliente que se ha ido.
+                pass
+
             def do_POST(self) -> None:  # noqa: N802  (lo exige BaseHTTPRequestHandler)
                 largo = int(self.headers.get("Content-Length", "0"))
                 try:
