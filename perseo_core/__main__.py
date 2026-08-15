@@ -18,16 +18,16 @@ import sys
 
 from aiohttp import web
 
-from . import agenda, almacen, api, correo, memoria, pc
+from . import agenda, almacen, api, correo, dev, memoria, pc
 from .agentes import Router, Trabajador
 from .bus import Bus
 from .disparadores import Planificador
 from .telegram import Telegram
 
-# Estos cuatro se importan por sus efectos: al cargarse registran sus agentes —y
+# Estos cinco se importan por sus efectos: al cargarse registran sus agentes —y
 # `correo` y `agenda`, además, sus disparadores—. Sin el import el registro está
 # vacío y el núcleo arranca sin agentes sin decir por qué.
-_ = (agenda, correo, memoria, pc)
+_ = (agenda, correo, dev, memoria, pc)
 
 logger = logging.getLogger("perseo_core")
 
@@ -65,12 +65,18 @@ async def arrancar() -> None:
     router = Router(cfg)
     await router.abrir()
 
-    trabajador = Trabajador(bus)
+    # Dos carriles. `dev` puede tardar minutos, y con un solo trabajador un
+    # encargo de código dejaba el correo sin triar mientras durase.
+    trabajador = Trabajador(bus, excluir=("dev",), nombre="general")
     tarea_trabajador = asyncio.create_task(trabajador.ejecutar(), name="trabajador")
+
+    trabajador_dev = Trabajador(bus, agentes=("dev",), nombre="dev")
+    tarea_dev = asyncio.create_task(trabajador_dev.ejecutar(), name="trabajador-dev")
 
     # El triaje del correo comparte una sola sesión contra Ollama entre trabajos.
     correo.iniciar(cfg)
     memoria.iniciar(cfg)
+    dev.iniciar(cfg)
 
     # Sin token configurado se retira sola tras avisar: es un canal más.
     telegram = Telegram(cfg, bus)
@@ -106,9 +112,10 @@ async def arrancar() -> None:
     finally:
         logger.info("Cerrando…")
         trabajador.detener()
+        trabajador_dev.detener()
         telegram.detener()
         planificador.detener()
-        for tarea in (tarea_trabajador, tarea_telegram, tarea_disparadores):
+        for tarea in (tarea_trabajador, tarea_dev, tarea_telegram, tarea_disparadores):
             tarea.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await tarea
@@ -116,6 +123,7 @@ async def arrancar() -> None:
         await router.cerrar()
         await correo.detener()
         memoria.detener()
+        dev.detener()
         almacen.cerrar()
         logger.info("Adiós.")
 

@@ -263,18 +263,32 @@ class Trabajador:
     no parar el bucle de eventos mientras la API sigue atendiendo peticiones.
     """
 
-    def __init__(self, bus: Bus, intervalo: float = 0.5) -> None:
+    def __init__(
+        self,
+        bus: Bus,
+        intervalo: float = 0.5,
+        agentes: tuple[str, ...] | None = None,
+        excluir: tuple[str, ...] = (),
+        nombre: str = "trabajador",
+    ) -> None:
         self._bus = bus
         self._intervalo = intervalo
+        # Dos carriles desde la Fase E: uno para lo corto y otro para `dev`, que
+        # puede tardar minutos. Con un solo trabajador, un encargo de código
+        # dejaba el correo sin triar mientras durase.
+        self._agentes = agentes
+        self._excluir = excluir
+        self._nombre = nombre
         self._parar = asyncio.Event()
 
     def detener(self) -> None:
         self._parar.set()
 
     async def ejecutar(self) -> None:
-        logger.info("Trabajador en marcha (agentes: %s).", ", ".join(sorted(REGISTRO)))
+        atendidos = self._agentes or tuple(a for a in sorted(REGISTRO) if a not in self._excluir)
+        logger.info("Trabajador %s en marcha (agentes: %s).", self._nombre, ", ".join(atendidos))
         while not self._parar.is_set():
-            trabajo = await asyncio.to_thread(almacen.reclamar)
+            trabajo = await asyncio.to_thread(almacen.reclamar, self._agentes, self._excluir)
             if trabajo is None:
                 # Sondeo simple. Cuando la Fase D traiga disparadores reales, el
                 # bus podrá despertar al trabajador y esto será solo el respaldo.
@@ -286,7 +300,7 @@ class Trabajador:
 
             await self._ejecutar_uno(trabajo)
 
-        logger.info("Trabajador detenido.")
+        logger.info("Trabajador %s detenido.", self._nombre)
 
     async def _ejecutar_uno(self, trabajo: dict[str, Any]) -> None:
         id_trabajo = int(trabajo["id"])

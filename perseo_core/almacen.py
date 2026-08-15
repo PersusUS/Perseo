@@ -117,6 +117,18 @@ class Configuracion:
     correo_buzon: str
     #: Ruta del JSON que hace de buzón cuando `correo_buzon` es `falso`.
     correo_falso: str
+    #: Motor del agente `dev`: vacío (Claude Code por línea de comandos) o
+    #: `falso`, que simula sin gastar suscripción.
+    dev_motor: str
+    #: Qué se ejecuta cuando el motor es el de verdad.
+    dev_ejecutable: str
+    #: Raíz de la que no puede salir un encargo de código.
+    dev_raiz: str
+    #: Segundos que se le dan a un encargo antes de cortarlo.
+    dev_tope: float
+    #: Lo que tarda el motor falso, para poder comprobar que un encargo largo no
+    #: deja al resto de la cola esperando.
+    dev_tardanza_falsa: float
     #: De dónde salen los eventos: `falso` (fichero, para verificar) o vacío.
     agenda_origen: str
     #: Ruta del JSON que hace de calendario cuando `agenda_origen` es `falso`.
@@ -296,6 +308,11 @@ def cargar_configuracion() -> Configuracion:
         },
         correo_buzon=os.environ.get("PERSEO_CORREO", "").strip().lower(),
         correo_falso=os.environ.get("PERSEO_CORREO_FALSO", str(directorio / "buzon.json")),
+        dev_motor=os.environ.get("PERSEO_DEV_MOTOR", "").strip().lower(),
+        dev_ejecutable=os.environ.get("PERSEO_DEV_CLAUDE", "claude"),
+        dev_raiz=os.environ.get("PERSEO_DEV_RAIZ", str(RAIZ.parent)),
+        dev_tope=float(os.environ.get("PERSEO_DEV_TOPE", "900")),
+        dev_tardanza_falsa=float(os.environ.get("PERSEO_DEV_TARDANZA", "0")),
         agenda_origen=os.environ.get("PERSEO_AGENDA", "").strip().lower(),
         agenda_falsa=os.environ.get("PERSEO_AGENDA_FALSA", str(directorio / "agenda.json")),
         agenda_antelacion=int(os.environ.get("PERSEO_AGENDA_ANTELACION", "60")),
@@ -431,21 +448,38 @@ def encolar(agente: str, peticion: dict[str, Any], origen: str = "texto") -> dic
     return creado
 
 
-def reclamar() -> dict[str, Any] | None:
+def reclamar(
+    agentes: tuple[str, ...] | None = None, excluir: tuple[str, ...] = ()
+) -> dict[str, Any] | None:
     """Toma el trabajo pendiente más antiguo y lo marca en curso.
 
     `BEGIN IMMEDIATE` toma el cerrojo de escritura antes de leer, así que dos
-    trabajadores no pueden reclamar el mismo trabajo. Hoy solo hay uno, pero la
-    Fase D añadirá disparadores que encolan en paralelo, y no quiero descubrir
-    esto entonces.
+    trabajadores no pueden reclamar el mismo trabajo. Eso dejó de ser teórico en
+    la Fase E: `dev` puede tardar minutos, y si lo atendiera el mismo trabajador
+    que todo lo demás, un encargo de código dejaría el correo sin triar y la
+    memoria sin responder mientras dura. Por eso hay dos carriles, y por eso este
+    método filtra por agente.
+
+    `agentes` limita a esos; `excluir` deja fuera esos. Sin ninguno de los dos se
+    comporta exactamente como antes.
     """
     momento = _ahora()
+    condiciones = ["estado = ?"]
+    parametros: list[Any] = [PENDIENTE]
+    if agentes:
+        condiciones.append(f"agente IN ({','.join('?' * len(agentes))})")
+        parametros.extend(agentes)
+    if excluir:
+        condiciones.append(f"agente NOT IN ({','.join('?' * len(excluir))})")
+        parametros.extend(excluir)
+    donde = " AND ".join(condiciones)
+
     with _cerrojo:
         db = _db()
         db.execute("BEGIN IMMEDIATE")
         try:
             fila = db.execute(
-                "SELECT id FROM trabajos WHERE estado = ? ORDER BY id LIMIT 1", (PENDIENTE,)
+                f"SELECT id FROM trabajos WHERE {donde} ORDER BY id LIMIT 1", parametros
             ).fetchone()
             if fila is None:
                 db.execute("ROLLBACK")
