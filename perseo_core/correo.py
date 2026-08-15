@@ -116,9 +116,19 @@ def abrir_buzon(cfg: almacen.Configuracion) -> Buzon | None:
     """
     if cfg.correo_buzon == "falso":
         return BuzonFalso(Path(cfg.correo_falso))
+
+    if cfg.correo_buzon == "gmail":
+        # Se importa aquí y no arriba para no arrastrar el módulo de Google
+        # —ni su ciclo con `correo`— cuando no se usa.
+        from . import google_api
+
+        try:
+            return google_api.BuzonGmail(google_api.credenciales(cfg))
+        except google_api.SinCredenciales as e:
+            logger.error("Gmail pedido pero sin credenciales: %s", e)
+            return None
+
     if cfg.correo_buzon:
-        # Aquí entrará `BuzonGmail` cuando haya credenciales OAuth. El agente y
-        # el disparador no cambian: solo esta línea.
         logger.error("Buzón %r desconocido; se sigue sin correo.", cfg.correo_buzon)
     return None
 

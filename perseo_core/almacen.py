@@ -129,6 +129,9 @@ class Configuracion:
     #: Lo que tarda el motor falso, para poder comprobar que un encargo largo no
     #: deja al resto de la cola esperando.
     dev_tardanza_falsa: float
+    #: Fichero con las credenciales de Google (Gmail y Calendar). Va en el
+    #: directorio de datos, que está fuera de git: lleva un `refresh_token`.
+    google_credenciales: str
     #: Navegador del agente `web`: vacío (HTTP de verdad) o `falso`.
     web_navegador: str
     #: Cuánto se descarga como mucho de una página.
@@ -323,6 +326,9 @@ def cargar_configuracion() -> Configuracion:
         dev_raiz=os.environ.get("PERSEO_DEV_RAIZ", str(RAIZ.parent)),
         dev_tope=float(os.environ.get("PERSEO_DEV_TOPE", "900")),
         dev_tardanza_falsa=float(os.environ.get("PERSEO_DEV_TARDANZA", "0")),
+        google_credenciales=os.environ.get(
+            "PERSEO_GOOGLE_CREDENCIALES", str(directorio / "google.json")
+        ),
         web_navegador=os.environ.get("PERSEO_WEB", "").strip().lower(),
         web_tope_bytes=int(os.environ.get("PERSEO_WEB_TOPE_BYTES", str(2 * 1024 * 1024))),
         web_tope_segundos=float(os.environ.get("PERSEO_WEB_TOPE_SEGUNDOS", "20")),
