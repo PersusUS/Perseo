@@ -110,15 +110,17 @@ def run_perseo_and_cleanup(realtime_path):
 def trigger_action():
     print("\n[!] ¡Activando Comando de Emergencia! Encendiendo...")
     
-    if is_app_running():
-        print("[!] La aplicación Perseo ya está corriendo. Se evitará abrir otra instancia.")
-        return
-
     # Señal de auto-conexión: un fichero marcador en la raíz del proyecto que la
     # aplicación borra al leerlo. Antes se escribía dentro de src/autocall.json,
     # que React importaba estáticamente: Vite congelaba el valor al compilar (el
     # disparo no funcionaba en producción) y nadie lo devolvía a false, así que
     # toda apertura manual entraba en llamada sola. Ver H-09.
+    #
+    # Se deja **siempre**, también con la app abierta. Desde que Perseo vive en
+    # la bandeja del sistema, el caso normal es que ya esté corriendo: Rust
+    # vigila este fichero, saca la ventana del escondite y entra en llamada.
+    # Antes se salía antes de escribirlo, así que con la app abierta la palabra
+    # clave no hacía absolutamente nada.
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     realtime_path = os.path.join(base_dir, "RealTime")
     marcador = os.path.join(base_dir, ".perseo-autollamada")
@@ -128,6 +130,10 @@ def trigger_action():
         print("[*] Señal de auto-conexión depositada.")
     except Exception as e:
         print(f"[-] No se pudo dejar la señal de auto-conexión: {e}")
+
+    if is_app_running():
+        print("[!] Perseo ya está corriendo: la señal basta, no se abre otra instancia.")
+        return
 
     # 1. Abrir animacion de carga
     script_dir = os.path.dirname(os.path.abspath(__file__))

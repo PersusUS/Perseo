@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { PerseoFace } from './components/PerseoFace';
 import { Settings } from './components/Settings';
 import { geminiClient } from './lib/gemini-live';
@@ -52,6 +53,11 @@ const MENSAJES_VISIBLES = 40;
 
 function App() {
   const [connectionState, setConnectionState] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
+  // El oyente de autollamada se registra una vez y vive todo el rato, así que
+  // no puede leer `connectionState` del cierre: se le quedaría el valor de
+  // cuando se montó. La referencia sí está siempre al día.
+  const connectionStateRef = useRef(connectionState);
+  connectionStateRef.current = connectionState;
   const [transcripts, setTranscripts] = useState<TranscriptMsg[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -190,6 +196,28 @@ function App() {
     }).catch(e => console.warn('[AutoLlamada] No se pudo comprobar la señal:', e));
 
     return () => { cancelado = true; };
+  }, [apiKeyReady]);
+
+  // Y la autollamada con la app ya abierta. Desde que Perseo vive en la bandeja
+  // el arranque no vuelve a ocurrir, así que el efecto de arriba —que solo mira
+  // el marcador al montarse— dejaría la palabra clave sin efecto. Rust vigila
+  // el fichero y avisa por evento; aquí solo se atiende.
+  useEffect(() => {
+    if (!apiKeyReady) return;
+
+    let cancelado = false;
+    const dejarDeEscuchar = listen('perseo://autollamada', () => {
+      if (cancelado) return;
+      // Si ya está en llamada no se hace nada: la palabra clave sirve para
+      // empezar una conversación, no para cortar la que hay.
+      if (connectionStateRef.current !== 'disconnected') return;
+      setTimeout(() => { if (!cancelado) handleCall(); }, 1500);
+    });
+
+    return () => {
+      cancelado = true;
+      dejarDeEscuchar.then(quitar => quitar()).catch(() => {});
+    };
   }, [apiKeyReady]);
 
   useEffect(() => {
