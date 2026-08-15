@@ -106,10 +106,35 @@ class Configuracion:
     #: notificaciones. Va a un mensaje que sale de la máquina, así que apunta al
     #: tailnet y no al bucle local.
     url_base: str
+    #: Disparadores que se ponen en marcha al arrancar (Fase D). Vacío es un
+    #: estado válido: el núcleo funciona igual, solo que nadie empieza nada solo.
+    disparadores: tuple[str, ...]
+    #: Cada cuántos segundos le toca a cada disparador. Lo que no esté aquí usa
+    #: el valor con el que se registró.
+    intervalos: dict[str, float]
+    #: De dónde salen los correos: `falso` (fichero, para verificar) o vacío.
+    #: Cuando haya credenciales OAuth se añadirá `gmail`.
+    correo_buzon: str
+    #: Ruta del JSON que hace de buzón cuando `correo_buzon` es `falso`.
+    correo_falso: str
+    #: De dónde salen los eventos: `falso` (fichero, para verificar) o vacío.
+    agenda_origen: str
+    #: Ruta del JSON que hace de calendario cuando `agenda_origen` es `falso`.
+    agenda_falsa: str
+    #: Con cuántos minutos de antelación se avisa de un evento.
+    agenda_antelacion: int
+    #: Raíz del vault de Obsidian. Se resuelve con la **misma** variable que
+    #: `RAG/paths.py` para que el indexador vigile donde escribe la memoria: que
+    #: no coincidieran fue H-22.
+    vault: str
 
     @property
     def telegram_configurado(self) -> bool:
         return bool(self.telegram_token and self.telegram_chat)
+
+    @property
+    def correo_configurado(self) -> bool:
+        return bool(self.correo_buzon)
 
 
 #: Rango que Tailscale reparte entre los nodos del tailnet (CGNAT).
@@ -242,6 +267,15 @@ def cargar_configuracion() -> Configuracion:
     hosts = _resolver_hosts(os.environ.get("PERSEO_CORE_HOST", "127.0.0.1"))
     puerto = int(os.environ.get("PERSEO_CORE_PUERTO", "8787"))
 
+    # Por defecto se registran todos los disparadores conocidos: los que no
+    # tengan de dónde tirar se retiran solos al arrancar, igual que Telegram sin
+    # token. Se puede acotar la lista, o vaciarla, con `PERSEO_DISPARADORES=`.
+    disparadores = tuple(
+        pieza.strip()
+        for pieza in os.environ.get("PERSEO_DISPARADORES", "correo,agenda").split(",")
+        if pieza.strip()
+    )
+
     return Configuracion(
         hosts=hosts,
         puerto=puerto,
@@ -254,6 +288,17 @@ def cargar_configuracion() -> Configuracion:
         telegram_chat=_de_entorno_o_fichero("PERSEO_TELEGRAM_CHAT", directorio / "telegram_chat.txt"),
         telegram_api=os.environ.get("PERSEO_TELEGRAM_API", "https://api.telegram.org").rstrip("/"),
         url_base=os.environ.get("PERSEO_URL_BASE", "").strip() or _url_por_defecto(hosts, puerto),
+        disparadores=disparadores,
+        intervalos={
+            "correo": float(os.environ.get("PERSEO_CORREO_INTERVALO", "300")),
+            "agenda": float(os.environ.get("PERSEO_AGENDA_INTERVALO", "600")),
+        },
+        correo_buzon=os.environ.get("PERSEO_CORREO", "").strip().lower(),
+        correo_falso=os.environ.get("PERSEO_CORREO_FALSO", str(directorio / "buzon.json")),
+        agenda_origen=os.environ.get("PERSEO_AGENDA", "").strip().lower(),
+        agenda_falsa=os.environ.get("PERSEO_AGENDA_FALSA", str(directorio / "agenda.json")),
+        agenda_antelacion=int(os.environ.get("PERSEO_AGENDA_ANTELACION", "60")),
+        vault=os.environ.get("OBSIDIAN_VAULT_PATH", str(RAIZ.parent / "obsidian_vault")),
     )
 
 

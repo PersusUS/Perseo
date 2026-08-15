@@ -125,7 +125,7 @@ async def _salud(peticion: web.Request) -> web.Response:
         {
             "ok": True,
             "servicio": "perseo-core",
-            "fase": "A",
+            "fase": "D",
             "agentes": sorted(REGISTRO),
             "router_local": router.disponible,
             "trabajos": recuento,

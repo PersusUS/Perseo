@@ -153,6 +153,22 @@ class Telegram:
             )
             return
 
+        # Un agente puede escribir su propio titular. Es lo que necesita la Fase
+        # D: "3 correos, 1 requiere acción" dice algo, y "Trabajo #7 terminado"
+        # no. La regla del canal la sigue poniendo este módulo —lo que llegue
+        # aquí se manda tal cual—, así que el titular lo compone el agente
+        # sabiendo que sale por un tercero, y el detalle se queda en la cola.
+        # Un titular vacío significa "no merece molestar": no se manda nada.
+        resultado = trabajo.get("resultado")
+        if evento.tipo == "trabajo.hecho" and isinstance(resultado, dict) and "titular" in resultado:
+            titular = str(resultado.get("titular") or "").strip()
+            if titular:
+                await self._enviar(
+                    f"{titular}\n\nTrabajo #{id_trabajo}",
+                    botones=[[{"text": "Ver detalle", "url": f"{self._cfg.url_base}/"}]],
+                )
+            return
+
         plantilla = TITULARES.get(evento.tipo)
         if plantilla:
             await self._enviar(plantilla.format(id=id_trabajo))

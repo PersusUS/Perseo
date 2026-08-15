@@ -18,10 +18,16 @@ import sys
 
 from aiohttp import web
 
-from . import almacen, api
+from . import agenda, almacen, api, correo, memoria
 from .agentes import Router, Trabajador
 from .bus import Bus
+from .disparadores import Planificador
 from .telegram import Telegram
+
+# Estos tres se importan por sus efectos: al cargarse registran sus agentes —y
+# `correo` y `agenda`, además, sus disparadores—. Sin el import el registro está
+# vacío y el núcleo arranca sin Fase D sin decir por qué.
+_ = (agenda, correo, memoria)
 
 logger = logging.getLogger("perseo_core")
 
@@ -62,9 +68,17 @@ async def arrancar() -> None:
     trabajador = Trabajador(bus)
     tarea_trabajador = asyncio.create_task(trabajador.ejecutar(), name="trabajador")
 
+    # El triaje del correo comparte una sola sesión contra Ollama entre trabajos.
+    correo.iniciar(cfg)
+    memoria.iniciar(cfg)
+
     # Sin token configurado se retira sola tras avisar: es un canal más.
     telegram = Telegram(cfg, bus)
     tarea_telegram = asyncio.create_task(telegram.ejecutar(), name="telegram")
+
+    # Los disparadores que no tengan de dónde tirar se retiran solos.
+    planificador = Planificador(cfg, bus)
+    tarea_disparadores = asyncio.create_task(planificador.ejecutar(), name="disparadores")
 
     runner = web.AppRunner(api.crear_app(cfg, bus, router))
     await runner.setup()
@@ -93,12 +107,15 @@ async def arrancar() -> None:
         logger.info("Cerrando…")
         trabajador.detener()
         telegram.detener()
-        for tarea in (tarea_trabajador, tarea_telegram):
+        planificador.detener()
+        for tarea in (tarea_trabajador, tarea_telegram, tarea_disparadores):
             tarea.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await tarea
         await runner.cleanup()
         await router.cerrar()
+        await correo.detener()
+        memoria.detener()
         almacen.cerrar()
         logger.info("Adiós.")
 
