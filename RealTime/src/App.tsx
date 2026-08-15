@@ -85,7 +85,7 @@ function App() {
     if (utiles.length === 0) return;
 
     try {
-      await invoke('ejecutar_herramienta_python', {
+      await invoke('ejecutar_herramienta', {
         toolName: 'guardar_conversacion',
         argumentos: JSON.stringify({
           mensajes: utiles.map(m => ({ tipo: m.type, texto: m.text })),

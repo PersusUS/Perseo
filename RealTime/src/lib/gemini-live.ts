@@ -341,7 +341,7 @@ export class GeminiLiveClient {
         // trabajando para un consumidor que ya no existía, y que además saltaba
         // siempre en la primera consulta al RAG (7,5 s de arranque en frío).
         // Ver H-11 y H-12.
-        const result = await invoke("ejecutar_herramienta_python", {
+        const result = await invoke("ejecutar_herramienta", {
             toolName: name,
             argumentos: JSON.stringify(args)
         }) as string;

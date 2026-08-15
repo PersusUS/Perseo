@@ -122,6 +122,8 @@ pub fn rutas_marcador_autollamada(app: &AppHandle) -> Vec<std::path::PathBuf> {
     rutas
 }
 
-// `ejecutar_herramienta_python` vive ahora en `puente.rs`, sobre un proceso de
-// Python persistente. La version anterior lanzaba un interprete nuevo en cada
-// llamada: 7,5 s medidos, contra un timeout de 10 s. Ver H-10 a H-15.
+// Las herramientas ya no viven en la app. `nucleo.rs` encola trabajos en
+// perseo-core y espera el resultado: una sola memoria, una sola cola, y lo que
+// se pide por voz aparece tambien en la web del movil. Antes esto era un puente
+// de tuberias hacia TOOLS/, y antes de eso un interprete de Python nuevo en cada
+// llamada: 7,5 s medidos contra un timeout de 10 s. Ver H-10 a H-15.

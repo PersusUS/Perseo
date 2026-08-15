@@ -24,10 +24,11 @@ Tres reglas que no son opcionales:
    instrucción**. Un `../../.ssh/id_rsa` en un asunto de correo no puede acabar
    siendo una ruta que se lee.
 
-Sobre dónde está el vault: se resuelve con `OBSIDIAN_VAULT_PATH`, **la misma
-variable que usa `RAG/paths.py`**, para que el indexador vigile exactamente la
-carpeta donde este agente escribe. Que no coincidieran fue H-22, y costó
-descubrirlo.
+Sobre dónde está el vault: se resuelve con `OBSIDIAN_VAULT_PATH`, que es la
+variable que ya usaba el indexador de v1 (`RAG/paths.py`, hoy retirado). Se
+mantiene el nombre a propósito: quien la tuviera puesta no tiene que cambiar
+nada, y no vuelve a haber dos módulos apuntando a carpetas distintas — que es lo
+que fue H-22 y costó descubrirlo.
 
 Ver bitacora/05_PLAN_PERSEO_V2.md §6 y §9 (Fase D).
 """
@@ -48,8 +49,10 @@ from .agentes import registrar
 
 logger = logging.getLogger(__name__)
 
-#: Carpeta por defecto de lo que escribe Perseo. Es la que ya existe en el vault.
+#: Carpetas del vault. Son las que ya usaba la herramienta de memoria de v1: la
+#: estructura del vault no se toca, se envuelve (R7).
 CARPETA_MEMORIAS = "Memorias_Sistema"
+CARPETA_CONVERSACIONES = "Conversaciones"
 
 #: Cuánto se lee de un fichero al buscar. Una nota normal no llega ni de lejos, y
 #: el tope evita que un adjunto pegado dentro del vault pare la búsqueda.
@@ -209,7 +212,7 @@ def _fecha(fichero: Path) -> str:
 
 
 def _nombre_seguro(texto: str) -> str:
-    """Deja solo lo que vale como nombre de fichero. Igual que en `memory_tool.py`."""
+    """Deja solo lo que vale como nombre de fichero."""
     return "".join(c for c in texto if c.isalnum() or c in (" ", "_", "-")).strip()
 
 
@@ -221,7 +224,7 @@ _vault: Vault | None = None
 
 
 def ruta_vault(cfg: almacen.Configuracion | None = None) -> Path:
-    """Dónde está el vault. La misma variable que `RAG/paths.py`, ver H-22."""
+    """Dónde está el vault. Una sola variable para todo el sistema, ver H-22."""
     if cfg is not None and cfg.vault:
         return Path(cfg.vault)
     return Path(os.environ.get("OBSIDIAN_VAULT_PATH", almacen.RAIZ.parent / "obsidian_vault"))
@@ -267,6 +270,23 @@ async def _memoria(trabajo: dict[str, Any]) -> dict[str, Any]:
             "titular": f"{len(notas)} nota(s) sobre «{consulta}»" if notas else None,
         }
 
+    if accion == "conversacion":
+        # Lo que hacía `guardar_conversacion` en la herramienta de v1: la
+        # transcripción entera al vault, donde el indexador la recoge. Va aparte
+        # de `anotar` porque el título lo pone la fecha y no el que llama: una
+        # conversación no tiene nombre hasta que la lees.
+        mensajes = peticion.get("mensajes") or []
+        lineas = [
+            f"**{str(m.get('tipo', '?'))}:** {str(m.get('texto', '')).strip()}"
+            for m in mensajes
+            if isinstance(m, dict) and str(m.get("texto", "")).strip()
+        ]
+        if not lineas:
+            return {"accion": accion, "ruta": None, "titular": None}
+        titulo = f"Conversacion {datetime.now().strftime('%Y-%m-%d %H%M')}"
+        ruta = await _vault.anotar(titulo, "\n\n".join(lineas), CARPETA_CONVERSACIONES)
+        return {"accion": accion, "ruta": ruta, "mensajes": len(lineas), "titular": None}
+
     if accion == "leer":
         ruta = str(peticion.get("ruta", "")).strip()
         return {"accion": accion, "ruta": ruta, "contenido": await _vault.leer(ruta)}
@@ -282,4 +302,7 @@ async def _memoria(trabajo: dict[str, Any]) -> dict[str, Any]:
         # El titular sale por Telegram: dice qué nota, no lo que pone dentro.
         return {"accion": accion, "ruta": ruta, "titular": f"Anotado en {ruta}"}
 
-    raise ValueError(f"Acción desconocida para la memoria: {accion!r}. Válidas: buscar, leer, anotar.")
+    raise ValueError(
+        f"Acción desconocida para la memoria: {accion!r}. "
+        "Válidas: buscar, leer, anotar, conversacion."
+    )
