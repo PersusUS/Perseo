@@ -15,6 +15,7 @@ y de pantallas, y un `../` metido en un asunto no puede acabar leyendo el disco.
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import sys
 import tempfile
@@ -76,7 +77,11 @@ def comprobar_en_proceso(raiz: Path) -> None:
 
         # 5. Nada sale del vault. Ni subiendo con `..`, ni con una ruta absoluta,
         #    ni por la carpeta de destino al anotar.
-        for intento in ("../secreto.md", "..\\..\\secreto.md", "Notas/../../fuera.md"):
+        # La segunda cambia con el sistema: en Linux `..\..\x` no sube ningun
+        # directorio, es un nombre de fichero con barras invertidas, y la prueba
+        # pasaria por el motivo equivocado.
+        subir_dos = "..\..\secreto.md" if os.name == "nt" else "../../secreto.md"
+        for intento in ("../secreto.md", subir_dos, "Notas/../../fuera.md"):
             try:
                 await vault.leer(intento)
                 comprobar(f"Se niega a leer {intento!r}", False, "no se nego")

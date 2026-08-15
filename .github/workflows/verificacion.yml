@@ -1,0 +1,141 @@
+# Lo que se ejecuta solo en cada push, para que 227 pruebas y trece verificadores
+# sigan sirviendo de algo cuando pasen semanas sin tocar el proyecto.
+#
+# Tres cosas y en este orden de coste: las pruebas unitarias (segundos), los
+# tipos del frontend (un minuto), y los verificadores, que levantan el nucleo de
+# verdad y tardan varios. Nada de esto necesita secretos: los verificadores se
+# montan servidores de mentira para Telegram y para Google, y los que dependen de
+# Ollama o de un microfono se quedan fuera a proposito — no hay GPU en el CI.
+
+name: Verificacion
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Un push nuevo cancela la verificacion del anterior: interesa el estado de lo
+# ultimo, no la cola entera.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruebas:
+    name: Pruebas unitarias (${{ matrix.so }})
+    runs-on: ${{ matrix.so }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # En los dos: Windows es donde corre de verdad, y Linux es donde acabara
+        # viviendo el nucleo (la Raspberry Pi del plan).
+        so: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r perseo_core/requirements.txt
+          pip install pytest
+
+      - name: Pruebas
+        run: python -m pytest
+
+  tipos:
+    name: Tipos y build del frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: RealTime/package-lock.json
+
+      - name: Instalar dependencias
+        working-directory: RealTime
+        run: npm ci
+
+      - name: Tipos
+        working-directory: RealTime
+        run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: RealTime
+        run: npm run build
+
+  rust:
+    name: cargo check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: RealTime/package-lock.json
+
+      # `tauri-build` mira lo que declara `tauri.conf.json`, asi que el frontend
+      # tiene que estar construido antes de comprobar el Rust.
+      - name: Preparar el frontend
+        working-directory: RealTime
+        run: |
+          npm ci
+          npm run build
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache de cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            RealTime/src-tauri/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('RealTime/src-tauri/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: cargo check
+        working-directory: RealTime/src-tauri
+        run: cargo check --locked
+
+  verificadores:
+    name: Verificadores de punta a punta
+    runs-on: ubuntu-latest
+    # Tardan minutos y levantan procesos: no tiene sentido pagarlos si las
+    # pruebas unitarias ya estan en rojo.
+    needs: pruebas
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r perseo_core/requirements.txt
+
+      # Fuera de la lista, y no por olvido:
+      #   verificar_router      necesita Ollama con un modelo cargado.
+      #   verificar_palabra_clave  necesita la voz de Windows y un modelo de audio.
+      # El de la Fase D se queda: sin Ollama salta solas las comprobaciones que
+      # dependen del modelo y comprueba el resto.
+      - name: Verificadores
+        run: |
+          set -e
+          for script in fase_a aprobaciones telegram fase_d agenda memoria pc dev web politica google; do
+            echo "--- $script ---"
+            python "perseo_core/verificar_$script.py"
+          done

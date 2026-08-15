@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
 
 from perseo_core import memoria
+
+#: Una ruta absoluta que existe fuera del vault, sea cual sea el sistema. Las
+#: pruebas corren en Windows y en el CI de Linux, y `C:\Windows` en Linux no es
+#: una ruta absoluta: es un nombre de fichero con barras invertidas, que sí cae
+#: dentro del vault y haría pasar la prueba por el motivo equivocado.
+FUERA_DEL_DISCO = "C:\Windows\win.ini" if os.name == "nt" else "/etc/passwd"
+SUBIR_DOS = "..\..\secreto.md" if os.name == "nt" else "../../secreto.md"
 
 
 @pytest.fixture()

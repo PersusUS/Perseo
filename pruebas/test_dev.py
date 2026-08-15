@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
 
 from perseo_core import almacen, dev
+
+#: Ruta absoluta fuera de la raíz permitida, en cualquiera de los dos sistemas
+#: donde corren las pruebas. Ver la nota de `pruebas/test_memoria.py`.
+FUERA_DEL_DISCO = "C:\Windows" if os.name == "nt" else "/etc"
 
 
 @pytest.fixture()
