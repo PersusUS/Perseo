@@ -1,0 +1,11 @@
+# Dependencias de perseo-core (Fase A).
+#
+# Una sola, a propósito. La Fase 3 ya descartó FastAPI + uvicorn por no añadir
+# dos dependencias donde bastaba una; aiohttp cubre servidor HTTP, SSE y cliente
+# (el router habla con Ollama por HTTP), y pesa poco en una Raspberry Pi, que es
+# donde este proceso acabará viviendo.
+#
+# La cola usa sqlite3, que viene con Python. El router usa Ollama por HTTP, sin
+# SDK.
+
+aiohttp>=3.9
