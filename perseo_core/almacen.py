@@ -129,6 +129,16 @@ class Configuracion:
     #: Lo que tarda el motor falso, para poder comprobar que un encargo largo no
     #: deja al resto de la cola esperando.
     dev_tardanza_falsa: float
+    #: Navegador del agente `web`: vacío (HTTP de verdad) o `falso`.
+    web_navegador: str
+    #: Cuánto se descarga como mucho de una página.
+    web_tope_bytes: int
+    #: Cuánto se espera a una página.
+    web_tope_segundos: float
+    #: **Solo para las verificaciones.** Deja alcanzar el bucle local, que en
+    #: producción está prohibido: sin esto no se podría comprobar el camino real
+    #: contra un servidor de prueba. Ver `web.comprobar_url`.
+    web_local: bool
     #: De dónde salen los eventos: `falso` (fichero, para verificar) o vacío.
     agenda_origen: str
     #: Ruta del JSON que hace de calendario cuando `agenda_origen` es `falso`.
@@ -313,6 +323,10 @@ def cargar_configuracion() -> Configuracion:
         dev_raiz=os.environ.get("PERSEO_DEV_RAIZ", str(RAIZ.parent)),
         dev_tope=float(os.environ.get("PERSEO_DEV_TOPE", "900")),
         dev_tardanza_falsa=float(os.environ.get("PERSEO_DEV_TARDANZA", "0")),
+        web_navegador=os.environ.get("PERSEO_WEB", "").strip().lower(),
+        web_tope_bytes=int(os.environ.get("PERSEO_WEB_TOPE_BYTES", str(2 * 1024 * 1024))),
+        web_tope_segundos=float(os.environ.get("PERSEO_WEB_TOPE_SEGUNDOS", "20")),
+        web_local=os.environ.get("PERSEO_WEB_LOCAL", "").strip() == "1",
         agenda_origen=os.environ.get("PERSEO_AGENDA", "").strip().lower(),
         agenda_falsa=os.environ.get("PERSEO_AGENDA_FALSA", str(directorio / "agenda.json")),
         agenda_antelacion=int(os.environ.get("PERSEO_AGENDA_ANTELACION", "60")),
