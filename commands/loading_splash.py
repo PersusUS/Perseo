@@ -1,6 +1,7 @@
 import tkinter as tk
-import subprocess
 import os
+
+import presencia
 
 def check_process(root, label, dots=0, retries=0):
     # Límite de seguridad: 30 segundos (30 ciclos de 1000ms)
@@ -9,10 +10,10 @@ def check_process(root, label, dots=0, retries=0):
         return
         
     try:
-        # Busca el proceso generado por el frontend final de Tauri.
-        # "temp-app.exe" es el nombre deducido del Cargo.toml de tu proyecto nativo
-        output = subprocess.check_output('tasklist /FI "IMAGENAME eq temp-app.exe"', shell=True).decode(errors='ignore')
-        if "temp-app.exe" in output.lower():
+        # Se pregunta por el PID que deja la propia aplicacion, no por el nombre
+        # del ejecutable: atarlo al nombre del binario era lo que rompia esto en
+        # silencio al renombrar el paquete Rust. Ver H-21.
+        if presencia.app_viva():
             # Si lo detecta, damos 2 segundos extra para que Tauri dibuje la ventana y se cierre
             label.config(text="Interfáz gráfica lista.", fg="#3fb950")
             root.after(2000, root.destroy)

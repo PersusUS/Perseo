@@ -7,6 +7,7 @@ import sys
 import threading
 import pygame
 
+import presencia
 from palabra_clave import DetectorPalabra
 
 # Inicializamos el mixer de Pygame silenciosamente
@@ -50,22 +51,20 @@ voice_buffer = []
 voice_frames_needed = 0
 
 def is_app_running():
+    """Si Perseo ya está abierto.
+
+    Se pregunta por el PID que deja la propia aplicación, no por el nombre del
+    ejecutable en el `tasklist`. Atar esto al nombre del binario era lo que hacía
+    que renombrar el paquete Rust rompiera el detector en silencio. Ver H-21.
+    """
     try:
-        # Revisa si la aplicación ya está viva en los procesos de Windows
-        output = subprocess.check_output('tasklist /FI "IMAGENAME eq temp-app.exe"', shell=True).decode(errors='ignore')
-        if "temp-app.exe" in output.lower():
-            return True
-            
-        # También comprobamos Node por si el servidor Vite está levantado (Port 1420 ocupado) 
-        # pero Tauri GUI no hubiera salido aún del todo
-        # Es un bloqueo conservador
-        return False
+        return presencia.app_viva()
     except Exception as e:
-        # Si `tasklist` falla no sabemos si la app está viva. Se contesta que no,
-        # que es lo conservador —la señal de autollamada basta si ya estaba
-        # abierta—, pero se deja dicho: este camino explica un "se abrió una
-        # segunda instancia" que si no parece cosa de magia.
-        print(f"[-] No se pudo consultar la lista de procesos: {e}")
+        # Si no se puede averiguar, se contesta que no: es lo conservador —la
+        # señal de autollamada basta si ya estaba abierta—, pero se deja dicho.
+        # Este camino explica un "se abrió una segunda instancia" que si no
+        # parece cosa de magia.
+        print(f"[-] No se pudo comprobar si Perseo esta abierto: {e}")
         return False
 
 def run_perseo_and_cleanup(realtime_path):
@@ -74,12 +73,11 @@ def run_perseo_and_cleanup(realtime_path):
     # Arrancamos npm run tauri dev
     process = subprocess.Popen(["npm", "run", "tauri", "dev"], cwd=realtime_path, shell=True)
     
-    # 1. Esperamos a que Perseo inicie completamente leyendo el tasklist (hasta 120 segundos)
+    # 1. Esperamos a que Perseo deje su marca de presencia (hasta 120 segundos)
     app_started = False
     for _ in range(60):
         try:
-            output = subprocess.check_output('tasklist /FI "IMAGENAME eq temp-app.exe"', shell=True).decode(errors='ignore')
-            if "temp-app.exe" in output.lower():
+            if presencia.app_viva():
                 app_started = True
                 print("[*] Interfaz gráfica de Perseo detectada.")
                 
@@ -93,7 +91,7 @@ def run_perseo_and_cleanup(realtime_path):
                 print("[*] Analizando cierre...")
                 break
         except Exception as e:
-            # Un fallo suelto de `tasklist` no es motivo para rendirse: quedan
+            # Un fallo suelto no es motivo para rendirse: quedan
             # más vueltas del bucle. Se avisa por si falla en todas.
             print(f"[-] No se pudo comprobar si la app ya arrancó: {e}")
         time.sleep(2)
@@ -104,8 +102,7 @@ def run_perseo_and_cleanup(realtime_path):
     if app_started:
         while True:
             try:
-                output = subprocess.check_output('tasklist /FI "IMAGENAME eq temp-app.exe"', shell=True).decode(errors='ignore')
-                if "temp-app.exe" not in output.lower():
+                if not presencia.app_viva():
                     print("\n[*] La ventana de Perseo se ha cerrado. Procediendo con el exterminio residual...")
                     break
             except Exception as e:

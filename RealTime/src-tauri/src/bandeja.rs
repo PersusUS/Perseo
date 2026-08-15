@@ -45,7 +45,13 @@ pub fn instalar(app: &AppHandle) -> tauri::Result<()> {
             }
             // Aqui si se sale de verdad. Es la unica via, y por eso esta en el
             // menu: cerrar la ventana ya no termina el proceso.
-            "salir" => app.exit(0),
+            "salir" => {
+                // Se quita la marca de presencia antes de irse: si se quedara,
+                // el detector tendria que descubrir por su cuenta que el PID ya
+                // no existe. Funciona igual, pero tarda un instante mas.
+                crate::presencia::retirar(app);
+                app.exit(0)
+            }
             _ => {}
         })
         .on_tray_icon_event(|bandeja, evento| {

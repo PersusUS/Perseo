@@ -1,14 +1,15 @@
 [package]
-name = "temp-app"
+name = "perseo"
 version = "0.1.0"
 description = "Perseo — asistente personal por voz y pantalla"
 authors = ["Jesús Pérez Bazarot"]
 edition = "2021"
 
-# NOTA: el nombre del paquete sigue siendo `temp-app` a proposito, de momento.
-# `clap_detector.py` y `loading_splash.py` detectan la aplicacion buscando
-# `temp-app.exe` en el tasklist, asi que renombrarlo los rompe en silencio.
-# El cambio va junto en la Fase 5. Ver H-21.
+# Se llamaba `temp-app`, y renombrarlo rompia en silencio el detector de
+# aplausos, que buscaba `temp-app.exe` en el tasklist. Las dos cosas se
+# arreglaron a la vez (2026-08-16): la aplicacion deja ahora su PID en un
+# fichero (`presencia.rs`) y el detector pregunta por el proceso, no por el
+# nombre. Ver H-21.
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -16,7 +17,7 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "temp_app_lib"
+name = "perseo_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

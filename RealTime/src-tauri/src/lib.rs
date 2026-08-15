@@ -2,12 +2,17 @@ mod autollamada;
 mod bandeja;
 mod commands;
 mod nucleo;
+mod presencia;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             bandeja::instalar(app.handle())?;
+            // Deja el PID en un fichero para que el detector de aplausos sepa
+            // que Perseo ya esta abierto sin tener que adivinar el nombre del
+            // ejecutable. Ver H-21.
+            presencia::anunciar(app.handle());
             autollamada::vigilar(app.handle().clone());
             Ok(())
         })
