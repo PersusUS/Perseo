@@ -14,8 +14,8 @@ from perseo_core import memoria
 #: pruebas corren en Windows y en el CI de Linux, y `C:\Windows` en Linux no es
 #: una ruta absoluta: es un nombre de fichero con barras invertidas, que sí cae
 #: dentro del vault y haría pasar la prueba por el motivo equivocado.
-FUERA_DEL_DISCO = "C:\Windows\win.ini" if os.name == "nt" else "/etc/passwd"
-SUBIR_DOS = "..\..\secreto.md" if os.name == "nt" else "../../secreto.md"
+FUERA_DEL_DISCO = r"C:\Windows\win.ini" if os.name == "nt" else "/etc/passwd"
+SUBIR_DOS = r"..\..\secreto.md" if os.name == "nt" else "../../secreto.md"
 
 
 @pytest.fixture()
@@ -101,7 +101,7 @@ def test_leer_lo_que_no_existe(vault_ficheros) -> None:
 
 @pytest.mark.parametrize(
     "intento",
-    ["../secreto.md", "..\\..\\secreto.md", "Notas/../../fuera.md", "C:\\Windows\\win.ini"],
+    ["../secreto.md", SUBIR_DOS, "Notas/../../fuera.md", FUERA_DEL_DISCO],
 )
 def test_ninguna_ruta_sale_del_vault(vault_ficheros, intento: str) -> None:
     """Un `../` en un asunto de correo no puede acabar leyendo el disco."""

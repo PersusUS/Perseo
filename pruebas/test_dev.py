@@ -12,7 +12,7 @@ from perseo_core import almacen, dev
 
 #: Ruta absoluta fuera de la raíz permitida, en cualquiera de los dos sistemas
 #: donde corren las pruebas. Ver la nota de `pruebas/test_memoria.py`.
-FUERA_DEL_DISCO = "C:\Windows" if os.name == "nt" else "/etc"
+FUERA_DEL_DISCO = r"C:\Windows" if os.name == "nt" else "/etc"
 
 
 @pytest.fixture()
@@ -42,7 +42,7 @@ def test_un_subdirectorio_vale(dev_falso: Path) -> None:
     assert dev.resolver_raiz("dentro") == (dev_falso / "dentro").resolve()
 
 
-@pytest.mark.parametrize("intento", ["..", "../..", "dentro/../..", "C:\\Windows"])
+@pytest.mark.parametrize("intento", ["..", "../..", "dentro/../..", FUERA_DEL_DISCO])
 def test_de_la_raiz_no_se_sale(dev_falso, intento: str) -> None:
     """Un encargo puede venir de un correo."""
     with pytest.raises(ValueError):
