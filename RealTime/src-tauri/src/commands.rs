@@ -105,7 +105,7 @@ pub fn consumir_autollamada(app: AppHandle) -> bool {
     false
 }
 
-fn rutas_marcador_autollamada(app: &AppHandle) -> Vec<std::path::PathBuf> {
+pub fn rutas_marcador_autollamada(app: &AppHandle) -> Vec<std::path::PathBuf> {
     use tauri::Manager;
 
     let mut rutas = Vec::new();
