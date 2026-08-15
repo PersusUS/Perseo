@@ -21,6 +21,7 @@ from aiohttp import web
 from . import almacen, api
 from .agentes import Router, Trabajador
 from .bus import Bus
+from .telegram import Telegram
 
 logger = logging.getLogger("perseo_core")
 
@@ -61,6 +62,10 @@ async def arrancar() -> None:
     trabajador = Trabajador(bus)
     tarea_trabajador = asyncio.create_task(trabajador.ejecutar(), name="trabajador")
 
+    # Sin token configurado se retira sola tras avisar: es un canal más.
+    telegram = Telegram(cfg, bus)
+    tarea_telegram = asyncio.create_task(telegram.ejecutar(), name="telegram")
+
     runner = web.AppRunner(api.crear_app(cfg, bus, router))
     await runner.setup()
     # Una lista de hosts, nunca `0.0.0.0`: se abren exactamente las interfaces
@@ -87,9 +92,11 @@ async def arrancar() -> None:
     finally:
         logger.info("Cerrando…")
         trabajador.detener()
-        tarea_trabajador.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await tarea_trabajador
+        telegram.detener()
+        for tarea in (tarea_trabajador, tarea_telegram):
+            tarea.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await tarea
         await runner.cleanup()
         await router.cerrar()
         almacen.cerrar()

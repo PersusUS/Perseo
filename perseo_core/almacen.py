@@ -96,6 +96,20 @@ class Configuracion:
     directorio_datos: Path
     url_ollama: str
     modelo_router: str
+    #: Credenciales del bot. Vacías significa "sin Telegram", y el núcleo
+    #: arranca igual: es un canal más, no una pieza de la que dependa nada.
+    telegram_token: str
+    telegram_chat: str
+    #: Se puede apuntar a otro sitio para probar sin tocar Telegram de verdad.
+    telegram_api: str
+    #: La dirección que se pone en el enlace "ver detalle" de las
+    #: notificaciones. Va a un mensaje que sale de la máquina, así que apunta al
+    #: tailnet y no al bucle local.
+    url_base: str
+
+    @property
+    def telegram_configurado(self) -> bool:
+        return bool(self.telegram_token and self.telegram_chat)
 
 
 #: Rango que Tailscale reparte entre los nodos del tailnet (CGNAT).
@@ -236,7 +250,38 @@ def cargar_configuracion() -> Configuracion:
         directorio_datos=directorio,
         url_ollama=os.environ.get("PERSEO_OLLAMA", "http://127.0.0.1:11434"),
         modelo_router=os.environ.get("PERSEO_MODELO_ROUTER", "qwen3:4b"),
+        telegram_token=_de_entorno_o_fichero("PERSEO_TELEGRAM_TOKEN", directorio / "telegram.txt"),
+        telegram_chat=_de_entorno_o_fichero("PERSEO_TELEGRAM_CHAT", directorio / "telegram_chat.txt"),
+        telegram_api=os.environ.get("PERSEO_TELEGRAM_API", "https://api.telegram.org").rstrip("/"),
+        url_base=os.environ.get("PERSEO_URL_BASE", "").strip() or _url_por_defecto(hosts, puerto),
     )
+
+
+def _de_entorno_o_fichero(variable: str, fichero: Path) -> str:
+    """Lee un secreto de la variable de entorno o, si no está, de un fichero.
+
+    El fichero vive en el directorio de datos, que está fuera de git. Es más
+    cómodo que exportar la variable en cada arranque, y no deja el token del bot
+    en el historial del terminal.
+    """
+    del_entorno = os.environ.get(variable, "").strip()
+    if del_entorno:
+        return del_entorno
+    if fichero.exists():
+        return fichero.read_text(encoding="utf-8").strip()
+    return ""
+
+
+def _url_por_defecto(hosts: tuple[str, ...], puerto: int) -> str:
+    """Dirección para los enlaces que salen de la máquina.
+
+    Se prefiere una interfaz no local: el enlace lo abre el móvil desde el
+    tailnet, y `127.0.0.1` allí apunta al propio teléfono.
+    """
+    for host in hosts:
+        if host not in LOCALES:
+            return f"http://{host}:{puerto}"
+    return f"http://{hosts[0]}:{puerto}"
 
 
 # --------------------------------------------------------------------------- #
