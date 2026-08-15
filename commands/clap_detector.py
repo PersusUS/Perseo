@@ -5,16 +5,18 @@ import subprocess
 import os
 import sys
 import threading
-import speech_recognition as sr
 import pygame
-import json
+
+from palabra_clave import DetectorPalabra
 
 # Inicializamos el mixer de Pygame silenciosamente
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 try:
     pygame.mixer.init()
-except:
-    pass
+except Exception as e:
+    # Sin mixer se pierde la música de apertura, pero el detector funciona igual.
+    # Se avisa porque un fallo silencioso aquí parecía "el mp3 no existe".
+    print(f"[-] No se pudo iniciar el audio de Pygame: {e}")
 
 # --- Configuración del Detector ---
 # Ajusta este THRESHOLD dependiendo de la sensibilidad de tu micrófono
@@ -24,6 +26,18 @@ THRESHOLD = 20.0
 CLAP_MIN_DELAY = 0.25  # Aumentado (antes 0.2) para evitar que el eco cuente como segundo aplauso
 CLAP_MAX_DELAY = 1.3  # Tiempo máximo (segundos) para considerar que son 2 aplausos seguidos
 COOLDOWN = 15.0       # Aumentado el cooldown a 15 segundos para bloquear gatillos fantasma
+
+# 44.1 kHz es lo más compatible en Windows, y THRESHOLD está calibrado a esta
+# frecuencia: la norma que decide si un ruido es un aplauso depende del tamaño de
+# bloque, y el tamaño de bloque depende del samplerate. Cambiar este número
+# descalibra el detector de aplausos aunque no lo parezca. openWakeWord necesita
+# 16 kHz, pero eso se resuelve remuestreando en palabra_clave.py, no aquí.
+SAMPLERATE = 44100
+VOICE_SECONDS = 3.0  # Cuánto se graba tras el doble aplauso para buscar la palabra
+
+# El modelo tarda cerca de un segundo en cargar, y ese segundo no puede caer
+# entre el aplauso y la respuesta: se construye una vez y se precarga al arrancar.
+detector_palabra = DetectorPalabra()
 
 # Variables de estado
 lap_count = 0
@@ -46,7 +60,12 @@ def is_app_running():
         # pero Tauri GUI no hubiera salido aún del todo
         # Es un bloqueo conservador
         return False
-    except Exception:
+    except Exception as e:
+        # Si `tasklist` falla no sabemos si la app está viva. Se contesta que no,
+        # que es lo conservador —la señal de autollamada basta si ya estaba
+        # abierta—, pero se deja dicho: este camino explica un "se abrió una
+        # segunda instancia" que si no parece cosa de magia.
+        print(f"[-] No se pudo consultar la lista de procesos: {e}")
         return False
 
 def run_perseo_and_cleanup(realtime_path):
@@ -68,13 +87,15 @@ def run_perseo_and_cleanup(realtime_path):
                 try:
                     if pygame.mixer.music.get_busy():
                         pygame.mixer.music.fadeout(1000)
-                except:
-                    pass
-                    
+                except Exception as e:
+                    print(f"[-] No se pudo parar la música de apertura: {e}")
+
                 print("[*] Analizando cierre...")
                 break
-        except Exception:
-            pass
+        except Exception as e:
+            # Un fallo suelto de `tasklist` no es motivo para rendirse: quedan
+            # más vueltas del bucle. Se avisa por si falla en todas.
+            print(f"[-] No se pudo comprobar si la app ya arrancó: {e}")
         time.sleep(2)
         if process.poll() is not None:
             break
@@ -87,7 +108,10 @@ def run_perseo_and_cleanup(realtime_path):
                 if "temp-app.exe" not in output.lower():
                     print("\n[*] La ventana de Perseo se ha cerrado. Procediendo con el exterminio residual...")
                     break
-            except Exception:
+            except Exception as e:
+                # Aquí sí se sale del bucle: si no podemos vigilar el cierre, es
+                # mejor limpiar ahora que quedarse mirando para siempre.
+                print(f"[-] Se pierde de vista la ventana de Perseo: {e}")
                 break
             time.sleep(2)
     else:
@@ -97,15 +121,17 @@ def run_perseo_and_cleanup(realtime_path):
     try:
         # Matamos todo el árbol desde el CMD que lanzó NPM
         subprocess.call(f"taskkill /F /T /PID {process.pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except:
-        pass
-        
+    except Exception as e:
+        print(f"[-] No se pudo matar el árbol de procesos de npm: {e}")
+
     try:
         # Matamos forzosamente cualquier cosa ocupando el Puerto 1420 (Vite zombie)
         os.system('FOR /F "tokens=5" %a in (\'netstat -aon ^| findstr :1420\') do taskkill /F /PID %a >nul 2>&1')
         print("[*] Entorno totalmente saneado. Listo para el próximo encendido.")
-    except:
-        pass
+    except Exception as e:
+        # Un Vite zombi en el 1420 hace que el arranque siguiente falle sin decir
+        # por qué. Que se sepa aquí ahorra media hora la próxima vez.
+        print(f"[-] No se pudo liberar el puerto 1420: {e}")
 
 def trigger_action():
     print("\n[!] ¡Activando Comando de Emergencia! Encendiendo...")
@@ -167,8 +193,8 @@ def trigger_action():
             pygame.mixer.music.load(opening_path)
             pygame.mixer.music.set_volume(0.6)
             pygame.mixer.music.play()
-        except:
-            print("[-] No se pudo reproducir la cancion, asegurate de tener un mp3 compatible.")
+        except Exception as e:
+            print(f"[-] No se pudo reproducir la canción, asegúrate de tener un mp3 compatible: {e}")
     else:
         print("[i] (No se encontró el archivo opening.mp3 en la carpeta commands)")
 
@@ -181,7 +207,10 @@ def audio_callback(indata, frames, time_info, status):
             voice_buffer.extend(indata[:, 0])
         return
 
-    # Si detecta errores de desbordamiento en el audio de entrada
+    # Los desbordamientos del audio de entrada se ignoran a propósito, y este es
+    # el único sitio del fichero donde callarse está justificado: esto corre en el
+    # hilo del micrófono, y escribir por consola desde aquí provoca justo el
+    # desbordamiento que se está reportando. No es el H-25.
     if status:
         pass
 
@@ -205,65 +234,39 @@ def audio_callback(indata, frames, time_info, status):
             print(f"~ Posible aplauso detectado ({lap_count}/2) - Volumen: {volume_norm:.1f}")
             
             if lap_count == 2:
-                print("\n[?] ¡Doble aplauso detectado! Tienes 3 segundos. Habla ahora y di 'Perseo'...")
+                print(f"\n[?] ¡Doble aplauso detectado! Tienes {VOICE_SECONDS:.0f} segundos. Habla ahora y di 'Perseo'...")
                 lap_count = 0
                 
-                # 3 segundos a 44100 muestras por segundo (frecuencia de grabación)
                 voice_buffer.clear()
-                voice_frames_needed = int(3 * 44100)
+                voice_frames_needed = int(VOICE_SECONDS * SAMPLERATE)
                 awaiting_voice = True
 
 def process_voice_buffer():
     global voice_buffer, last_trigger_time
-    
-    print("    [~] Subiendo audio a la Inteligencia Artificial (Google Speech)...")
-    
-    import speech_recognition as sr
-    
-    # Transformamos el buffer continuo recogido por el callback en formato estándar
-    import numpy as np
-    audio_array = np.array(voice_buffer, dtype=np.float32)
-    
-    # Sounddevice emite en float32 nativamente. La IA lo necesita en un int16 estandarizado
-    audio_int16 = (audio_array * 32767).astype(np.int16)
-    
-    # Construimos la envoltura AudioData para la librería SpeechRecognition
-    audio_data = sr.AudioData(audio_int16.tobytes(), 44100, 2)
-    recognizer = sr.Recognizer()
-    
+
+    print("    [~] Escuchando la palabra clave (openWakeWord, en local)...")
+
     try:
-        # Intentamos hasta 3 veces por si Google nos corta la conexión (WinError 10054)
-        text = ""
-        for attempt in range(3):
-            try:
-                text = recognizer.recognize_google(audio_data, language="es-ES", show_all=False)
-                break
-            except sr.UnknownValueError:
-                print("    [-] El audio era ininteligible. Secuencia anulada. (Si había ruido, intente otra vez el aplauso)")
-                print("----------------------------------------")
-                print("- Esperando doble aplauso de nuevo...")
-                return
-            except (sr.RequestError, Exception) as e:
-                if attempt == 2:
-                    raise e
-                print(f"    [!] Conexión inestable con Google (Intento {attempt+1}/3... Reintentando...)")
-                time.sleep(1.5)
-                
-        print(f"    [+] Transcripción captada: '{text}'")
-        
-        # Filtro de activación
-        texto=text.lower()
-        if "perseo" in texto:
+        arranque = time.time()
+        dijo_la_palabra, puntuacion = detector_palabra.escuchar(voice_buffer, SAMPLERATE)
+        tardanza = (time.time() - arranque) * 1000
+
+        if dijo_la_palabra:
+            print(f"    [+] Palabra clave reconocida ({puntuacion:.2f}, {tardanza:.0f} ms)")
             last_trigger_time = time.time()
             trigger_action()
         else:
-            print("    [x] Secuencia anulada. La voz no dijo 'Perseo'. Volviendo a escuchar aplausos...")
-            
-    except sr.RequestError as e:
-        print(f"    [!] Error de red persistente. No pudimos comprobar la frase: {e}")
-    except Exception as general_error:
-        print(f"    [!] Error interno general: {general_error}")
-        
+            print(f"    [x] Secuencia anulada: no se dijo la palabra clave "
+                  f"({puntuacion:.2f} por debajo de {detector_palabra.puntuacion_minima:.2f}, "
+                  f"{tardanza:.0f} ms). Volviendo a escuchar aplausos...")
+
+    except Exception as error:
+        # Aquí caben un modelo que no carga, un .onnx corrupto o un fallo del
+        # remuestreo. Cualquiera de los tres deja el detector sin palabra clave,
+        # así que se dice en voz alta en vez de tragárselo: un fallo silencioso
+        # aquí se ve desde fuera como "Perseo ha dejado de responder".
+        print(f"    [!] No se pudo comprobar la palabra clave: {error}")
+
     print("----------------------------------------")
     print("- Esperando doble aplauso de nuevo...")
 
@@ -273,12 +276,26 @@ def start_listening():
     print("========================================")
     print(" Perseo Clap-Listener Iniciado en BG")
     print("========================================")
+
+    # Se carga antes de abrir el micrófono, no la primera vez que aplaudes.
+    try:
+        arranque = time.time()
+        detector_palabra.cargar()
+        print(f"- Palabra clave en local: {detector_palabra.descripcion()} "
+              f"({(time.time() - arranque) * 1000:.0f} ms)")
+    except Exception as e:
+        # No se sale: los aplausos siguen funcionando y el fallo se vuelve a
+        # intentar en cada activación, que es donde se explica con detalle.
+        print(f"[-] No se pudo cargar el modelo de la palabra clave: {e}")
+        print("    El detector sigue en pie, pero no reconocerá la palabra.")
+
     print("- Esperando doble aplauso...")
     print("- Consumo de CPU minimizado.")
-    
+
     try:
-        # Se usa un samplerate bajo (44.1kHz es el mas generico compatible con windows) y captura mono (channels=1)
-        with sd.InputStream(callback=audio_callback, channels=1, samplerate=44100):
+        # Ver el comentario de SAMPLERATE: esta frecuencia y el umbral del aplauso
+        # van juntos. Captura mono (channels=1).
+        with sd.InputStream(callback=audio_callback, channels=1, samplerate=SAMPLERATE):
             while True:
                 # Si el buffer de voz se ha llenado y el modo voz está activo, mandamos a analizar
                 # Lo lanzamos en un TREAD para no bloquear el detector y evitar el Atasco Mágico de Google

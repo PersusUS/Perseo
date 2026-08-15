@@ -1,0 +1,85 @@
+## Configuración para entrenar el modelo de la palabra "Perseo" con openWakeWord.
+##
+## Se usa con el `train.py` que trae el paquete, en una máquina con GPU que no sea
+## este portátil (los 6 GB de la RTX 4050 están comprometidos con el modelo de 4B
+## del router del núcleo). El procedimiento entero está en README.md, en esta misma
+## carpeta; aquí solo están los valores.
+##
+##   python -m openwakeword.train --training_config perseo.yml --generate_clips
+##   python -m openwakeword.train --training_config perseo.yml --augment_clips
+##   python -m openwakeword.train --training_config perseo.yml --train_model
+##
+## Las rutas de abajo son relativas al directorio de trabajo de esa máquina, no a
+## este repositorio.
+
+model_name: "perseo"
+
+# Las tres grafías son a propósito y son el punto delicado de todo esto: el
+# generador de muestras habla inglés (ver README.md, "El problema del idioma").
+# "perseo" leído por una voz inglesa no suena a "Perseo", así que se acompaña de
+# dos grafías que un hablante de inglés pronuncia como queremos. El modelo es
+# binario: se activa con cualquiera de las tres, y lo que aprende es el sonido.
+target_phrase:
+  - "perseo"
+  - "pair say oh"
+  - "per say oh"
+
+# Lo que NO debe despertarlo. Estas salen de mirar qué se dice cerca del
+# micrófono en una casa española y qué comparte fonemas con "Perseo".
+custom_negative_phrases:
+  - "perseguir"
+  - "perseverante"
+  - "persona"
+  - "perverso"
+  - "proceso"
+  - "Perseus"
+  - "percy"
+  - "pero se"
+  - "para eso"
+
+# 20.000 es el mínimo que recomienda openWakeWord; 50.000 da un modelo
+# notablemente mejor y son unas dos horas de GPU en Colab.
+n_samples: 50000
+n_samples_val: 2000
+
+tts_batch_size: 50
+augmentation_batch_size: 16
+
+piper_sample_generator_path: "./piper-sample-generator"
+output_dir: "./modelo_perseo"
+
+rir_paths:
+  - "./mit_rirs"
+
+background_paths:
+  - "./audioset_16k"
+  - "./fma"
+
+background_paths_duplication_rate:
+  - 1
+  - 1
+
+false_positive_validation_data_path: "./validation_set_features.npy"
+
+augmentation_rounds: 1
+
+feature_data_files:
+  "ACAV100M_sample": "./openwakeword_features_ACAV100M_2000_hrs_16bit.npy"
+
+batch_n_per_class:
+  "ACAV100M_sample": 1024
+  "adversarial_negative": 50
+  "positive": 50
+
+model_type: "dnn"
+layer_size: 32
+
+steps: 50000
+
+# El detector solo escucha durante los tres segundos que siguen al doble aplauso,
+# no las veinticuatro horas. Eso permite ser menos severo con los falsos positivos
+# que un activador siempre a la escucha: para disparar de más hace falta que
+# alguien aplauda dos veces primero. Aun así se deja el valor recomendado; si el
+# modelo sale sordo, bajar `max_negative_weight` antes que subir este número.
+max_negative_weight: 1500
+target_false_positives_per_hour: 0.2
