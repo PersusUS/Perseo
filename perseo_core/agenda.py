@@ -122,8 +122,17 @@ def abrir_calendario(cfg: almacen.Configuracion) -> Calendario | None:
     """Devuelve el calendario configurado, o `None` si no hay ninguno."""
     if cfg.agenda_origen == "falso":
         return CalendarioFalso(Path(cfg.agenda_falsa))
+
+    if cfg.agenda_origen == "google":
+        from . import google_api
+
+        try:
+            return google_api.CalendarioGoogle(google_api.credenciales(cfg))
+        except google_api.SinCredenciales as e:
+            logger.error("Google Calendar pedido pero sin credenciales: %s", e)
+            return None
+
     if cfg.agenda_origen:
-        # Aquí entrará `CalendarioGoogle` cuando haya credenciales OAuth.
         logger.error("Calendario %r desconocido; se sigue sin agenda.", cfg.agenda_origen)
     return None
 

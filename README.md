@@ -63,8 +63,8 @@ mañana otra, sin tocar el agente.
 
 | Agente | Qué hace | Detrás hay |
 |---|---|---|
-| `correo` | Tría el entrante: ignorar / interesante / requiere acción / no seguro | Un fichero JSON. Gmail cuando haya credenciales |
-| `agenda` | Avisa de lo que empieza pronto, una vez por evento | Un fichero JSON. Google Calendar cuando haya credenciales |
+| `correo` | Tría el entrante: ignorar / interesante / requiere acción / no seguro | Gmail, o un fichero JSON |
+| `agenda` | Avisa de lo que empieza pronto, una vez por evento | Google Calendar, o un fichero JSON |
 | `memoria` | Busca, lee y **añade** en el vault. No sobrescribe ni borra | Ficheros Markdown |
 | `dev` | Encarga tareas de código a Claude Code | `claude -p`, que entra en la suscripción |
 | `pc` | Abre apps, teclea, ratón. Lista blanca y sin shell | `pyautogui` (opcional) |
@@ -129,7 +129,23 @@ npm install
 npm run tauri dev
 ```
 
-**3. El detector, y el núcleo al arrancar Windows.**
+**3. Gmail y el calendario** (opcional). Hacen falta unas credenciales OAuth, que se
+crean una vez desde la consola de Google Cloud. El fichero va en `perseo_core/datos/`,
+que está fuera de git porque lleva un `refresh_token`:
+
+```json
+{ "client_id": "…", "client_secret": "…", "refresh_token": "…" }
+```
+
+```bash
+python -m perseo_core.google_api        # comprueba que las credenciales valen
+PERSEO_CORREO=gmail PERSEO_AGENDA=google python -m perseo_core
+```
+
+Del correo solo se leen **las cabeceras y el extracto**: el cuerpo no se descarga, porque
+para triar no hace falta y lo que no se baja no se puede filtrar por accidente.
+
+**4. El detector, y el núcleo al arrancar Windows.**
 
 ```bash
 pip install -r commands/requirements.txt
@@ -166,6 +182,7 @@ python perseo_core/verificar_pc.py              # intentos de inyección contra 
 python perseo_core/verificar_dev.py             # `dev`, sin gastar suscripción
 python perseo_core/verificar_web.py             # `web`, sin salir a internet
 python perseo_core/verificar_politica.py        # los niveles y el modo confianza
+python perseo_core/verificar_google.py          # Gmail y Calendar, sin cuenta de Google
 python commands/verificar_palabra_clave.py      # el detector, sin micrófono
 ```
 
