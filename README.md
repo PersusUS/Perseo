@@ -18,8 +18,9 @@ Esquíema Frontend y Motor principal del Asistente (La Cara y Voz de Perseo).
 
 ### 2. `commands/` (Listeners Fantasma de Background)
 Controladores silenciosos y gatilladores persistentes escritos en Python.
-*   **Stack:** Python 3 (PyGame, SoundDevice, SpeechRecognition).
+*   **Stack:** Python 3 (PyGame, SoundDevice, openWakeWord).
 *   **`clap_detector.py`:** Un recolector de ondas a $44.1$ kHz que consume el 0.01% de tu CPU. Detecta dos aplausos e inicia una confirmación por IA *(espera oír tu voz diciendo "Perseo" antes de encender la aplicación RealTime).*
+*   **`palabra_clave.py`:** La segunda mitad de esa confirmación, y todo en local: openWakeWord decide sobre la CPU en menos de 200 ms. Antes el audio se subía a Google Speech. Ver [`commands/modelos/README.md`](commands/modelos/README.md) para entrenar el modelo de la palabra.
 *   **`manage_startup.py`:** Editor del registro (HKCU) de Windows para que el `clap_detector` nazca en segundo plano invisiblemente cada vez que enciendas tu PC.
 *   **`loading_splash.py`:** UI de carga en tkinter minimalista mientras el `npm run tauri dev` se está despertando en el background. 
 

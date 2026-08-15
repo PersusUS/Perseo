@@ -1,5 +1,7 @@
 sounddevice
 numpy
-SpeechRecognition
+scipy
+openwakeword>=0.6.0
+onnxruntime
 pygame
 pyautogui
