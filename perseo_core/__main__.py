@@ -20,7 +20,7 @@ import sys
 # tapa al otro. El sintoma es un AttributeError en `web.AppRunner` al arrancar.
 from aiohttp import web as servidor
 
-from . import agenda, almacen, api, correo, dev, memoria, pc, web
+from . import agenda, almacen, api, correo, dev, memoria, pc, politica, web
 from .agentes import Router, Trabajador
 from .bus import Bus
 from .disparadores import Planificador
@@ -62,6 +62,10 @@ async def arrancar() -> None:
 
     almacen.abrir(cfg)
     almacen.recuperar_huerfanos()
+
+    # La política de §7 se aplica en el trabajador, así que tiene que estar en pie
+    # antes de que ninguno reclame nada.
+    politica.iniciar(cfg.directorio_datos)
 
     bus = Bus()
     router = Router(cfg)
