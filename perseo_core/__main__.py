@@ -16,18 +16,20 @@ import logging
 import signal
 import sys
 
-from aiohttp import web
+# Con alias: este paquete tiene su propio `web` —el agente— y sin el alias uno
+# tapa al otro. El sintoma es un AttributeError en `web.AppRunner` al arrancar.
+from aiohttp import web as servidor
 
-from . import agenda, almacen, api, correo, dev, memoria, pc
+from . import agenda, almacen, api, correo, dev, memoria, pc, web
 from .agentes import Router, Trabajador
 from .bus import Bus
 from .disparadores import Planificador
 from .telegram import Telegram
 
-# Estos cinco se importan por sus efectos: al cargarse registran sus agentes —y
+# Estos seis se importan por sus efectos: al cargarse registran sus agentes —y
 # `correo` y `agenda`, además, sus disparadores—. Sin el import el registro está
 # vacío y el núcleo arranca sin agentes sin decir por qué.
-_ = (agenda, correo, dev, memoria, pc)
+_ = (agenda, correo, dev, memoria, pc, web)
 
 logger = logging.getLogger("perseo_core")
 
@@ -77,6 +79,7 @@ async def arrancar() -> None:
     correo.iniciar(cfg)
     memoria.iniciar(cfg)
     dev.iniciar(cfg)
+    web.iniciar(cfg)
 
     # Sin token configurado se retira sola tras avisar: es un canal más.
     telegram = Telegram(cfg, bus)
@@ -86,11 +89,11 @@ async def arrancar() -> None:
     planificador = Planificador(cfg, bus)
     tarea_disparadores = asyncio.create_task(planificador.ejecutar(), name="disparadores")
 
-    runner = web.AppRunner(api.crear_app(cfg, bus, router))
+    runner = servidor.AppRunner(api.crear_app(cfg, bus, router))
     await runner.setup()
     # Una lista de hosts, nunca `0.0.0.0`: se abren exactamente las interfaces
     # enumeradas y ninguna más.
-    sitio = web.TCPSite(runner, list(cfg.hosts), cfg.puerto)
+    sitio = servidor.TCPSite(runner, list(cfg.hosts), cfg.puerto)
     await sitio.start()
     _avisar_de_la_escucha(cfg)
 
@@ -124,6 +127,7 @@ async def arrancar() -> None:
         await correo.detener()
         memoria.detener()
         dev.detener()
+        await web.detener()
         almacen.cerrar()
         logger.info("Adiós.")
 
