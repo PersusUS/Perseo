@@ -110,6 +110,18 @@ irreversible a reversible mientras estás delante, y caduca solo.
 
 ## Cómo ponerlo en marcha
 
+**0. Encenderlo todo, cuando ya está instalado.** Un comando, desde cualquier
+terminal:
+
+```bash
+perseo
+```
+
+Arranca el núcleo (con su vigilante), el detector de aplausos y la app de voz —
+saltándose lo que ya esté en pie. `perseo estado` dice qué hay vivo sin tocar
+nada, incluidas las dos cosas que no arrancan solas (Ollama y Obsidian), y
+`perseo parar` cierra el núcleo y la app. Vive en `commands/perseo.py`.
+
 **1. El núcleo.** Es lo primero: sin él, la app de voz se queda sin memoria y sin manos.
 
 ```bash
