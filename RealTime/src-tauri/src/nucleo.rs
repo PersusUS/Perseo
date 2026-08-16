@@ -32,7 +32,8 @@ const ESPERA_MAXIMA: Duration = Duration::from_secs(30);
 /// Cada cuanto se pregunta por el estado del trabajo.
 const SONDEO: Duration = Duration::from_millis(250);
 
-fn base_url() -> String {
+/// Donde vive el nucleo. Lo usa tambien `panel.rs`, que abre su interfaz.
+pub(crate) fn base_url() -> String {
     std::env::var("PERSEO_CORE_URL").unwrap_or_else(|_| "http://127.0.0.1:8787".to_string())
 }
 

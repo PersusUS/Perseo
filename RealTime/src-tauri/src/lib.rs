@@ -2,6 +2,7 @@ mod autollamada;
 mod bandeja;
 mod commands;
 mod nucleo;
+mod panel;
 mod presencia;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -37,7 +38,8 @@ pub fn run() {
             commands::guardar_ajuste,
             commands::consumir_autollamada,
             nucleo::ejecutar_herramienta,
-            nucleo::precalentar_herramientas
+            nucleo::precalentar_herramientas,
+            panel::abrir_panel
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

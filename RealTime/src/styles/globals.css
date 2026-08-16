@@ -352,6 +352,10 @@ html, body, #root {
 
 .settings-btn:hover svg { stroke: var(--fg); }
 
+/* El panel va al lado de los ajustes, no dentro: se abre a menudo y esconderlo
+   en un menú lo convertiría en algo que nadie usa. */
+.settings-btn.panel-btn { right: 68px; }
+
 /* ═══════════════════════════════════════
    PREVIEW PIPs (Camera & Screen)
    ═══════════════════════════════════════ */

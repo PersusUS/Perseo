@@ -23,9 +23,13 @@ const VENTANA: &str = "main";
 /// Instala el icono y su menu. Se llama una sola vez, al arrancar.
 pub fn instalar(app: &AppHandle) -> tauri::Result<()> {
     let mostrar = MenuItem::with_id(app, "mostrar", "Mostrar Perseo", true, None::<&str>)?;
+    // El panel esta aqui y no solo dentro de la ventana: sirve para mirar la
+    // cola o el estado sin abrir la llamada, que es como se usa la mayoria de
+    // las veces.
+    let panel = MenuItem::with_id(app, "panel", "Panel", true, None::<&str>)?;
     let ocultar = MenuItem::with_id(app, "ocultar", "Ocultar", true, None::<&str>)?;
     let salir = MenuItem::with_id(app, "salir", "Salir", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&mostrar, &ocultar, &salir])?;
+    let menu = Menu::with_items(app, &[&mostrar, &panel, &ocultar, &salir])?;
 
     TrayIconBuilder::with_id("perseo")
         .icon(app.default_window_icon().cloned().ok_or_else(|| {
@@ -38,6 +42,13 @@ pub fn instalar(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, evento| match evento.id.as_ref() {
             "mostrar" => mostrar_ventana(app),
+            "panel" => {
+                if let Err(e) = crate::panel::abrir_panel(app.clone()) {
+                    // Sin nucleo no hay panel. Se anota y se sigue: la bandeja
+                    // no puede caerse por esto.
+                    eprintln!("[bandeja] No se pudo abrir el panel: {e}");
+                }
+            }
             "ocultar" => {
                 if let Some(ventana) = app.get_webview_window(VENTANA) {
                     let _ = ventana.hide();

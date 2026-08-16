@@ -246,6 +246,17 @@
   .cifra { display: flex; flex-direction: column; gap: 2px; }
   .cifra b { font-size: 22px; font-weight: 200; }
 
+  /* Filtros de la cola. Van arriba y siempre visibles: si hay que desplegarlos,
+     no se usan, y el caso que importa —"¿qué me ha pedido confirmación?"— es
+     justo el que se busca con prisa. */
+  .filtros { display: flex; flex-wrap: wrap; gap: 6px; }
+  .filtro {
+    background: none; border: 1px solid var(--borde); color: var(--apagado);
+    border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 11px;
+    text-transform: uppercase; letter-spacing: .08em; cursor: pointer;
+  }
+  .filtro[aria-pressed="true"] { color: var(--fondo); background: var(--texto); border-color: var(--texto); }
+
   .fichas { display: flex; flex-wrap: wrap; gap: 8px; }
   .ficha {
     border: 1px solid var(--borde); border-radius: 999px;
@@ -627,17 +638,57 @@ async function cargarCola() {
   } catch { return; }
 
   ultimosTrabajos = datos.trabajos;
-
-  cola.replaceChildren();
-  if (!datos.trabajos.length) {
-    cola.appendChild(crear("div", "nota", "No hay nada en la cola."));
-  } else {
-    for (const t of datos.trabajos) cola.appendChild(pintarTrabajo(t));
-  }
+  pintarCola();
 
   const abiertos = datos.trabajos.filter((t) => ESTADOS_ABIERTOS.has(t.estado)).length;
   $("contador").textContent = abiertos ? `(${abiertos})` : "";
   pintarPestanaCorreo();
+}
+
+// Qué se enseña de la cola. `todo` no es un filtro: es no filtrar.
+// El filtro se aplica **aquí y no en la petición** para que cambiarlo sea
+// instantáneo: los cincuenta últimos ya están en memoria, y pedirlos otra vez
+// por el túnel de Tailscale se nota en el móvil.
+const FILTROS = {
+  todo: () => true,
+  abiertos: (t) => ESTADOS_ABIERTOS.has(t.estado),
+  esperando: (t) => t.estado === "esperando",
+  mios: (t) => t.origen !== "disparador",
+  solos: (t) => t.origen === "disparador",
+  fallidos: (t) => t.estado === "fallido",
+};
+
+const NOMBRES_FILTRO = {
+  todo: "todo",
+  abiertos: "abiertos",
+  esperando: "esperan un sí",
+  mios: "los pedí yo",
+  solos: "salieron solos",
+  fallidos: "fallidos",
+};
+
+let filtroCola = "todo";
+
+function pintarCola() {
+  cola.replaceChildren();
+
+  const barra = crear("div", "filtros");
+  for (const clave of Object.keys(FILTROS)) {
+    const cuantos = ultimosTrabajos.filter(FILTROS[clave]).length;
+    const boton = crear("button", "filtro", `${NOMBRES_FILTRO[clave]} ${cuantos}`);
+    boton.setAttribute("aria-pressed", String(clave === filtroCola));
+    boton.addEventListener("click", () => { filtroCola = clave; pintarCola(); });
+    barra.appendChild(boton);
+  }
+  cola.appendChild(barra);
+
+  const visibles = ultimosTrabajos.filter(FILTROS[filtroCola]);
+  if (!visibles.length) {
+    cola.appendChild(crear("div", "nota",
+      filtroCola === "todo" ? "No hay nada en la cola." : "Nada con ese filtro."));
+    return;
+  }
+  for (const t of visibles) cola.appendChild(pintarTrabajo(t));
 }
 
 // --------------------------------------------------------------------- //
