@@ -157,7 +157,17 @@ def comprobar_de_punta_a_punta(raiz: Path) -> None:
     )
     resultado = nucleo.esperar_estado(int(busqueda["id"]), ("hecho", "fallido"), intentos=60)
     notas = (resultado.get("resultado") or {}).get("notas") or []
-    comprobar("Buscar por HTTP la encuentra", len(notas) == 1, f"{len(notas)} nota(s)")
+    # Se comprueba que **está y es la primera**, no que sea la única. Desde el
+    # 2026-08-16 la búsqueda también prueba palabra por palabra —"Perseo estuvo"
+    # no aparece literal en ninguna parte y así se encontraba nada—, así que
+    # ahora devuelve de más a propósito. Lo que importa es el orden: exigir un
+    # solo resultado sería exigir que no busque bien.
+    rutas = [str(n.get("ruta", "")) for n in notas]
+    comprobar(
+        "Buscar por HTTP la encuentra, y la primera",
+        bool(rutas) and rutas[0].endswith("Encargo de prueba.md"),
+        f"{len(notas)} nota(s): {rutas[:3]}",
+    )
 
     # 9. Una accion que no existe ni siquiera llega al agente: la politica de §7
     #    la para antes, porque lo que no esta clasificado es irreversible. Y si

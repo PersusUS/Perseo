@@ -44,6 +44,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import unicodedata
 import urllib.parse
 from dataclasses import asdict, dataclass
@@ -539,6 +540,123 @@ async def detener() -> None:
     _vault = None
 
 
+
+#: Palabras que no distinguen nada. Se caen al trocear una consulta larga: buscar
+#: "de" en un vault devuelve el vault entero.
+_VACIAS = frozenset(
+    """a al algo ante como con contra cual cuando de del desde donde dos e el ella
+    ellos en entre era eres es esa ese eso esta este esto ha hay la las le les lo
+    los mas me mi mis muy no nos o os para pero por que se sea segun si sin sobre
+    son su sus te tiene todo tu tus un una uno unos y ya""".split()
+)
+
+
+#: Cuántas palabras se prueban como mucho. Cada una es una petición al vault, y
+#: una frase larga no mejora por buscar su décima palabra.
+TOPE_TERMINOS = 4
+
+#: Cuántos resultados se traen para poder ordenarlos, antes de quedarse con los
+#: que se enseñan. Es local: el vault ya los tiene todos.
+TOPE_CANDIDATAS = 200
+
+
+def _terminos(consulta: str) -> list[str]:
+    """Las palabras de una consulta que valen la pena, sin tocar las mayúsculas.
+
+    Se conserva el caso original: la búsqueda la hace el vault y no es asunto de
+    aquí decidir si distingue mayúsculas.
+    """
+    palabras = [p.strip(".,;:¿?¡!()[]\"'«»") for p in consulta.split()]
+    utiles = [p for p in palabras if len(p) >= 3 and p.lower() not in _VACIAS]
+    # Sin duplicados y estable, que `sorted` sobre un set baila entre ejecuciones.
+    vistas: list[str] = []
+    for p in utiles:
+        if p not in vistas:
+            vistas.append(p)
+    return sorted(vistas, key=len, reverse=True)
+
+
+def _prioridad(termino: str, nota: Nota) -> int:
+    """Cómo de bien encaja una nota con lo que se buscó. Menos es mejor.
+
+    0 — el término **es** una palabra del nombre o de la ruta. Es lo que uno
+        quiere decir al preguntar por "el proyecto MAGI": la nota que se llama
+        así, no las cuatro que lo mencionan.
+    1 — el término aparece dentro de otra palabra del nombre. Cuenta, pero poco:
+        buscando `MAGI`, `MagicOCR.md` encajaba aquí y se colaba la primera.
+    2 — solo está en el contenido.
+    """
+    nombre = f"{nota.titulo} {nota.ruta}".lower()
+    buscado = termino.lower()
+    if re.search(rf"(?<![0-9a-záéíóúñü]){re.escape(buscado)}(?![0-9a-záéíóúñü])", nombre):
+        return 0
+    return 1 if buscado in nombre else 2
+
+
+async def buscar_con_reintentos(
+    vault: "Vault", consulta: str, limite: int
+) -> tuple[list[Nota], str]:
+    """Busca en el vault preguntando como se habla, y ordena por lo que importa.
+
+    Dos cosas que se descubrieron mirando el vault de verdad el 2026-08-16, y
+    que juntas hacían que la memoria pareciera vacía teniendo la nota delante:
+
+    1. **La búsqueda del plugin no ordena por lo que uno espera.** Buscar `MAGI`
+       no devolvía `02_PROYECTOS/MAGI/MAGI.md` entre los cinco primeros: salían
+       una conversación y un documento que lo mencionaban de pasada. Como el
+       corte es por número de resultados, la nota buena se quedaba fuera antes de
+       que nadie la viera.
+    2. **Una frase entera devuelve ruido.** "qué pone sobre el proyecto MAGI"
+       sacaba PersusWeb y MagicOCR: el plugin encuentra algo para casi cualquier
+       cosa, así que "no hay resultados" no es la señal de que la consulta era
+       mala.
+
+    Así que se hacen tres cosas aquí, y ninguna en el prompt —porque la voz, el
+    panel del PC y el móvil preguntan igual de mal—:
+
+    - se pide **más de lo que se va a enseñar**, para tener qué ordenar;
+    - se busca también **palabra por palabra**, y manda la que menos devuelve,
+      que es la que más distingue;
+    - y **una nota cuyo nombre o ruta contiene lo buscado va primera**, que es
+      lo que uno quiere decir cuando pregunta por "el proyecto MAGI".
+
+    Devuelve las notas y **qué se buscó de verdad**, para poder decirlo en vez de
+    dar a entender que se encontró justo lo que se pidió.
+    """
+    # Se pide **mucho más de lo que se va a enseñar**, y este número es medio
+    # arreglo. El plugin no acota: devuelve todo lo que encuentra y el corte lo
+    # hacíamos aquí. Buscando `MAGI` en el vault real, la nota
+    # `02_PROYECTOS/MAGI/MAGI.md` salía en la **posición 19 de 23**, así que
+    # pedir diez la tiraba antes de que nadie pudiera ordenarla.
+    ancho = TOPE_CANDIDATAS
+
+    # Cada fuente es una búsqueda: la frase entera y luego cada palabra suelta.
+    fuentes: list[tuple[str, list[Nota]]] = [(consulta, await vault.buscar(consulta, ancho))]
+    for termino in _terminos(consulta)[:TOPE_TERMINOS]:
+        if termino != consulta:
+            fuentes.append((termino, await vault.buscar(termino, ancho)))
+
+    # **Manda la que menos devuelve.** Es la que más distingue: preguntando "qué
+    # pone sobre el proyecto MAGI", `proyecto` sale en dos plantillas cuyo nombre
+    # lo lleva y `MAGI` en la nota que se busca. Por longitud o por orden de
+    # aparición ganaba `proyecto`, y la respuesta era sobre una plantilla.
+    # La frase entera se queda la última: encuentra de todo y no distingue nada.
+    palabras = sorted(fuentes[1:], key=lambda f: len(f[1]))
+    ordenadas = palabras + [fuentes[0]] if palabras else fuentes
+
+    mejores: dict[str, tuple[int, int, int, Nota]] = {}
+    for rango, (termino, halladas) in enumerate(ordenadas):
+        for llegada, nota in enumerate(halladas):
+            clave = (_prioridad(termino, nota), rango, llegada)
+            anterior = mejores.get(nota.ruta)
+            if anterior is None or clave < anterior[:3]:
+                mejores[nota.ruta] = (*clave, nota)
+
+    usados = [termino for termino, halladas in ordenadas if halladas][:1] or [consulta]
+    notas = [c[3] for c in sorted(mejores.values(), key=lambda c: c[:3])][:limite]
+    return notas, ", ".join(usados)
+
+
 @registrar("memoria")
 async def _memoria(trabajo: dict[str, Any]) -> dict[str, Any]:
     """Busca, lee o anota en el vault.
@@ -556,12 +674,16 @@ async def _memoria(trabajo: dict[str, Any]) -> dict[str, Any]:
     if accion == "buscar":
         consulta = str(peticion.get("texto", "")).strip()
         limite = max(1, min(int(peticion.get("limite", 10)), 50))
-        notas = await _vault.buscar(consulta, limite)
+        notas, buscado = await buscar_con_reintentos(_vault, consulta, limite)
         return {
             "accion": accion,
             "consulta": consulta,
+            # Qué se buscó de verdad. Si la frase entera no dio nada y se
+            # troceó, quien lea esto tiene que poder decirlo en vez de dar a
+            # entender que encontró justo lo que le pidieron.
+            "buscado": buscado,
             "notas": [n.a_dict() for n in notas],
-            "titular": f"{len(notas)} nota(s) sobre «{consulta}»" if notas else None,
+            "titular": f"{len(notas)} nota(s) sobre «{buscado}»" if notas else None,
         }
 
     if accion == "conversacion":
