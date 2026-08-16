@@ -96,6 +96,15 @@ pub async fn panel_encolar(
     .await
 }
 
+/// Escribirle a Perseo por texto. El router decide si contesta o encola.
+///
+/// Es la misma puerta que usa el movil, no un atajo del escritorio: por eso va
+/// a `/mensaje` y no a `/trabajos`. Hablar y escribir acaban en la misma cola.
+#[tauri::command]
+pub async fn panel_mensaje(app: AppHandle, texto: String) -> Result<Value, String> {
+    mandar(&app, "/mensaje", json!({ "texto": texto, "origen": "texto" })).await
+}
+
 /// Enciende o apaga el modo confianza.
 #[tauri::command]
 pub async fn panel_confianza(app: AppHandle, minutos: Option<f64>) -> Result<Value, String> {

@@ -24,7 +24,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-type Pestana = 'cola' | 'correo' | 'memoria' | 'estado';
+type Pestana = 'chat' | 'cola' | 'correo' | 'memoria' | 'estado';
 
 type Trabajo = {
   id: number;
@@ -224,7 +224,12 @@ const TarjetaTrabajo: React.FC<{ t: Trabajo; onResponder: (id: number, d: string
 };
 
 export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
-  const [pestana, setPestana] = useState<Pestana>('cola');
+  const [pestana, setPestana] = useState<Pestana>('chat');
+  // El chat escrito, que es la otra mitad de hablar. Va por `/mensaje`, la
+  // misma puerta que el móvil: el router decide si contesta o encola, y lo que
+  // encola aparece en la cola de al lado.
+  const [dialogo, setDialogo] = useState<{ mio: boolean; texto: string }[]>([]);
+  const [escrito, setEscrito] = useState('');
   const [trabajos, setTrabajos] = useState<Trabajo[]>([]);
   const [estado, setEstado] = useState<Estado | null>(null);
   const [fallo, setFallo] = useState<string>('');
@@ -348,7 +353,7 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
       </header>
 
       <nav className="pnl-pestanas">
-        {(['cola', 'correo', 'memoria', 'estado'] as Pestana[]).map(p => (
+        {(['chat', 'cola', 'correo', 'memoria', 'estado'] as Pestana[]).map(p => (
           <button
             key={p}
             aria-selected={pestana === p}
@@ -364,6 +369,54 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
       {fallo && <div className="pnl-nota">{fallo}</div>}
 
       <div className="pnl-cuerpo-scroll">
+        {pestana === 'chat' && (
+          <>
+            {dialogo.length === 0 && (
+              <div className="pnl-nota">
+                Escríbele. Lo que necesite trabajo aparecerá en la cola; lo trivial lo
+                contesta aquí mismo.
+              </div>
+            )}
+            {dialogo.map((m, i) => (
+              <div key={i} className={`pnl-burbuja ${m.mio ? 'mia' : 'suya'}`}>{m.texto}</div>
+            ))}
+            <form
+              className="pnl-form"
+              onSubmit={async e => {
+                e.preventDefault();
+                const texto = escrito.trim();
+                if (!texto || trabajando.current) return;
+                trabajando.current = true;
+                setEscrito('');
+                setDialogo(d => [...d, { mio: true, texto }]);
+                try {
+                  const r: any = await invoke('panel_mensaje', { texto });
+                  setDialogo(d => [...d, {
+                    mio: false,
+                    // Si encola no se inventa una respuesta: se dice que hay
+                    // trabajo y la cola es donde se sigue.
+                    texto: r.destino === 'responder'
+                      ? (r.respuesta || '(sin respuesta)')
+                      : `Encargado — trabajo #${r.trabajo.id} (${r.trabajo.agente})`,
+                  }]);
+                  cargarTrabajos();
+                } catch (err: any) {
+                  setDialogo(d => [...d, { mio: false, texto: 'No se pudo enviar: ' + err }]);
+                } finally {
+                  trabajando.current = false;
+                }
+              }}
+            >
+              <input
+                value={escrito}
+                onChange={e => setEscrito(e.target.value)}
+                placeholder="Escribe a Perseo…"
+              />
+              <button type="submit">Enviar</button>
+            </form>
+          </>
+        )}
+
         {pestana === 'cola' && (
           <>
             <div className="pnl-filtros">

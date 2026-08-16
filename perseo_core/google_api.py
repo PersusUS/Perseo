@@ -27,11 +27,13 @@ Ver bitacora/06_HANDOFF.md §7, Fase D.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import time
 import urllib.parse
 from dataclasses import dataclass
+from email.message import EmailMessage
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -161,6 +163,35 @@ class Sesion:
                 return datos
         raise RuntimeError("Google siguió rechazando el testigo tras renovarlo.")
 
+    async def mandar(self, url: str, cuerpo: dict[str, Any]) -> dict[str, Any]:
+        """POST autenticado. Mismo trato del 401 que `pedir`.
+
+        Existe por una sola cosa: crear borradores. Todo lo demás que hace este
+        módulo lee, y eso no es casualidad — el testigo pide `gmail.compose`, que
+        escribe borradores y **no** envía.
+        """
+        if not self._testigo or time.monotonic() >= self._caduca:
+            await self._refrescar()
+
+        for intento in (1, 2):
+            cabeceras = {"Authorization": f"Bearer {self._testigo}"}
+            async with self._http.post(url, json=cuerpo, headers=cabeceras) as respuesta:
+                if respuesta.status == 401 and intento == 1:
+                    await self._refrescar()
+                    continue
+                datos = await respuesta.json()
+                if respuesta.status not in (200, 201):
+                    mensaje = (datos.get("error") or {}).get("message", datos)
+                    if respuesta.status == 403:
+                        raise RuntimeError(
+                            f"Google respondió 403: {mensaje}. Si habla de permisos, el "
+                            "testigo es de antes de gmail.compose: vuelve a ejecutar "
+                            "`python -m perseo_core.autorizar_google`."
+                        )
+                    raise RuntimeError(f"Google respondió {respuesta.status}: {mensaje}")
+                return datos
+        raise RuntimeError("Google siguió rechazando el testigo tras renovarlo.")
+
 
 def _cabecera(cabeceras: list[dict[str, Any]], nombre: str) -> str:
     for cabecera in cabeceras:
@@ -206,6 +237,9 @@ class BuzonGmail:
             identificador = str(referencia.get("id", ""))
             if not identificador:
                 continue
+            # El listado ya trae el hilo: pedirlo aparte seria una peticion mas
+            # por correo para un dato que ya esta en la mano.
+            hilo = str(referencia.get("threadId", ""))
             detalle = await sesion.pedir(
                 f"{URL_GMAIL()}/gmail/v1/users/me/messages/{identificador}",
                 # `metadata` y tres cabeceras: el cuerpo no se descarga.
@@ -222,9 +256,53 @@ class BuzonGmail:
                     asunto=_cabecera(cabeceras, "Subject"),
                     extracto=str(detalle.get("snippet", "")),
                     fecha=_cabecera(cabeceras, "Date"),
+                    hilo=hilo,
                 )
             )
         return mensajes
+
+    async def crear_borrador(
+        self,
+        para: str,
+        asunto: str,
+        cuerpo: str,
+        hilo: str = "",
+    ) -> dict[str, Any]:
+        """Deja un borrador en Gmail. **No lo envía, y no puede.**
+
+        El testigo pide `gmail.compose`, que es el ámbito más pequeño capaz de
+        escribir un borrador. No incluye `send`, así que aunque alguien —el
+        modelo, un correo con instrucciones dentro, un fallo de este código—
+        intentara enviarlo, Google responde 403. La garantía no está en el
+        cuidado de quien programa: está en el permiso que se concedió.
+
+        Si se pasa `hilo`, el borrador cuelga de esa conversación y le llega al
+        destinatario como una respuesta y no como un correo suelto.
+        """
+        mensaje = EmailMessage()
+        mensaje["To"] = para
+        mensaje["Subject"] = asunto
+        # Nada de `From`: lo pone Gmail con la cuenta del testigo. Escribirlo
+        # aquí solo sirve para equivocarse de dirección.
+        mensaje.set_content(cuerpo)
+
+        # base64url **sin relleno de más y sin saltos de línea**: es lo que pide
+        # la API, y con el base64 normal contesta un 400 que habla de "Invalid
+        # value" sin decir de qué campo.
+        crudo = base64.urlsafe_b64encode(mensaje.as_bytes()).decode("ascii")
+
+        peticion: dict[str, Any] = {"message": {"raw": crudo}}
+        if hilo:
+            peticion["message"]["threadId"] = hilo
+
+        sesion = await self._abrir()
+        respuesta = await sesion.mandar(
+            f"{URL_GMAIL()}/gmail/v1/users/me/drafts", peticion
+        )
+        return {
+            "id": str(respuesta.get("id", "")),
+            "mensaje": str((respuesta.get("message") or {}).get("id", "")),
+        }
 
 
 class CalendarioGoogle:

@@ -12,11 +12,21 @@ dirección, lo canjea por un `refresh_token` y lo deja escrito en
 `perseo_core/datos/google.json`, junto al `client_id` y el `client_secret` que ya
 estaban ahí.
 
-**Solo pide lectura.** Los dos ámbitos son `gmail.readonly` y
-`calendar.readonly`: con este testigo no se puede mandar un correo ni mover un
-evento aunque alguien lo intente. Mandar correo es de la política de §7 y de otro
-día, y cuando llegue pedirá su propio consentimiento — que es exactamente la
-propiedad que se quiere.
+**Lee, y como mucho deja un borrador.** Los ámbitos son `gmail.readonly`,
+`calendar.readonly` y —desde el 2026-08-16— `gmail.compose`.
+
+`gmail.compose` es el ámbito más pequeño que permite escribir un borrador, y la
+elección es deliberada: **no incluye enviar**. Se descartaron `gmail.send`, que
+manda correo de verdad, y `gmail.modify`, que además puede borrar. Con este
+testigo Perseo puede redactar y dejarlo en la carpeta de borradores, y darle a
+enviar sigue siendo un gesto tuyo desde el móvil.
+
+Consecuencia de tocar esta lista: **hay que volver a pasar por la pantalla de
+consentimiento**. Un `refresh_token` lleva grabados los ámbitos con los que se
+concedió, así que el que ya existe seguiría siendo de solo lectura y el borrador
+fallaría con un 403 que habla de permisos insuficientes. Se vuelve a ejecutar
+este ayudante y ya está — `prompt=consent` hace que Google entregue un
+`refresh_token` nuevo.
 
 **El redirect va al bucle local, no a un dominio.** Google devuelve el código
 como parámetro de una URL, así que esa URL tiene que llegar a algún sitio: un
@@ -43,10 +53,11 @@ import aiohttp
 
 from . import almacen, google_api
 
-#: Solo lectura, y de las dos cosas que se leen. Ver la cabecera.
+#: Lo que se pide. Ver la cabecera: `compose` escribe borradores y **no** envía.
 AMBITOS = (
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/gmail.compose",
 )
 
 #: Dónde vive la pantalla de consentimiento. Se puede apuntar a otro sitio para

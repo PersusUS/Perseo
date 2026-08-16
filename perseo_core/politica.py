@@ -67,6 +67,15 @@ TABLA: dict[str, str] = {
     "memoria.anotar": REVERSIBLE,
     "memoria.conversacion": REVERSIBLE,
     "dev": REVERSIBLE,
+    # Un borrador de correo es reversible **porque no se puede enviar**: el
+    # testigo pide `gmail.compose`, que escribe borradores y no incluye `send`.
+    # Lo que queda es un texto en la carpeta de borradores, visible y borrable,
+    # y darle a enviar sigue siendo un gesto de una persona.
+    #
+    # Esta línea tiene que estar. `correo` entero está como LIBRE por el triaje,
+    # así que sin una entrada propia, redactar heredaría "libre" y escribiría en
+    # la cuenta sin que constara en ninguna parte.
+    "correo.redactar": REVERSIBLE,
     # Del PC, lo que solo abre cosas es libre; teclear y los atajos van a ciegas
     # sobre la ventana que tenga el foco, y eso puede ser cualquier cosa.
     "pc.abrir_app": LIBRE,

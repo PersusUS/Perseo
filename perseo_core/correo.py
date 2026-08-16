@@ -56,6 +56,9 @@ class Mensaje:
     asunto: str
     extracto: str = ""
     fecha: str = ""
+    #: El hilo al que pertenece, cuando el buzón lo sabe. Lo usa el borrador para
+    #: que la respuesta cuelgue de la conversación en vez de nacer suelta.
+    hilo: str = ""
 
     def a_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -68,6 +71,7 @@ class Mensaje:
             asunto=str(crudo.get("asunto", "")),
             extracto=str(crudo.get("extracto", "")),
             fecha=str(crudo.get("fecha", "")),
+            hilo=str(crudo.get("hilo", "")),
         )
 
 
@@ -141,16 +145,22 @@ def abrir_buzon(cfg: almacen.Configuracion) -> Buzon | None:
 #: tiene sentido montarla y tirarla en cada correo. Lo pone en pie el arranque.
 _triaje: triaje.Triaje | None = None
 
+#: La configuración, que el agente necesita para abrir el buzón por su cuenta.
+#: Hasta ahora solo la tenía el disparador, que recibe su contexto en cada vuelta.
+_cfg: almacen.Configuracion | None = None
+
 
 def iniciar(cfg: almacen.Configuracion) -> triaje.Triaje:
-    global _triaje
+    global _triaje, _cfg
+    _cfg = cfg
     if _triaje is None:
         _triaje = triaje.Triaje(cfg)
     return _triaje
 
 
 async def detener() -> None:
-    global _triaje
+    global _triaje, _cfg
+    _cfg = None
     if _triaje is not None:
         await _triaje.cerrar()
         _triaje = None
@@ -158,12 +168,21 @@ async def detener() -> None:
 
 @registrar("correo")
 async def _correo(trabajo: dict[str, Any]) -> dict[str, Any]:
-    """Tría un lote de mensajes con el modelo local.
+    """Tría un lote de mensajes, o deja un borrador de respuesta.
 
-    Devuelve el recuento y una línea por mensaje. El detalle se queda aquí, en la
-    cola, que se lee por el tailnet; lo que sale por Telegram es `titular()`.
+    Dos acciones. `triar` es la de siempre: devuelve el recuento y una línea por
+    mensaje, el detalle se queda en la cola —que se lee por el tailnet— y lo que
+    sale por Telegram es `titular()`.
+
+    `redactar` escribe un borrador en Gmail y **no lo envía**. Enviar no está, y
+    no por olvido: el testigo pide `gmail.compose`, que no incluye `send`, así
+    que darle a enviar sigue siendo un gesto de una persona. Un correo enviado
+    que no querías no se deshace.
     """
     peticion = trabajo.get("peticion") or {}
+    if str(peticion.get("accion", "triar")).strip().lower() == "redactar":
+        return await _redactar(peticion)
+
     crudos = peticion.get("mensajes") or []
     mensajes = [Mensaje.desde_dict(m) for m in crudos if isinstance(m, dict)]
     if not mensajes:
@@ -201,6 +220,41 @@ async def _correo(trabajo: dict[str, Any]) -> dict[str, Any]:
     # El titular viaja por Telegram y los clasificados no. Se compone aquí, que
     # es donde se sabe qué es contenido del correo y qué es un recuento.
     return {"recuento": recuento, "clasificados": clasificados, "titular": titular(recuento)}
+
+
+async def _redactar(peticion: dict[str, Any]) -> dict[str, Any]:
+    """Deja un borrador de respuesta en Gmail.
+
+    Solo con el buzón de verdad: un borrador en un JSON de mentira no sirve para
+    nada y disimularía que el permiso no está.
+    """
+    global _buzon
+
+    para = str(peticion.get("para", "")).strip()
+    asunto = str(peticion.get("asunto", "")).strip()
+    cuerpo = str(peticion.get("texto", "")).strip()
+    if not para or not cuerpo:
+        raise ValueError("Un borrador necesita al menos `para` y `texto`.")
+
+    if _buzon is None:
+        _buzon = abrir_buzon(_cfg) if _cfg is not None else None
+    redactor = getattr(_buzon, "crear_borrador", None)
+    if redactor is None:
+        raise RuntimeError(
+            "Este buzón no sabe escribir borradores. Hace falta PERSEO_CORREO=gmail "
+            "y un testigo con gmail.compose: `python -m perseo_core.autorizar_google`."
+        )
+
+    creado = await redactor(para, asunto, cuerpo, str(peticion.get("hilo", "")))
+    logger.info("Borrador dejado en Gmail para %s (id %s).", para, creado.get("id"))
+    # El titular sale por Telegram: dice a quién, no lo que pone dentro.
+    return {
+        "accion": "redactar",
+        "para": para,
+        "asunto": asunto,
+        "borrador": creado.get("id", ""),
+        "titular": f"Borrador listo para {para} — revísalo en Gmail y envíalo tú",
+    }
 
 
 # --------------------------------------------------------------------------- #

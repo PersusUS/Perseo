@@ -44,7 +44,8 @@ pub fn run() {
             panel::panel_trabajo,
             panel::panel_responder,
             panel::panel_encolar,
-            panel::panel_confianza
+            panel::panel_confianza,
+            panel::panel_mensaje
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

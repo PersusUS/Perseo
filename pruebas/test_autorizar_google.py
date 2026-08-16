@@ -60,14 +60,21 @@ def test_un_fichero_corrupto_lo_dice(tmp_path: Path) -> None:
         autorizar_google.leer_cliente(ruta)
 
 
-def test_solo_se_piden_los_dos_ambitos_de_lectura() -> None:
-    """Con este testigo no se puede mandar un correo aunque alguien lo intente."""
+def test_se_pide_leer_y_escribir_borradores_y_nada_mas() -> None:
+    """Con este testigo no se puede **enviar** un correo aunque alguien lo intente.
+
+    `gmail.compose` se añadió el 2026-08-16 y es el ámbito más pequeño que
+    escribe un borrador: no incluye `send`, que manda, ni `modify`, que además
+    borra. Del calendario se sigue pidiendo solo lectura.
+    """
     assert autorizar_google.AMBITOS == (
         "https://www.googleapis.com/auth/gmail.readonly",
         "https://www.googleapis.com/auth/calendar.readonly",
+        "https://www.googleapis.com/auth/gmail.compose",
     )
     url = autorizar_google.url_de_consentimiento("id", "http://127.0.0.1:1234/")
     assert "gmail.readonly" in url and "calendar.readonly" in url
+    assert "gmail.compose" in url
     assert "gmail.send" not in url and "gmail.modify" not in url
 
 

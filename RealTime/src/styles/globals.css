@@ -651,3 +651,11 @@ html, body, #root {
   font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere;
   max-height: 50vh; overflow-y: auto;
 }
+
+/* El chat del panel. Mismas burbujas que en el móvil. */
+.pnl-burbuja {
+  max-width: 85%; padding: 10px 14px; border-radius: 16px;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.pnl-burbuja.mia { align-self: flex-end; background: var(--fg); color: var(--bg); font-weight: 400; }
+.pnl-burbuja.suya { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); }
