@@ -8,6 +8,9 @@
 <meta name="theme-color" content="#101014">
 <title>Perseo</title>
 <link rel="manifest" href="/manifest.webmanifest">
+<!-- iOS ignora los iconos del manifiesto: usa este. Sin él, la pantalla de
+     inicio guarda una captura de la página. -->
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
   /* Un solo fichero a propósito: sin build, sin dependencias y sin una segunda
      petición que pueda quedarse a medias por el túnel de Tailscale. */

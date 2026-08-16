@@ -62,7 +62,21 @@ COOKIE_SESION = "perseo_sesion"
 #: la web porque el navegador no puede mandar una cabecera en la primera carga:
 #: pide el token en pantalla y lo canjea por cookie contra `/sesion`. El HTML no
 #: lleva nada dentro — sin cookie válida, todo lo que pide devuelve 401.
-RUTAS_PUBLICAS = frozenset({"/salud", "/", "/manifest.webmanifest"})
+#: Los iconos también van sin token: los pide el sistema operativo al guardar
+#: la página en la pantalla de inicio, y esas peticiones no llevan cookie. Sin
+#: esto se llevan un 401 y iOS pone una captura de la página como icono.
+RUTAS_PUBLICAS = frozenset(
+    {
+        "/salud",
+        "/",
+        "/manifest.webmanifest",
+        "/icono-180.png",
+        "/icono-512.png",
+        "/apple-touch-icon.png",
+        "/apple-touch-icon-precomposed.png",
+        "/favicon.ico",
+    }
+)
 
 #: Cada cuántos segundos se envía un comentario SSE para que ningún intermediario
 #: cierre la conexión por inactividad.
@@ -146,9 +160,10 @@ async def _indice(peticion: web.Request) -> web.FileResponse:
     )
 
 
-#: Manifiesto de PWA, en línea para no depender de un fichero más. Sin icono
-#: propio todavía: iOS usa el `apple-touch-icon` y ninguno de los dos hace falta
-#: para guardar la página en la pantalla de inicio.
+#: Manifiesto de PWA, en línea para no depender de un fichero más. Los iconos
+#: sí son ficheros: son la ola de Hokusai recortada en cuadrado, la misma imagen
+#: que la app usa de fondo, para que el icono del móvil y la app de escritorio
+#: sean reconociblemente lo mismo.
 _MANIFIESTO = {
     "name": "Perseo",
     "short_name": "Perseo",
@@ -156,7 +171,29 @@ _MANIFIESTO = {
     "display": "standalone",
     "background_color": "#101014",
     "theme_color": "#101014",
+    "icons": [
+        {"src": "/icono-180.png", "sizes": "180x180", "type": "image/png"},
+        {"src": "/icono-512.png", "sizes": "512x512", "type": "image/png"},
+        # `maskable` deja que Android lo recorte a su forma sin comerse la ola.
+        {"src": "/icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+    ],
 }
+
+
+async def _icono(peticion: web.Request) -> web.FileResponse:
+    """Los iconos de la PWA. iOS pide `apple-touch-icon.png` por su cuenta.
+
+    El sistema los pide **sin cookie**, así que están en `RUTAS_PUBLICAS`: un
+    icono no es información, y devolver 401 aquí es lo que dejaba la pantalla de
+    inicio con una captura en vez de la ola.
+    """
+    nombre = peticion.path.lstrip("/")
+    if nombre.startswith("apple-touch-icon"):
+        nombre = "icono-180.png"
+    return web.FileResponse(
+        DIRECTORIO_WEB / nombre,
+        headers={"Cache-Control": "max-age=86400"},
+    )
 
 
 async def _manifiesto(peticion: web.Request) -> web.Response:
@@ -409,6 +446,10 @@ def crear_app(cfg: almacen.Configuracion, bus: Bus, router: Router) -> web.Appli
         [
             web.get("/", _indice),
             web.get("/manifest.webmanifest", _manifiesto),
+            web.get("/icono-180.png", _icono),
+            web.get("/icono-512.png", _icono),
+            web.get("/apple-touch-icon.png", _icono),
+            web.get("/apple-touch-icon-precomposed.png", _icono),
             web.get("/salud", _salud),
             web.post("/sesion", _abrir_sesion),
             web.post("/mensaje", _mensaje),
