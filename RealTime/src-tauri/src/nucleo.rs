@@ -94,13 +94,25 @@ pub(crate) fn token(app: &AppHandle) -> Result<String, String> {
 /// y el nucleo ve trabajos para `memoria` y para `pc`.
 fn traducir(herramienta: &str, args: &Value) -> Result<(String, Value), String> {
     match herramienta {
-        "consultar_base_vectorial" => {
+        // `consultar_base_vectorial` es el nombre de la v1 y se acepta todavia
+        // por si una sesion vieja se reanuda con el nombre antiguo en su
+        // historial. El bueno es `buscar_en_memoria`: no hay ninguna base
+        // vectorial detras desde el 2026-08-15, y el modelo se creia el nombre
+        // — llego a explicarle al usuario que funcionaba "con un RAG".
+        "buscar_en_memoria" | "consultar_base_vectorial" => {
             let texto = args
-                .get("query")
-                .or_else(|| args.get("texto"))
+                .get("texto")
+                .or_else(|| args.get("query"))
                 .and_then(Value::as_str)
                 .unwrap_or_default();
             Ok(("memoria".into(), json!({ "accion": "buscar", "texto": texto })))
+        }
+        "leer_nota" => {
+            let ruta = args.get("ruta").and_then(Value::as_str).unwrap_or_default();
+            if ruta.is_empty() {
+                return Err("Falta la ruta de la nota. Sale de buscar_en_memoria.".into());
+            }
+            Ok(("memoria".into(), json!({ "accion": "leer", "ruta": ruta })))
         }
         "guardar_recuerdo" => {
             let entidad = args.get("entidad").and_then(Value::as_str).unwrap_or_default();
@@ -157,19 +169,35 @@ fn resumir(resultado: &Value) -> String {
 
     if let Some(notas) = resultado.get("notas").and_then(Value::as_array) {
         if notas.is_empty() {
-            return "No hay ninguna nota sobre eso en la memoria.".into();
+            return "No hay ninguna nota sobre eso en el vault.".into();
         }
+        // **La ruta va dentro a proposito.** Sin ella, el modelo veia titulos y
+        // extractos y no tenia con que abrir ninguno: en una llamada real
+        // encontro tres notas sobre un proyecto y acabo diciendo que no habia
+        // encontrado nada especifico, porque no podia leer ni una. La ruta es lo
+        // que le pasa a `leer_nota`.
         let lineas: Vec<String> = notas
             .iter()
             .map(|n| {
                 format!(
-                    "- {}: {}",
+                    "- {} (ruta: {}): {}",
                     n.get("titulo").and_then(Value::as_str).unwrap_or("(sin titulo)"),
+                    n.get("ruta").and_then(Value::as_str).unwrap_or("?"),
                     n.get("extracto").and_then(Value::as_str).unwrap_or("")
                 )
             })
             .collect();
-        return lineas.join("\n");
+        return format!(
+            "{} nota(s). Para citar lo que pone, usa leer_nota con su ruta:\n{}",
+            notas.len(),
+            lineas.join("\n")
+        );
+    }
+
+    // Una nota leida entera. Va antes que el respaldo del JSON en crudo: si no,
+    // el modelo recibiria el objeto entero y leeria en voz alta las llaves.
+    if let Some(contenido) = resultado.get("contenido").and_then(Value::as_str) {
+        return contenido.to_string();
     }
 
     if let Some(ruta) = resultado.get("ruta").and_then(Value::as_str) {

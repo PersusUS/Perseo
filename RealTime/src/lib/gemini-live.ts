@@ -39,7 +39,8 @@ const CLAVE_TESTIGO = 'perseo.sesion.testigo';
  * respuesta de la memoria— y lo demás llega sin pisar a nadie.
  */
 const PLANIFICACION: Record<string, FunctionResponseScheduling> = {
-  consultar_base_vectorial: FunctionResponseScheduling.INTERRUPT,
+  buscar_en_memoria: FunctionResponseScheduling.INTERRUPT,
+  leer_nota: FunctionResponseScheduling.INTERRUPT,
   guardar_recuerdo: FunctionResponseScheduling.WHEN_IDLE,
   controlar_pc: FunctionResponseScheduling.WHEN_IDLE,
 };
@@ -158,29 +159,50 @@ export class GeminiLiveClient {
           tools: [{
             functionDeclarations: [
               {
-                name: "consultar_base_vectorial",
+                // Se llamaba `consultar_base_vectorial`, y el nombre hacía daño:
+                // en una llamada real el modelo le explicó al usuario que
+                // funcionaba "con un RAG". No hay base vectorial desde el
+                // 2026-08-15 — hay búsqueda por texto sobre notas de Obsidian.
+                // Un modelo se cree la descripción de sus propias herramientas,
+                // así que la descripción es parte del sistema, no documentación.
+                name: "buscar_en_memoria",
                 // NON_BLOCKING: el modelo sigue hablando mientras el núcleo
-                // trabaja. El nombre es de la v1 y se conserva a propósito —
-                // cambiarlo obligaría a reescribir las instrucciones de la
-                // sesión—, pero detrás ya no hay base vectorial: es el agente
-                // `memoria`, que busca por texto sobre el vault.
+                // trabaja.
                 behavior: Behavior.NON_BLOCKING,
-                description: "Busca información en la memoria a largo plazo (base vectorial) sobre conocimientos pasados, personas que Perseo ya debió haber conocido, objetos o conceptos.",
+                description: "Busca en las notas del vault de Obsidian del señor Persus: proyectos, personas, decisiones, cualquier cosa que haya anotado. Es una búsqueda POR TEXTO, no semántica, así que prueba con las palabras exactas que usaría él. Devuelve título, ruta y un extracto de cada nota; para citar lo que pone de verdad, lee la nota con `leer_nota`.",
                 parameters: {
                   type: Type.OBJECT,
                   properties: {
-                    query: {
+                    texto: {
                       type: Type.STRING,
-                      description: "La pregunta o búsqueda detallada basada en las características visuales que ves o lo que el usuario pide."
+                      description: "Las palabras a buscar. Cortas y concretas: un nombre de proyecto, de persona o de sitio."
                     }
                   },
-                  required: ["query"]
+                  required: ["texto"]
+                }
+              },
+              {
+                // Sin esto el modelo encontraba notas y no podía abrirlas: en
+                // una llamada real dio con tres sobre un proyecto y terminó
+                // diciendo que no había encontrado nada específico.
+                name: "leer_nota",
+                behavior: Behavior.NON_BLOCKING,
+                description: "Lee una nota entera del vault y devuelve su texto. La ruta sale de `buscar_en_memoria`. Úsala siempre que el señor Persus pregunte qué pone exactamente en algo, en vez de contestar con el extracto.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    ruta: {
+                      type: Type.STRING,
+                      description: "La ruta tal cual la devolvió buscar_en_memoria, por ejemplo 02_PROYECTOS/MAGI/MAGI.md"
+                    }
+                  },
+                  required: ["ruta"]
                 }
               },
               {
                 name: "guardar_recuerdo",
                 behavior: Behavior.NON_BLOCKING,
-                description: "Guarda un recuerdo, como el nombre de una persona y su rostro/apariencia, en la memoria a largo plazo.",
+                description: "Guarda una nota nueva en el vault de Obsidian: el nombre de una persona y su aspecto, un dato que el señor Persus quiera recordar. Anotar dos veces sobre lo mismo AÑADE una sección con la fecha, nunca reemplaza.",
                 parameters: {
                   type: Type.OBJECT,
                   properties: {
