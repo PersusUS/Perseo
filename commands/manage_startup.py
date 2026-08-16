@@ -40,14 +40,14 @@ def _pythonw() -> str:
 
 
 def _comando(nombre: str) -> str | None:
-    """La línea que se escribe en el registro, o `None` si falta algo.
+    r"""La línea que se escribe en el registro, o `None` si falta algo.
 
-    El núcleo no se puede arrancar como fichero suelto: `perseo_core` es un
-    paquete y sus módulos se importan entre sí con rutas relativas, así que
-    `pythonw perseo_core\__main__.py` falla con un ImportError que no dice nada
-    del problema real. Se arranca como módulo, y como una entrada del registro no
-    tiene directorio de trabajo, la raíz del proyecto se mete en `sys.path` a
-    mano. Sin shell, que es la regla de toda la casa.
+    El núcleo no se arranca desde aquí, sino a través de `vigilante.py`, que sí
+    es un fichero suelto. De paso se evita el otro problema: `perseo_core` es un
+    paquete y sus módulos se importan entre sí, así que `pythonw
+    perseo_core\__main__.py` falla con un ImportError que no dice nada del
+    problema real. El vigilante lo lanza como módulo y con el directorio de
+    trabajo puesto. Sin shell, que es la regla de toda la casa.
     """
     raiz = _raiz_proyecto()
 
@@ -61,11 +61,15 @@ def _comando(nombre: str) -> str | None:
     if not os.path.isdir(os.path.join(raiz, "perseo_core")):
         print(f"[-] No se encuentra el paquete perseo_core en {raiz}")
         return None
-    arranque = (
-        f"import sys; sys.path.insert(0, r'{raiz}'); "
-        "import runpy; runpy.run_module('perseo_core', run_name='__main__')"
-    )
-    return f'"{_pythonw()}" -c "{arranque}"'
+
+    # En el registro va el vigilante, no el núcleo. `Run` lanza una vez: si el
+    # núcleo se cae a media tarde, sin un padre que lo levante Perseo se apaga
+    # hasta el siguiente reinicio y nadie se entera.
+    vigilante = os.path.join(raiz, "commands", "vigilante.py")
+    if not os.path.isfile(vigilante):
+        print(f"[-] No se encuentra el vigilante: {vigilante}")
+        return None
+    return f'"{_pythonw()}" "{vigilante}"'
 
 
 def añadir(nombre: str) -> None:
@@ -91,15 +95,55 @@ def quitar(nombre: str) -> None:
         print(f"[-] Error al eliminar '{nombre}': {e}")
 
 
+def rutas_del_comando(comando: str) -> list[str]:
+    """Las rutas entrecomilladas de una línea del registro: intérprete y script."""
+    return [trozo for trozo in comando.split('"') if os.path.sep in trozo or ":" in trozo]
+
+
+def revisar(comando: str) -> list[str]:
+    """Qué hay roto en una entrada del registro, si es que hay algo.
+
+    Una entrada de `Run` guarda rutas absolutas y **no avisa cuando dejan de
+    existir**: Windows intenta arrancarla, falla en silencio, y lo que ve el
+    usuario es que Perseo ya no está. Pasa al actualizar Python —la ruta lleva la
+    versión dentro— y al mover la carpeta del proyecto.
+    """
+    problemas = []
+    for ruta in rutas_del_comando(comando):
+        if not os.path.exists(ruta):
+            problemas.append(f"no existe: {ruta}")
+    return problemas
+
+
 def estado() -> None:
     print("Estado del arranque automático:\n")
     for nombre in SERVICIOS:
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUTA_CLAVE) as clave:
                 valor, _ = winreg.QueryValueEx(clave, nombre)
-            print(f"  [activo]   {nombre}\n             {valor}")
         except FileNotFoundError:
             print(f"  [inactivo] {nombre}")
+            continue
+
+        problemas = revisar(valor)
+        etiqueta = "[roto]  " if problemas else "[activo]"
+        print(f"  {etiqueta}   {nombre}\n             {valor}")
+        for problema in problemas:
+            print(f"             ^ {problema}")
+        if problemas:
+            print("             Vuelve a instalarlo: python manage_startup.py install " + nombre)
+
+    # Lo que arranca con Windows no trae las variables de tu terminal. Si no hay
+    # `entorno.json`, el núcleo se levanta capado —sin correo, sin agenda, sin
+    # vault por Obsidian— y parece que funciona.
+    ajustes = os.path.join(_raiz_proyecto(), "perseo_core", "datos", "entorno.json")
+    print()
+    if os.path.isfile(ajustes):
+        print(f"  [activo]   Configuración de arranque\n             {ajustes}")
+    else:
+        print("  [aviso]    No hay perseo_core/datos/entorno.json.")
+        print("             El núcleo arrancará sin correo, sin agenda y sin vault REST.")
+        print("             Escríbelo con: python commands/configurar_arranque.py")
 
 
 def _uso() -> None:

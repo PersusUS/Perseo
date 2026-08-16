@@ -308,21 +308,55 @@ def _resolver_token(directorio: Path) -> str:
     return nuevo
 
 
+def ajustes_guardados(directorio: Path) -> dict[str, str]:
+    """Lo que hay en `<datos>/entorno.json`, o nada si no existe.
+
+    **Por qué existe este fichero.** Una entrada del registro de Windows arranca
+    un proceso sin las variables de entorno que uno escribe en su terminal. Sin
+    esto, el núcleo que arranca con el PC es otro núcleo: sin Gmail, sin agenda,
+    sin el vault por Obsidian, y con el enlace de Telegram apuntando al bucle
+    local. Arranca, no falla, y hace la mitad — que es peor que no arrancar.
+
+    Un JSON plano de `VARIABLE: valor`. La variable de entorno manda sobre él:
+    esto son los valores por defecto de esta instalación, no una orden.
+    """
+    fichero = directorio / "entorno.json"
+    if not fichero.is_file():
+        return {}
+    try:
+        crudo = json.loads(fichero.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning("No se pudo leer %s (%s); se sigue solo con el entorno.", fichero, e)
+        return {}
+    if not isinstance(crudo, dict):
+        logger.warning("%s no es un objeto JSON; se ignora.", fichero)
+        return {}
+    return {str(c): str(v) for c, v in crudo.items()}
+
+
 def cargar_configuracion() -> Configuracion:
     directorio = _directorio_datos()
+    guardados = ajustes_guardados(directorio)
+
+    def var(nombre: str, por_defecto: str) -> str:
+        """El entorno primero, luego el fichero, luego lo de fábrica."""
+        del_entorno = os.environ.get(nombre)
+        if del_entorno is not None:
+            return del_entorno
+        return guardados.get(nombre, por_defecto)
 
     # Por defecto solo el bucle local. Para que entre el móvil se pone
     # `PERSEO_CORE_HOST=tailscale`, que añade la dirección del tailnet **sin**
     # quitar la local y sin pasar por `0.0.0.0`.
-    hosts = _resolver_hosts(os.environ.get("PERSEO_CORE_HOST", "127.0.0.1"))
-    puerto = int(os.environ.get("PERSEO_CORE_PUERTO", "8787"))
+    hosts = _resolver_hosts(var("PERSEO_CORE_HOST", "127.0.0.1"))
+    puerto = int(var("PERSEO_CORE_PUERTO", "8787"))
 
     # Por defecto se registran todos los disparadores conocidos: los que no
     # tengan de dónde tirar se retiran solos al arrancar, igual que Telegram sin
     # token. Se puede acotar la lista, o vaciarla, con `PERSEO_DISPARADORES=`.
     disparadores = tuple(
         pieza.strip()
-        for pieza in os.environ.get("PERSEO_DISPARADORES", "correo,agenda").split(",")
+        for pieza in var("PERSEO_DISPARADORES", "correo,agenda").split(",")
         if pieza.strip()
     )
 
@@ -330,44 +364,42 @@ def cargar_configuracion() -> Configuracion:
         hosts=hosts,
         puerto=puerto,
         token=_resolver_token(directorio),
-        ruta_db=Path(os.environ.get("PERSEO_CORE_DB", directorio / "estado.sqlite3")),
+        ruta_db=Path(var("PERSEO_CORE_DB", directorio / "estado.sqlite3")),
         directorio_datos=directorio,
-        url_ollama=os.environ.get("PERSEO_OLLAMA", "http://127.0.0.1:11434"),
-        modelo_router=os.environ.get("PERSEO_MODELO_ROUTER", "qwen3:4b"),
-        telegram_token=_de_entorno_o_fichero("PERSEO_TELEGRAM_TOKEN", directorio / "telegram.txt"),
-        telegram_chat=_de_entorno_o_fichero("PERSEO_TELEGRAM_CHAT", directorio / "telegram_chat.txt"),
-        telegram_api=os.environ.get("PERSEO_TELEGRAM_API", "https://api.telegram.org").rstrip("/"),
-        url_base=os.environ.get("PERSEO_URL_BASE", "").strip() or _url_por_defecto(hosts, puerto),
+        url_ollama=var("PERSEO_OLLAMA", "http://127.0.0.1:11434"),
+        modelo_router=var("PERSEO_MODELO_ROUTER", "qwen3:4b"),
+        telegram_token=_de_entorno_o_fichero("PERSEO_TELEGRAM_TOKEN", directorio / "telegram.txt", guardados),
+        telegram_chat=_de_entorno_o_fichero("PERSEO_TELEGRAM_CHAT", directorio / "telegram_chat.txt", guardados),
+        telegram_api=var("PERSEO_TELEGRAM_API", "https://api.telegram.org").rstrip("/"),
+        url_base=var("PERSEO_URL_BASE", "").strip() or _url_por_defecto(hosts, puerto),
         disparadores=disparadores,
         intervalos={
-            "correo": float(os.environ.get("PERSEO_CORREO_INTERVALO", "300")),
-            "agenda": float(os.environ.get("PERSEO_AGENDA_INTERVALO", "600")),
+            "correo": float(var("PERSEO_CORREO_INTERVALO", "300")),
+            "agenda": float(var("PERSEO_AGENDA_INTERVALO", "600")),
         },
-        correo_buzon=os.environ.get("PERSEO_CORREO", "").strip().lower(),
-        correo_falso=os.environ.get("PERSEO_CORREO_FALSO", str(directorio / "buzon.json")),
-        dev_motor=os.environ.get("PERSEO_DEV_MOTOR", "").strip().lower(),
-        dev_ejecutable=os.environ.get("PERSEO_DEV_CLAUDE", "claude"),
-        dev_raiz=os.environ.get("PERSEO_DEV_RAIZ", str(RAIZ.parent)),
-        dev_tope=float(os.environ.get("PERSEO_DEV_TOPE", "900")),
-        dev_tardanza_falsa=float(os.environ.get("PERSEO_DEV_TARDANZA", "0")),
-        google_credenciales=os.environ.get(
-            "PERSEO_GOOGLE_CREDENCIALES", str(directorio / "google.json")
-        ),
-        web_navegador=os.environ.get("PERSEO_WEB", "").strip().lower(),
-        web_tope_bytes=int(os.environ.get("PERSEO_WEB_TOPE_BYTES", str(2 * 1024 * 1024))),
-        web_tope_segundos=float(os.environ.get("PERSEO_WEB_TOPE_SEGUNDOS", "20")),
-        web_local=os.environ.get("PERSEO_WEB_LOCAL", "").strip() == "1",
-        agenda_origen=os.environ.get("PERSEO_AGENDA", "").strip().lower(),
-        agenda_falsa=os.environ.get("PERSEO_AGENDA_FALSA", str(directorio / "agenda.json")),
-        agenda_antelacion=int(os.environ.get("PERSEO_AGENDA_ANTELACION", "60")),
-        vault=os.environ.get("OBSIDIAN_VAULT_PATH", str(RAIZ.parent / "obsidian_vault")),
-        vault_respaldo=os.environ.get("PERSEO_VAULT", "").strip().lower(),
-        vault_rest_url=os.environ.get("PERSEO_VAULT_REST", "https://127.0.0.1:27124").rstrip("/"),
-        vault_rest_clave=_de_entorno_o_fichero("PERSEO_VAULT_CLAVE", directorio / "obsidian.txt"),
+        correo_buzon=var("PERSEO_CORREO", "").strip().lower(),
+        correo_falso=var("PERSEO_CORREO_FALSO", str(directorio / "buzon.json")),
+        dev_motor=var("PERSEO_DEV_MOTOR", "").strip().lower(),
+        dev_ejecutable=var("PERSEO_DEV_CLAUDE", "claude"),
+        dev_raiz=var("PERSEO_DEV_RAIZ", str(RAIZ.parent)),
+        dev_tope=float(var("PERSEO_DEV_TOPE", "900")),
+        dev_tardanza_falsa=float(var("PERSEO_DEV_TARDANZA", "0")),
+        google_credenciales=var("PERSEO_GOOGLE_CREDENCIALES", str(directorio / "google.json")),
+        web_navegador=var("PERSEO_WEB", "").strip().lower(),
+        web_tope_bytes=int(var("PERSEO_WEB_TOPE_BYTES", str(2 * 1024 * 1024))),
+        web_tope_segundos=float(var("PERSEO_WEB_TOPE_SEGUNDOS", "20")),
+        web_local=var("PERSEO_WEB_LOCAL", "").strip() == "1",
+        agenda_origen=var("PERSEO_AGENDA", "").strip().lower(),
+        agenda_falsa=var("PERSEO_AGENDA_FALSA", str(directorio / "agenda.json")),
+        agenda_antelacion=int(var("PERSEO_AGENDA_ANTELACION", "60")),
+        vault=var("OBSIDIAN_VAULT_PATH", str(RAIZ.parent / "obsidian_vault")),
+        vault_respaldo=var("PERSEO_VAULT", "").strip().lower(),
+        vault_rest_url=var("PERSEO_VAULT_REST", "https://127.0.0.1:27124").rstrip("/"),
+        vault_rest_clave=_de_entorno_o_fichero("PERSEO_VAULT_CLAVE", directorio / "obsidian.txt", guardados),
     )
 
 
-def _de_entorno_o_fichero(variable: str, fichero: Path) -> str:
+def _de_entorno_o_fichero(variable: str, fichero: Path, guardados: dict[str, str] | None = None) -> str:
     """Lee un secreto de la variable de entorno o, si no está, de un fichero.
 
     El fichero vive en el directorio de datos, que está fuera de git. Es más
@@ -377,6 +409,9 @@ def _de_entorno_o_fichero(variable: str, fichero: Path) -> str:
     del_entorno = os.environ.get(variable, "").strip()
     if del_entorno:
         return del_entorno
+    guardado = (guardados or {}).get(variable, "").strip()
+    if guardado:
+        return guardado
     if fichero.exists():
         return fichero.read_text(encoding="utf-8").strip()
     return ""
