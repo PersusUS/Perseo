@@ -28,7 +28,7 @@ from typing import Any, Awaitable, Callable
 
 import aiohttp
 
-from . import almacen, politica
+from . import almacen, identidad, politica
 from .bus import Bus
 
 logger = logging.getLogger(__name__)
@@ -136,8 +136,9 @@ ESQUEMA_RUTA: dict[str, Any] = {
     "required": ["destino", "agente", "motivo"],
 }
 
-_INSTRUCCIONES_ROUTER = """\
-Eres el enrutador de un asistente personal. No resuelves la petición: decides a dónde va.
+_TAREA_ROUTER = """\
+Ahora haces de enrutador: no resuelves la petición, decides a dónde va. Cuando \
+contestes tú directamente, hazlo como Perseo y en una frase.
 
 Agentes disponibles: {agentes}
 
@@ -149,6 +150,11 @@ Elige `destino`:
 
 `motivo`: una frase corta explicando la decisión.
 """
+
+#: El router es el único modelo cuyo texto llega tal cual al usuario, por el campo
+#: `respuesta`. Sin la identidad delante contestaba como un enrutador anónimo.
+#: El `{agentes}` sigue vivo: `identidad.NUCLEO` no lleva llaves, a propósito.
+_INSTRUCCIONES_ROUTER = identidad.con_identidad(_TAREA_ROUTER)
 
 
 @dataclass(frozen=True)
