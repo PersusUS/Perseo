@@ -44,8 +44,17 @@ const PLANIFICACION: Record<string, FunctionResponseScheduling> = {
   controlar_pc: FunctionResponseScheduling.WHEN_IDLE,
 };
 
+/**
+ * Tope de la espera entre reintentos. Antes había un tope de **intentos** (tres,
+ * siete segundos en total) y al agotarlos la app se quedaba en `error` para
+ * siempre: un wifi que se cae diez segundos dejaba a Perseo mudo hasta que
+ * alguien lo tocaba a mano. Para algo que vive en la bandeja del sistema eso no
+ * vale — se reintenta siempre, cada vez más despacio, hasta este techo.
+ */
+const ESPERA_MAXIMA_RECONEXION = 30_000;
+
 export class GeminiLiveClient {
-  private ai: GoogleGenAI;
+  private ai: GoogleGenAI | null = null;
   private session: any = null;
   /** Fragmento de transcripción. `final` cierra el turno para que el
    *  siguiente fragmento empiece un mensaje nuevo en vez de alargar el anterior. */
@@ -55,6 +64,8 @@ export class GeminiLiveClient {
   public getConversationHistory: () => string = () => "";
   private retryCount = 0;
   private reconnectTimeout: number | null = null;
+  /** Con qué clave se construyó `ai`, para rehacerlo si cambia en ⚙. */
+  private claveDelCliente = '';
 
   private isConnecting = false;
   private isManualDisconnect = false;
@@ -67,18 +78,36 @@ export class GeminiLiveClient {
   private testigoSesion: string | null = null;
 
   constructor() {
-    console.log('[Gemini] Initializing client... API Key present:', !!defaultConfig.geminiApiKey);
-    this.ai = new GoogleGenAI({ apiKey: defaultConfig.geminiApiKey, apiVersion: VERSION_API });
     this.testigoSesion = localStorage.getItem(CLAVE_TESTIGO);
+  }
+
+  /**
+   * El cliente del SDK, construido con la clave que haya **ahora**.
+   *
+   * No se construye en el constructor a propósito. Este módulo exporta una
+   * instancia (`geminiClient`), así que el constructor corre al importarlo —
+   * antes de que `App.tsx` pida la clave a Rust—, y el cliente se quedaba con
+   * `apiKey: ''` para siempre. Que hoy funcione depende de que el SDK lea la
+   * clave tarde, que es una suposición que nadie escribió y que una versión
+   * nueva puede romper sin avisar.
+   */
+  private cliente(): GoogleGenAI {
+    if (this.ai === null || this.claveDelCliente !== defaultConfig.geminiApiKey) {
+      this.claveDelCliente = defaultConfig.geminiApiKey;
+      this.ai = new GoogleGenAI({ apiKey: this.claveDelCliente, apiVersion: VERSION_API });
+    }
+    return this.ai;
   }
 
   async connect() {
     this.isManualDisconnect = false;
     if (!defaultConfig.geminiApiKey) {
-      this.onError('No se ha detectado la API Key. Por favor, asegúrate de haber reiniciado el servidor npm.');
+      // La clave sale del almacén que gestiona Rust, no de ninguna variable de
+      // entorno de npm: se pone desde el botón ⚙ de la propia aplicación.
+      this.onError('No hay clave de Gemini configurada. Pulsa ⚙ y añádela.');
       return;
     }
-    
+
     if (this.isConnecting) {
       console.warn('[Gemini] Ya hay un intento de conexión en curso, ignorando...');
       return;
@@ -87,11 +116,11 @@ export class GeminiLiveClient {
     this.isConnecting = true;
     this.onConnectionStateChange('connecting');
 
-    // Arrancar el proceso de herramientas ya, en paralelo a la conexión: así
-    // precarga el índice vectorial mientras el usuario todavía está saludando,
-    // y la primera consulta a la memoria responde en milisegundos.
+    // Se comprueba el núcleo en paralelo a la conexión: si está apagado o el
+    // token ya no vale, interesa saberlo ahora y no a mitad de una frase, que es
+    // cuando se pediría la primera herramienta.
     invoke('precalentar_herramientas').catch(e =>
-      console.warn('[Gemini] No se pudo precalentar el puente de herramientas:', e)
+      console.warn('[Gemini] El núcleo no responde:', e)
     );
 
     // Asegurarnos de limpiar cualquier sesión residual antes de conectar de nuevo
@@ -110,7 +139,7 @@ export class GeminiLiveClient {
         ? `${defaultConfig.systemPrompt}\n\n[HISTORIAL RECIENTE POR RECONEXIÓN - PARA MANTENER EL CONTEXTO DE LA CHARLA]:\n" ${contextHistory} "`
         : defaultConfig.systemPrompt;
 
-      this.session = await this.ai.live.connect({
+      this.session = await this.cliente().live.connect({
         model: MODELO,
         config: {
           responseModalities: [Modality.AUDIO],
@@ -130,9 +159,11 @@ export class GeminiLiveClient {
             functionDeclarations: [
               {
                 name: "consultar_base_vectorial",
-                // NON_BLOCKING: el modelo sigue hablando mientras Python
-                // trabaja. La primera consulta al RAG tarda 7,5 s en frío, y
-                // hasta ahora eso era silencio absoluto al otro lado.
+                // NON_BLOCKING: el modelo sigue hablando mientras el núcleo
+                // trabaja. El nombre es de la v1 y se conserva a propósito —
+                // cambiarlo obligaría a reescribir las instrucciones de la
+                // sesión—, pero detrás ya no hay base vectorial: es el agente
+                // `memoria`, que busca por texto sobre el vault.
                 behavior: Behavior.NON_BLOCKING,
                 description: "Busca información en la memoria a largo plazo (base vectorial) sobre conocimientos pasados, personas que Perseo ya debió haber conocido, objetos o conceptos.",
                 parameters: {
@@ -239,21 +270,21 @@ export class GeminiLiveClient {
     this.session = null;
     this.onConnectionStateChange('disconnected');
 
-    const maxRetries = 3;
-    if (this.retryCount < maxRetries) {
-       const timeoutMs = Math.pow(2, this.retryCount) * 1000;
-       console.log(`[Gemini] Reconnecting in ${timeoutMs}ms...`);
-       this.onConnectionStateChange('connecting');
-       
-       if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
-       this.reconnectTimeout = window.setTimeout(() => {
-          this.retryCount++;
-          this.connect();
-       }, timeoutMs);
-    } else {
-       console.error('[Gemini] Max reconnection attempts reached.');
-       this.onConnectionStateChange('error');
-    }
+    // Sin tope de intentos: el techo está en la espera, no en el número. Una
+    // caída de red se arregla sola cuando vuelve, tarde lo que tarde, y sin
+    // esto Perseo se quedaba mudo hasta que alguien abría la ventana.
+    const timeoutMs = Math.min(
+      Math.pow(2, this.retryCount) * 1000,
+      ESPERA_MAXIMA_RECONEXION
+    );
+    console.log(`[Gemini] Reintento ${this.retryCount + 1} en ${timeoutMs} ms...`);
+    this.onConnectionStateChange('connecting');
+
+    if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
+    this.reconnectTimeout = window.setTimeout(() => {
+      this.retryCount++;
+      this.connect();
+    }, timeoutMs);
   }
 
   private async handleMessage(message: any) {
@@ -327,8 +358,8 @@ export class GeminiLiveClient {
   /**
    * Ejecuta una herramienta y devuelve su resultado en cuanto lo tiene.
    *
-   * Va aparte de `handleMessage` porque no se espera: mientras Python trabaja,
-   * el mensaje siguiente del modelo tiene que poder procesarse.
+   * Va aparte de `handleMessage` porque no se espera: mientras el núcleo
+   * trabaja, el mensaje siguiente del modelo tiene que poder procesarse.
    */
   private async ejecutarHerramienta(call: any) {
     const { name, args, id } = call;
@@ -336,11 +367,10 @@ export class GeminiLiveClient {
 
     let response: Record<string, unknown>;
     try {
-        // El timeout vive en Rust, que además mata el proceso. Aquí había un
-        // Promise.race de 10 s que abandonaba la promesa pero dejaba a Python
-        // trabajando para un consumidor que ya no existía, y que además saltaba
-        // siempre en la primera consulta al RAG (7,5 s de arranque en frío).
-        // Ver H-11 y H-12.
+        // El tope de espera vive en Rust (30 s), y cuando salta el trabajo sigue
+        // vivo en la cola: no se pierde, solo deja de esperarse. Aquí había un
+        // Promise.race de 10 s que abandonaba la promesa mientras el otro lado
+        // seguía trabajando para un consumidor que ya no existía. Ver H-11 y H-12.
         const result = await invoke("ejecutar_herramienta", {
             toolName: name,
             argumentos: JSON.stringify(args)

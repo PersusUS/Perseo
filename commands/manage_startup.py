@@ -115,6 +115,30 @@ def revisar(comando: str) -> list[str]:
     return problemas
 
 
+def url_salud() -> str:
+    """Dónde preguntar si el núcleo está vivo. Misma variable que usa él."""
+    puerto = os.environ.get("PERSEO_CORE_PUERTO", "8787").strip() or "8787"
+    return f"http://127.0.0.1:{puerto}/salud"
+
+
+def nucleo_responde(url: str | None = None, espera: float = 3.0) -> bool:
+    """Si hay un núcleo contestando ahí ahora mismo.
+
+    `/salud` es pública a propósito, así que esto no necesita el token. Se
+    pregunta por HTTP y no por la lista de procesos porque lo que importa no es
+    que exista un `python.exe`, sino que la API atienda: un núcleo colgado sigue
+    siendo un proceso vivo.
+    """
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(url or url_salud(), timeout=espera) as respuesta:
+            return respuesta.status == 200
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
 def estado() -> None:
     print("Estado del arranque automático:\n")
     for nombre in SERVICIOS:
@@ -144,6 +168,20 @@ def estado() -> None:
         print("  [aviso]    No hay perseo_core/datos/entorno.json.")
         print("             El núcleo arrancará sin correo, sin agenda y sin vault REST.")
         print("             Escríbelo con: python commands/configurar_arranque.py")
+
+    # Y lo que todo lo de arriba **no** dice: si ahora mismo hay algo encendido.
+    # Una entrada del registro solo cuenta lo que Windows intentará arrancar en
+    # la próxima sesión. El 2026-08-16 esto decía "activo" con el vigilante
+    # muerto —se había lanzado desde una consola y murió con ella— y Perseo
+    # llevaba horas apagado sin que nada lo dijera.
+    print()
+    if nucleo_responde():
+        print(f"  [activo]   El núcleo responde en {url_salud()}")
+    else:
+        print(f"  [PARADO]   Nadie contesta en {url_salud()}")
+        print("             El registro dice lo que arrancará en el próximo inicio de sesión,")
+        print("             no si algo está encendido ahora. Para levantarlo sin reiniciar:")
+        print("             pythonw commands/vigilante.py")
 
 
 def _uso() -> None:

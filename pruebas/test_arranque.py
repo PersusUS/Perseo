@@ -181,3 +181,47 @@ def test_una_ruta_muerta_se_detecta(tmp_path: Path) -> None:
 
     problemas = manage_startup.revisar(f'"{tmp_path / "Python310" / "pythonw.exe"}" "{tmp_path}"')
     assert len(problemas) == 1 and "no existe" in problemas[0]
+
+
+# --------------------------------------------------------------------------- #
+# Lo que el registro NO dice: si hay algo encendido ahora mismo
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="el registro es de Windows")
+def test_la_url_de_salud_respeta_el_puerto(monkeypatch: pytest.MonkeyPatch) -> None:
+    import manage_startup
+
+    monkeypatch.setenv("PERSEO_CORE_PUERTO", "9999")
+    assert manage_startup.url_salud() == "http://127.0.0.1:9999/salud"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="el registro es de Windows")
+def test_sin_puerto_el_de_siempre(monkeypatch: pytest.MonkeyPatch) -> None:
+    import manage_startup
+
+    monkeypatch.delenv("PERSEO_CORE_PUERTO", raising=False)
+    assert manage_startup.url_salud() == "http://127.0.0.1:8787/salud"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="el registro es de Windows")
+def test_un_nucleo_apagado_no_responde() -> None:
+    """El caso que el 2026-08-16 nadie vio: entrada del registro intacta y nada
+    escuchando. Un puerto cerrado del bucle local rechaza al instante, así que
+    esto no espera los tres segundos."""
+    import socket
+
+    import manage_startup
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        puerto = s.getsockname()[1]
+
+    assert not manage_startup.nucleo_responde(f"http://127.0.0.1:{puerto}/salud")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="el registro es de Windows")
+def test_una_url_absurda_tampoco_lanza() -> None:
+    import manage_startup
+
+    assert not manage_startup.nucleo_responde("esto no es una url")

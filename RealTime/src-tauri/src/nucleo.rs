@@ -280,16 +280,27 @@ pub async fn ejecutar_herramienta(
     }
 }
 
-/// Comprueba que el nucleo esta vivo antes de la primera herramienta.
+/// Comprueba que el nucleo esta vivo **y que el token vale** antes de la primera
+/// herramienta.
 ///
 /// Antes esto arrancaba el proceso de Python y pagaba por adelantado los 3,7 s
 /// de importar llama_index y chromadb (H-12). Ahora el nucleo ya esta
-/// encendido —es su razon de ser— y esto solo sirve para avisar pronto si no lo
-/// esta, en vez de descubrirlo a mitad de una frase.
+/// encendido —es su razon de ser— y esto solo sirve para avisar pronto si algo
+/// no esta, en vez de descubrirlo a mitad de una frase.
+///
+/// Se pregunta por `/trabajos` y no por `/salud`: **`/salud` es publica**, asi
+/// que contestaba 200 con un token caducado o equivocado y la comprobacion
+/// dejaba pasar justo el fallo que existe para detectar. `?limite=1` la hace
+/// tan barata como la otra.
 #[tauri::command]
 pub async fn precalentar_herramientas(app: AppHandle) -> Result<(), String> {
-    let _ = token(&app)?;
+    let token = token(&app)?;
     let cliente = reqwest::Client::new();
-    pedir_json(cliente.get(format!("{}/salud", base_url()))).await?;
+    pedir_json(
+        cliente
+            .get(format!("{}/trabajos?limite=1", base_url()))
+            .bearer_auth(&token),
+    )
+    .await?;
     Ok(())
 }
