@@ -52,6 +52,11 @@ def datos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "PERSEO_VAULT",
         "PERSEO_VAULT_REST",
         "PERSEO_VAULT_CLAVE",
+        "PERSEO_MODELO_SUPLENTE",
+        "GEMINI_API_KEY",
+        "PERSEO_URL_BASE",
+        "PERSEO_OLLAMA",
+        "PERSEO_MODELO_ROUTER",
     ):
         monkeypatch.delenv(variable, raising=False)
 

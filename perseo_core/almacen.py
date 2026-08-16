@@ -70,6 +70,17 @@ CREATE TABLE IF NOT EXISTS trabajos (
 
 CREATE INDEX IF NOT EXISTS idx_trabajos_pendientes ON trabajos (estado, id);
 CREATE INDEX IF NOT EXISTS idx_trabajos_recientes  ON trabajos (creado_en DESC);
+
+-- Cuántas veces se ha llamado hoy a cada servicio de fuera. Existe porque la
+-- cuota gratuita de Gemini no se puede consultar: Google no publica ningún
+-- endpoint que diga cuánto queda, así que lo único honesto es contar lo que
+-- gasta este proceso. Ver `apuntar_uso`.
+CREATE TABLE IF NOT EXISTS uso (
+    dia       TEXT    NOT NULL,
+    servicio  TEXT    NOT NULL,
+    contador  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (dia, servicio)
+);
 """
 
 #: Columnas añadidas después de que hubiera bases de datos por ahí. `CREATE
@@ -779,3 +790,53 @@ def recuperar_huerfanos() -> int:
     if recuperados:
         logger.warning("%d trabajo(s) huérfano(s) devueltos a la cola.", recuperados)
     return recuperados
+
+
+# --------------------------------------------------------------------------- #
+# Cuota de los servicios de fuera
+# --------------------------------------------------------------------------- #
+
+
+def dia_de_cuota() -> str:
+    """El día al que se le apunta el gasto, en UTC.
+
+    **No coincide con el día de Google**, que reinicia las cuotas gratuitas a
+    medianoche del Pacífico. Se usa UTC igual que en el resto del almacén porque
+    la alternativa —cargar una zona horaria— arrastra `tzdata` en Windows para
+    ganar unas horas de precisión en un número que ya es aproximado: aquí solo se
+    ve lo que gasta este proceso, y la app de voz gasta por su cuenta.
+    """
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def apuntar_uso(servicio: str, cantidad: int = 1) -> None:
+    """Suma llamadas al contador de hoy. **Nunca lanza.**
+
+    Llevar la cuenta no puede tumbar una clasificación de correo: si la base de
+    datos no está abierta —el caso de una prueba unitaria— o el INSERT falla, se
+    pierde el recuento y se sigue. Es la única parte del sistema donde tragarse
+    un error es lo correcto, porque el dato es informativo y lo que protege es el
+    trabajo de verdad.
+    """
+    try:
+        with _cerrojo:
+            _db().execute(
+                """
+                INSERT INTO uso (dia, servicio, contador) VALUES (?, ?, ?)
+                ON CONFLICT (dia, servicio)
+                DO UPDATE SET contador = contador + excluded.contador
+                """,
+                (dia_de_cuota(), servicio, cantidad),
+            )
+            _db().commit()
+    except (sqlite3.Error, RuntimeError) as e:
+        logger.debug("No se pudo apuntar el uso de %r (%s).", servicio, e)
+
+
+def uso_de_hoy() -> dict[str, int]:
+    """Cuántas llamadas lleva hoy cada servicio de fuera."""
+    with _cerrojo:
+        filas = _db().execute(
+            "SELECT servicio, contador FROM uso WHERE dia = ?", (dia_de_cuota(),)
+        ).fetchall()
+    return {f["servicio"]: int(f["contador"]) for f in filas}

@@ -39,7 +39,7 @@ from typing import Any
 
 from aiohttp import web
 
-from . import almacen, politica
+from . import almacen, estado, politica
 from .agentes import REGISTRO, Router
 from .bus import Bus
 
@@ -65,11 +65,18 @@ COOKIE_SESION = "perseo_sesion"
 #: Los iconos también van sin token: los pide el sistema operativo al guardar
 #: la página en la pantalla de inicio, y esas peticiones no llevan cookie. Sin
 #: esto se llevan un 401 y iOS pone una captura de la página como icono.
+#: El fondo y el avatar también: se ven en la pantalla que pide el token, que
+#: por definición es la que se mira **antes** de tener cookie. Con token serían
+#: dos huecos negros justo donde se comprueba que has llegado al sitio correcto.
+#: Son la misma ola y la misma cara que la app de escritorio, y no dicen nada de
+#: nadie.
 RUTAS_PUBLICAS = frozenset(
     {
         "/salud",
         "/",
         "/manifest.webmanifest",
+        "/hokusai-bg.png",
+        "/perseo-avatar.jpg",
         "/icono-180.png",
         "/icono-512.png",
         "/apple-touch-icon.png",
@@ -152,6 +159,19 @@ async def _salud(peticion: web.Request) -> web.Response:
     )
 
 
+async def _estado(peticion: web.Request) -> web.Response:
+    """De qué está capado el sistema hoy: Ollama, Obsidian, Google, cuota, cola.
+
+    **Va con token, y no en `/salud`.** Lo que hay aquí dentro es el mapa de por
+    dónde entrar: qué credenciales están puestas, qué modelo se usa, qué canal
+    avisa y si ahora mismo lo irreversible se ejecuta sin preguntar. `/salud`
+    sigue siendo pública porque no dice nada de eso.
+    """
+    return web.json_response(
+        await estado.reunir(peticion.app[CLAVE_CFG], peticion.app[CLAVE_ROUTER])
+    )
+
+
 async def _indice(peticion: web.Request) -> web.FileResponse:
     """La web del núcleo: chat, cola de trabajos y aprobaciones."""
     return web.FileResponse(
@@ -169,8 +189,10 @@ _MANIFIESTO = {
     "short_name": "Perseo",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#101014",
-    "theme_color": "#101014",
+    # El mismo negro que la app de voz: la PWA abre a pantalla completa en el
+    # iPhone y un fondo distinto se ve como un parpadeo al arrancar.
+    "background_color": "#000000",
+    "theme_color": "#000000",
     "icons": [
         {"src": "/icono-180.png", "sizes": "180x180", "type": "image/png"},
         {"src": "/icono-512.png", "sizes": "512x512", "type": "image/png"},
@@ -193,6 +215,19 @@ async def _icono(peticion: web.Request) -> web.FileResponse:
     return web.FileResponse(
         DIRECTORIO_WEB / nombre,
         headers={"Cache-Control": "max-age=86400"},
+    )
+
+
+async def _arte(peticion: web.Request) -> web.FileResponse:
+    """El fondo y el avatar de la interfaz. Mismo criterio que los iconos.
+
+    Son ficheros y no CSS incrustado porque pesan 190 KB entre los dos: dentro
+    del HTML se descargarían enteros en cada carga, y por el túnel de Tailscale
+    eso se nota. Como fichero aparte los cachea el navegador.
+    """
+    return web.FileResponse(
+        DIRECTORIO_WEB / peticion.path.lstrip("/"),
+        headers={"Cache-Control": "max-age=604800"},
     )
 
 
@@ -446,11 +481,14 @@ def crear_app(cfg: almacen.Configuracion, bus: Bus, router: Router) -> web.Appli
         [
             web.get("/", _indice),
             web.get("/manifest.webmanifest", _manifiesto),
+            web.get("/hokusai-bg.png", _arte),
+            web.get("/perseo-avatar.jpg", _arte),
             web.get("/icono-180.png", _icono),
             web.get("/icono-512.png", _icono),
             web.get("/apple-touch-icon.png", _icono),
             web.get("/apple-touch-icon-precomposed.png", _icono),
             web.get("/salud", _salud),
+            web.get("/estado", _estado),
             web.post("/sesion", _abrir_sesion),
             web.post("/mensaje", _mensaje),
             web.post("/trabajos", _crear_trabajo),

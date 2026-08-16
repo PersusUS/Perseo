@@ -34,6 +34,8 @@ from typing import Any
 
 import aiohttp
 
+from . import almacen
+
 logger = logging.getLogger(__name__)
 
 #: Espera máxima de una decisión local. Un 4B en la GPU tarda entre 1,5 y 3,6
@@ -193,6 +195,10 @@ async def preguntar_suplente(
         async with sesion.post(
             url, params={"key": suplente.clave}, json=cuerpo
         ) as respuesta:
+            # Se apunta en cuanto hay respuesta, sea cual sea: la petición ya ha
+            # salido y Google ya la ha contado. Apuntar solo los 200 haría que el
+            # panel dijera que queda cuota justo el día que se agota.
+            await asyncio.to_thread(almacen.apuntar_uso, suplente.modelo)
             datos = await respuesta.json()
             if respuesta.status != 200:
                 logger.warning(

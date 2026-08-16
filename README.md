@@ -152,6 +152,13 @@ pip install -r commands/requirements.txt
 python commands/manage_startup.py install
 ```
 
+**5. La web del móvil.** Se abre en el navegador contra el núcleo, se pega el token una vez
+y se guarda en la pantalla de inicio: es una PWA, sin build y en un solo fichero. Cuatro
+pestañas —chat, cola, correo y **estado**—; la última dice de qué está capado el sistema
+hoy (Ollama, Obsidian, Google, cuota gastada, disparadores) y trae al lado el comando que
+lo arregla. Lo siguiente para esa pantalla está en
+[`bitacora/07_PWA.md`](bitacora/07_PWA.md).
+
 Todas las variables de entorno están en `bitacora/06_HANDOFF.md` §3.
 
 ---
@@ -183,6 +190,7 @@ python perseo_core/verificar_dev.py             # `dev`, sin gastar suscripción
 python perseo_core/verificar_web.py             # `web`, sin salir a internet
 python perseo_core/verificar_politica.py        # los niveles y el modo confianza
 python perseo_core/verificar_google.py          # Gmail y Calendar, sin cuenta de Google
+python perseo_core/verificar_estado.py          # la pantalla de estado y sus semáforos
 python commands/verificar_palabra_clave.py      # el detector, sin micrófono
 ```
 

@@ -139,7 +139,7 @@ jobs:
       - name: Verificadores
         run: |
           set -e
-          for script in fase_a aprobaciones telegram fase_d agenda memoria pc dev web politica google; do
+          for script in fase_a aprobaciones telegram fase_d agenda memoria pc dev web politica google estado; do
             echo "--- $script ---"
             python "perseo_core/verificar_$script.py"
           done

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#101014">
+<meta name="theme-color" content="#000000">
 <title>Perseo</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <!-- iOS ignora los iconos del manifiesto: usa este. Sin él, la pantalla de
@@ -13,25 +13,39 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
   /* Un solo fichero a propósito: sin build, sin dependencias y sin una segunda
-     petición que pueda quedarse a medias por el túnel de Tailscale. */
+     petición que pueda quedarse a medias por el túnel de Tailscale. Las dos
+     excepciones son la ola y el avatar, que pesan 190 KB entre los dos: dentro
+     del HTML se bajarían enteros en cada carga y aparte los cachea el
+     navegador.
+
+     El aspecto sale de la app de voz (RealTime/src/styles/globals.css): negro,
+     monocromo, tipografía fina y muy espaciada. El color se reserva para una
+     cosa sola —los puntos de estado— porque cuando todo es blanco, lo que se
+     pone ámbar se ve desde el otro lado de la habitación. */
   :root {
     color-scheme: dark;
-    --fondo: #101014;
-    --panel: #18181d;
-    --borde: #2a2a33;
-    --texto: #e8e8ec;
-    --tenue: #8a8a99;
-    --acento: #6f8cff;
+    --fondo: #000000;
+    --texto: #ffffff;
+    --tenue: #999999;
+    --apagado: #555555;
+    --superficie: rgba(255, 255, 255, .05);
+    --superficie-alta: rgba(255, 255, 255, .12);
+    --borde: rgba(255, 255, 255, .14);
     --ok: #4ade80;
     --aviso: #fbbf24;
     --malo: #f87171;
+    --tipo: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
   }
-  * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
   body {
     background: var(--fondo);
     color: var(--texto);
-    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: var(--tipo);
+    font-size: 15px;
+    font-weight: 300;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
     display: flex;
     flex-direction: column;
     /* En el iPhone en pantalla completa, sin esto la barra inferior se come el
@@ -40,160 +54,293 @@
              env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
 
+  /* La ola, igual que en la app: fija, muy tenue y por debajo de todo. */
+  #ola {
+    position: fixed;
+    inset: 0;
+    background: url('/hokusai-bg.png') center bottom / cover no-repeat;
+    opacity: .07;
+    pointer-events: none;
+    z-index: 0;
+  }
+  body > *:not(#ola) { position: relative; z-index: 1; }
+
+  .mayus {
+    text-transform: uppercase;
+    letter-spacing: .18em;
+    font-size: 11px;
+    color: var(--tenue);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Cabecera                                                            */
+  /* ------------------------------------------------------------------ */
+
   header {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
+    gap: 12px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--borde);
   }
-  header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .02em; }
-  #estado {
-    margin-left: auto;
-    font-size: 12px;
-    color: var(--tenue);
-    display: flex;
-    align-items: center;
-    gap: 6px;
+  header img {
+    width: 30px; height: 30px; border-radius: 50%;
+    object-fit: cover;
+    filter: grayscale(100%) brightness(.85);
+    border: 1px solid var(--borde);
   }
-  #luz {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--tenue);
+  header h1 {
+    font-size: 14px; font-weight: 300;
+    text-transform: uppercase; letter-spacing: .5em;
   }
-  #luz.viva { background: var(--ok); }
-  #luz.rota { background: var(--malo); }
+  #conexion { margin-left: auto; display: flex; align-items: center; gap: 7px; }
+  .punto {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--apagado);
+    flex: none;
+  }
+  .punto.ok { background: var(--ok); }
+  .punto.aviso { background: var(--aviso); }
+  .punto.malo { background: var(--malo); }
+  .punto.viva { background: var(--ok); }
+  .punto.rota { background: var(--malo); }
 
-  nav {
-    display: flex;
-    border-bottom: 1px solid var(--borde);
-  }
+  nav { display: flex; border-bottom: 1px solid var(--borde); }
   nav button {
     flex: 1;
     background: none;
     border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--tenue);
-    padding: 10px;
+    border-bottom: 1px solid transparent;
+    color: var(--apagado);
+    padding: 11px 4px;
     font: inherit;
-    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: .14em;
+    font-size: 10px;
     cursor: pointer;
+    white-space: nowrap;
   }
-  nav button[aria-selected="true"] { color: var(--texto); border-bottom-color: var(--acento); }
+  nav button[aria-selected="true"] { color: var(--texto); border-bottom-color: var(--texto); }
+  nav .cuenta { color: var(--aviso); letter-spacing: 0; }
 
   main { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   section[hidden] { display: none; }
-  section { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  section { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  /* ------------------------------------------------------------------ */
+  /* Chat                                                                */
+  /* ------------------------------------------------------------------ */
 
   .burbuja {
     max-width: 85%;
-    padding: 9px 12px;
-    border-radius: 14px;
+    padding: 10px 14px;
+    border-radius: 16px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    animation: subir .25s ease;
   }
-  .mio { align-self: flex-end; background: var(--acento); color: #0b0b10; }
-  .suyo { align-self: flex-start; background: var(--panel); border: 1px solid var(--borde); }
-  .nota { align-self: center; font-size: 12px; color: var(--tenue); text-align: center; }
+  .mio { align-self: flex-end; background: var(--texto); color: var(--fondo); font-weight: 400; }
+  .suyo { align-self: flex-start; background: var(--superficie); border: 1px solid var(--borde); }
+  .nota {
+    align-self: center; text-align: center;
+    font-size: 12px; color: var(--apagado); font-style: italic;
+  }
+  @keyframes subir {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+  }
 
-  .trabajo {
-    background: var(--panel);
+  /* ------------------------------------------------------------------ */
+  /* Tarjetas (cola, correo y estado comparten caja)                     */
+  /* ------------------------------------------------------------------ */
+
+  .tarjeta {
+    background: var(--superficie);
     border: 1px solid var(--borde);
-    border-radius: 10px;
-    padding: 10px 12px;
+    border-radius: 14px;
+    padding: 12px 14px;
   }
-  .trabajo .cabeza {
+  .tarjeta .cabeza {
     display: flex; align-items: center; gap: 8px;
-    font-size: 12px; color: var(--tenue);
+    font-size: 11px; color: var(--tenue);
+    text-transform: uppercase; letter-spacing: .1em;
   }
-  .trabajo .cuerpo { margin-top: 6px; overflow-wrap: anywhere; }
-  .trabajo .resultado {
-    margin-top: 6px; font-size: 13px; color: var(--tenue);
+  .tarjeta .cuerpo { margin-top: 7px; overflow-wrap: anywhere; }
+  .tarjeta .resultado {
+    margin-top: 7px; font-size: 13px; color: var(--tenue);
     white-space: pre-wrap; overflow-wrap: anywhere;
   }
   .etiqueta {
-    padding: 1px 7px; border-radius: 999px;
-    border: 1px solid currentColor; font-size: 11px;
+    padding: 1px 8px; border-radius: 999px;
+    border: 1px solid currentColor; font-size: 10px;
+    letter-spacing: .1em;
   }
-  /* Una línea por correo que merece mirarse, con su cajón delante. Lo que el
-     triaje manda ignorar no se pinta: taparía justo esto. */
-  .trabajo .correo { margin-top: 6px; color: var(--texto); }
-  .trabajo .motivo { color: var(--tenue); font-size: 12px; margin-left: 2px; }
-  .clase {
-    padding: 1px 6px; border-radius: 999px; font-size: 11px;
-    border: 1px solid currentColor; color: var(--tenue);
-  }
-  .clase.requiere_accion { color: var(--aviso); }
-  .clase.no_seguro { color: var(--aviso); }
-  .clase.interesante { color: var(--acento); }
-  .pendiente { color: var(--aviso); }
-  .en_curso  { color: var(--acento); }
-  .esperando { color: var(--aviso); }
+  .pendiente, .esperando { color: var(--aviso); }
+  .en_curso  { color: var(--texto); }
   .hecho     { color: var(--ok); }
   .fallido   { color: var(--malo); }
-  .cancelado { color: var(--tenue); }
-  .rechazado { color: var(--tenue); }
+  .cancelado, .rechazado { color: var(--apagado); }
+
+  /* Una línea por correo, con su cajón delante. */
+  .correo { margin-top: 7px; }
+  .correo .motivo { color: var(--apagado); font-size: 12px; }
+  .clase {
+    padding: 1px 7px; border-radius: 999px; font-size: 10px;
+    border: 1px solid currentColor; color: var(--tenue);
+    text-transform: uppercase; letter-spacing: .08em;
+  }
+  .clase.requiere_accion, .clase.no_seguro { color: var(--aviso); }
+  .clase.interesante { color: var(--texto); }
 
   .pregunta {
-    margin-top: 8px;
-    padding: 8px 10px;
+    margin-top: 10px;
+    padding: 9px 12px;
     border-left: 2px solid var(--aviso);
     background: rgba(251, 191, 36, .07);
-    border-radius: 0 8px 8px 0;
+    border-radius: 0 10px 10px 0;
   }
   .pregunta .detalle { margin-top: 4px; font-size: 13px; color: var(--tenue); }
 
-  .acciones { margin-top: 8px; display: flex; gap: 8px; }
-  .acciones button {
+  .acciones { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  button.pildora {
     background: none; border: 1px solid var(--borde); color: var(--texto);
-    border-radius: 8px; padding: 5px 12px; font: inherit; font-size: 13px;
-    cursor: pointer;
+    border-radius: 999px; padding: 6px 15px; font: inherit; font-size: 12px;
+    text-transform: uppercase; letter-spacing: .1em;
+    cursor: pointer; transition: background .2s, border-color .2s;
   }
-  .acciones button:hover { border-color: var(--acento); }
-  .acciones .peligro:hover { border-color: var(--malo); color: var(--malo); }
-  .acciones .aprobar { border-color: var(--ok); color: var(--ok); }
+  button.pildora:hover { background: var(--superficie-alta); }
+  button.pildora:disabled { opacity: .4; }
+  button.pildora.aprobar { border-color: var(--ok); color: var(--ok); }
+  button.pildora.peligro:hover { border-color: var(--malo); color: var(--malo); }
+
+  /* ------------------------------------------------------------------ */
+  /* Estado                                                              */
+  /* ------------------------------------------------------------------ */
+
+  .titulo-grupo {
+    display: flex; align-items: baseline; gap: 10px;
+    margin-top: 6px;
+  }
+  .titulo-grupo::after {
+    content: ""; flex: 1; height: 1px; background: var(--borde);
+  }
+
+  .pieza { display: flex; gap: 11px; align-items: flex-start; }
+  .pieza .punto { margin-top: 7px; }
+  .pieza .nombre { font-weight: 400; }
+  .pieza .detalle { color: var(--tenue); font-size: 13px; overflow-wrap: anywhere; }
+  .pieza .arreglo {
+    margin-top: 5px; font-size: 12px; color: var(--apagado);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    overflow-wrap: anywhere;
+  }
+
+  .barra {
+    height: 3px; border-radius: 999px; background: var(--superficie-alta);
+    margin-top: 7px; overflow: hidden;
+  }
+  .barra span { display: block; height: 100%; background: var(--texto); }
+  .barra span.lleno { background: var(--malo); }
+
+  .cifras { display: flex; flex-wrap: wrap; gap: 18px; }
+  .cifra { display: flex; flex-direction: column; gap: 2px; }
+  .cifra b { font-size: 22px; font-weight: 200; }
+
+  .fichas { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ficha {
+    border: 1px solid var(--borde); border-radius: 999px;
+    padding: 4px 12px; font-size: 12px; color: var(--tenue);
+  }
+  .ficha.apagada { color: var(--apagado); border-style: dashed; }
+
+  details summary {
+    cursor: pointer; color: var(--apagado); font-size: 12px;
+    text-transform: uppercase; letter-spacing: .1em; margin-top: 8px;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Escribir y puerta                                                   */
+  /* ------------------------------------------------------------------ */
 
   form {
-    display: flex; gap: 8px; padding: 10px 14px;
+    display: flex; gap: 10px; padding: 12px 16px;
     border-top: 1px solid var(--borde);
   }
   input, form button {
     font: inherit;
-    border-radius: 10px;
+    border-radius: 12px;
     border: 1px solid var(--borde);
-    background: var(--panel);
+    background: var(--superficie);
     color: var(--texto);
-    padding: 10px 12px;
+    padding: 11px 14px;
   }
   input { flex: 1; min-width: 0; }
-  input:focus { outline: none; border-color: var(--acento); }
-  form button { background: var(--acento); color: #0b0b10; border-color: transparent; font-weight: 600; }
+  input:focus { outline: none; border-color: rgba(255, 255, 255, .35); }
+  form button {
+    background: var(--texto); color: var(--fondo); border-color: var(--texto);
+    font-weight: 400; text-transform: uppercase; letter-spacing: .12em;
+    font-size: 12px; cursor: pointer;
+  }
   form button:disabled { opacity: .5; }
 
   #puerta {
-    position: fixed; inset: 0; background: var(--fondo);
+    position: fixed; inset: 0; z-index: 10; background: var(--fondo);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 14px; padding: 24px; text-align: center;
+    gap: 18px; padding: 26px; text-align: center;
   }
-  #puerta p { color: var(--tenue); max-width: 34ch; margin: 0; font-size: 14px; }
+  #puerta .cara { position: relative; width: 150px; height: 150px; }
+  #puerta .cara img {
+    width: 150px; height: 150px; border-radius: 50%;
+    object-fit: cover; position: relative; z-index: 2;
+    filter: grayscale(100%) brightness(.85);
+    border: 1px solid rgba(255, 255, 255, .2);
+  }
+  /* Las mismas ondas concéntricas que la app mientras escucha. */
+  .onda {
+    position: absolute; top: 50%; left: 50%;
+    width: 150px; height: 150px; border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, .2);
+    transform: translate(-50%, -50%);
+    animation: onda-fuera 2s ease-out infinite;
+    z-index: 1;
+  }
+  .onda.b { animation-delay: .66s; }
+  .onda.c { animation-delay: 1.33s; }
+  @keyframes onda-fuera {
+    0%   { transform: translate(-50%, -50%) scale(1); opacity: .4; }
+    100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
+  }
+  #puerta h1 {
+    font-size: 16px; font-weight: 200;
+    text-transform: uppercase; letter-spacing: .7em; text-indent: .7em;
+  }
+  #puerta p { color: var(--apagado); max-width: 34ch; font-size: 13px; }
   #puerta form { border: none; width: 100%; max-width: 380px; }
   #puerta .error { color: var(--malo); font-size: 13px; min-height: 1.2em; }
 </style>
 </head>
 <body>
 
+<div id="ola"></div>
+
 <header>
+  <img src="/perseo-avatar.jpg" alt="">
   <h1>Perseo</h1>
-  <div id="estado"><span id="luz"></span><span id="texto-estado">conectando…</span></div>
+  <div id="conexion"><span class="punto" id="luz"></span><span class="mayus" id="texto-estado">conectando</span></div>
 </header>
 
 <nav>
   <button id="pestana-chat" aria-selected="true">Chat</button>
-  <button id="pestana-cola" aria-selected="false">Cola <span id="contador"></span></button>
+  <button id="pestana-cola" aria-selected="false">Cola <span class="cuenta" id="contador"></span></button>
+  <button id="pestana-correo" aria-selected="false">Correo</button>
+  <button id="pestana-estado" aria-selected="false">Estado <span class="cuenta" id="alertas"></span></button>
 </nav>
 
 <main>
   <section id="chat"></section>
   <section id="cola" hidden></section>
+  <section id="correo" hidden></section>
+  <section id="estado" hidden></section>
 </main>
 
 <form id="escribir">
@@ -202,6 +349,10 @@
 </form>
 
 <div id="puerta">
+  <div class="cara">
+    <span class="onda"></span><span class="onda b"></span><span class="onda c"></span>
+    <img src="/perseo-avatar.jpg" alt="">
+  </div>
   <h1>Perseo</h1>
   <p>Pega el token del núcleo. Está en <code>perseo_core/datos/token.txt</code>.</p>
   <form id="entrar">
@@ -221,11 +372,42 @@ const $ = (id) => document.getElementById(id);
 const puerta = $("puerta");
 const chat = $("chat");
 const cola = $("cola");
+const correo = $("correo");
+const panel = $("estado");
 const luz = $("luz");
 const textoEstado = $("texto-estado");
 
 const ESTADOS_ABIERTOS = new Set(["pendiente", "en_curso", "esperando"]);
+
+//: Cada cuánto se repregunta por el estado mientras esa pestaña está delante.
+//: No se refresca si no se está mirando: cada vuelta sondea Ollama y el plugin
+//: de Obsidian, y hacerlo con la pantalla apagada solo gasta batería.
+const REFRESCO_ESTADO = 20000;
+
 let flujo = null;
+let pestana = "chat";
+let temporizadorEstado = null;
+let ultimosTrabajos = [];
+
+// --------------------------------------------------------------------- //
+// Utilidades
+// --------------------------------------------------------------------- //
+
+function crear(etiqueta, clase, texto) {
+  const nodo = document.createElement(etiqueta);
+  if (clase) nodo.className = clase;
+  if (texto !== undefined) nodo.textContent = texto;
+  return nodo;
+}
+
+function duracion(segundos) {
+  const d = Math.floor(segundos / 86400);
+  const h = Math.floor((segundos % 86400) / 3600);
+  const m = Math.floor((segundos % 3600) / 60);
+  if (d) return `${d} d ${h} h`;
+  if (h) return `${h} h ${m} min`;
+  return `${m} min`;
+}
 
 // --------------------------------------------------------------------- //
 // Acceso
@@ -264,25 +446,36 @@ $("entrar").addEventListener("submit", async (e) => {
 // Pestañas
 // --------------------------------------------------------------------- //
 
+const SECCIONES = { chat, cola, correo, estado: panel };
+
 function mostrar(cual) {
-  const esChat = cual === "chat";
-  chat.hidden = !esChat;
-  cola.hidden = esChat;
-  $("pestana-chat").setAttribute("aria-selected", String(esChat));
-  $("pestana-cola").setAttribute("aria-selected", String(!esChat));
-  $("escribir").style.display = esChat ? "flex" : "none";
+  pestana = cual;
+  for (const [nombre, seccion] of Object.entries(SECCIONES)) {
+    seccion.hidden = nombre !== cual;
+    $("pestana-" + nombre).setAttribute("aria-selected", String(nombre === cual));
+  }
+  // El campo de escribir solo tiene sentido en el chat; en el móvil, además,
+  // ocupa el sitio de dos tarjetas.
+  $("escribir").style.display = cual === "chat" ? "flex" : "none";
+
+  clearInterval(temporizadorEstado);
+  if (cual === "estado") {
+    cargarEstado();
+    temporizadorEstado = setInterval(cargarEstado, REFRESCO_ESTADO);
+  } else if (cual === "cola" || cual === "correo") {
+    cargarCola();
+  }
 }
-$("pestana-chat").addEventListener("click", () => mostrar("chat"));
-$("pestana-cola").addEventListener("click", () => { mostrar("cola"); cargarCola(); });
+for (const nombre of Object.keys(SECCIONES)) {
+  $("pestana-" + nombre).addEventListener("click", () => mostrar(nombre));
+}
 
 // --------------------------------------------------------------------- //
 // Chat
 // --------------------------------------------------------------------- //
 
 function decir(texto, clase) {
-  const div = document.createElement("div");
-  div.className = clase;
-  div.textContent = texto;
+  const div = crear("div", clase, texto);
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
   return div;
@@ -340,54 +533,39 @@ function resumirPeticion(t) {
   return t.peticion?.texto ?? t.peticion?.accion ?? JSON.stringify(t.peticion);
 }
 
-function pintarCorreos(destino, resultado) {
-  const titular = document.createElement("div");
-  titular.textContent = resultado.titular ?? "Nada que destacar";
-  destino.appendChild(titular);
+function lineaCorreo(c) {
+  const linea = crear("div", "correo");
+  const clase = crear("span", "clase " + (c.clase ?? ""), CLASES_CORREO[c.clase] ?? c.clase ?? "?");
+  linea.append(clase, ` ${c.remitente ?? "?"} — ${c.asunto ?? "(sin asunto)"}`);
+  if (c.motivo) linea.appendChild(crear("div", "motivo", c.motivo));
+  return linea;
+}
 
-  // Lo ignorable no se pinta: si el triaje acierta, es casi todo, y taparía lo
-  // único que se ha venido a mirar. El recuento del titular ya lo cuenta.
+function pintarCorreos(destino, resultado) {
+  destino.appendChild(crear("div", null, resultado.titular ?? "Nada que destacar"));
+
+  // Lo ignorable no se pinta aquí: si el triaje acierta, es casi todo, y taparía
+  // lo único que se ha venido a mirar. Está entero en la pestaña de Correo.
   for (const c of resultado.clasificados) {
     if (c.clase === "ignorar") continue;
-    const linea = document.createElement("div");
-    linea.className = "correo";
-    const clase = document.createElement("span");
-    clase.className = "clase " + (c.clase ?? "");
-    clase.textContent = CLASES_CORREO[c.clase] ?? c.clase ?? "?";
-    linea.append(clase, ` ${c.remitente ?? "?"} — ${c.asunto ?? "(sin asunto)"}`);
-    if (c.motivo) {
-      const motivo = document.createElement("div");
-      motivo.className = "motivo";
-      motivo.textContent = c.motivo;
-      linea.appendChild(motivo);
-    }
-    destino.appendChild(linea);
+    destino.appendChild(lineaCorreo(c));
   }
 }
 
 function pintarTrabajo(t) {
-  const div = document.createElement("div");
-  div.className = "trabajo";
+  const div = crear("div", "tarjeta");
   div.dataset.id = t.id;
 
-  const cabeza = document.createElement("div");
-  cabeza.className = "cabeza";
-  const etiqueta = document.createElement("span");
-  etiqueta.className = "etiqueta " + t.estado;
-  etiqueta.textContent = t.estado;
-  cabeza.append(etiqueta, ` #${t.id} · ${t.agente} · ${t.origen}`);
+  const cabeza = crear("div", "cabeza");
+  cabeza.append(crear("span", "etiqueta " + t.estado, t.estado), ` #${t.id} · ${t.agente} · ${t.origen}`);
   div.appendChild(cabeza);
 
-  const cuerpo = document.createElement("div");
-  cuerpo.className = "cuerpo";
   // `texto` y `accion` son los campos que usan los agentes de hoy. El JSON en
   // crudo es el respaldo: feo, pero deja ver qué se pidió en vez de nada.
-  cuerpo.textContent = resumirPeticion(t);
-  div.appendChild(cuerpo);
+  div.appendChild(crear("div", "cuerpo", resumirPeticion(t)));
 
   if (t.resultado || t.error) {
-    const extra = document.createElement("div");
-    extra.className = "resultado";
+    const extra = crear("div", "resultado");
     if (t.error) {
       extra.textContent = "Error: " + t.error;
     } else if (Array.isArray(t.resultado?.clasificados)) {
@@ -402,28 +580,21 @@ function pintarTrabajo(t) {
   }
 
   if (t.estado === "esperando" && t.confirmacion) {
-    const pregunta = document.createElement("div");
-    pregunta.className = "pregunta";
-    const resumen = document.createElement("div");
-    resumen.textContent = t.confirmacion.resumen ?? "¿Confirmas?";
-    pregunta.appendChild(resumen);
+    const pregunta = crear("div", "pregunta");
+    pregunta.appendChild(crear("div", null, t.confirmacion.resumen ?? "¿Confirmas?"));
     if (t.confirmacion.detalle) {
-      const detalle = document.createElement("div");
-      detalle.className = "detalle";
-      detalle.textContent = t.confirmacion.detalle;
-      pregunta.appendChild(detalle);
+      pregunta.appendChild(crear("div", "detalle", t.confirmacion.detalle));
     }
     div.appendChild(pregunta);
   }
 
   if (ESTADOS_ABIERTOS.has(t.estado)) {
-    const acciones = document.createElement("div");
-    acciones.className = "acciones";
+    const acciones = crear("div", "acciones");
 
     // Contestar desde dos sitios a la vez (esta pantalla y el móvil) es normal.
     // El núcleo resuelve el empate y devuelve 409 al segundo; aquí basta con
     // recargar la cola para ver lo que quedó.
-    const responder = async (boton, ruta) => {
+    const responder = async (ruta) => {
       for (const otro of acciones.children) otro.disabled = true;
       const r = await fetch(`/trabajos/${t.id}/${ruta}`, { method: "POST" });
       if (r.status === 409) decir(`El trabajo #${t.id} ya estaba resuelto.`, "nota");
@@ -431,23 +602,15 @@ function pintarTrabajo(t) {
     };
 
     if (t.estado === "esperando") {
-      const si = document.createElement("button");
-      si.className = "aprobar";
-      si.textContent = "Aprobar";
-      si.addEventListener("click", () => responder(si, "aprobar"));
-
-      const no = document.createElement("button");
-      no.className = "peligro";
-      no.textContent = "Rechazar";
-      no.addEventListener("click", () => responder(no, "rechazar"));
-
+      const si = crear("button", "pildora aprobar", "Aprobar");
+      si.addEventListener("click", () => responder("aprobar"));
+      const no = crear("button", "pildora peligro", "Rechazar");
+      no.addEventListener("click", () => responder("rechazar"));
       acciones.append(si, no);
     }
 
-    const cancelar = document.createElement("button");
-    cancelar.className = "peligro";
-    cancelar.textContent = "Cancelar";
-    cancelar.addEventListener("click", () => responder(cancelar, "cancelar"));
+    const cancelar = crear("button", "pildora peligro", "Cancelar");
+    cancelar.addEventListener("click", () => responder("cancelar"));
     acciones.appendChild(cancelar);
 
     div.appendChild(acciones);
@@ -463,18 +626,210 @@ async function cargarCola() {
     datos = await r.json();
   } catch { return; }
 
+  ultimosTrabajos = datos.trabajos;
+
   cola.replaceChildren();
   if (!datos.trabajos.length) {
-    const vacio = document.createElement("div");
-    vacio.className = "nota";
-    vacio.textContent = "No hay nada en la cola.";
-    cola.appendChild(vacio);
+    cola.appendChild(crear("div", "nota", "No hay nada en la cola."));
   } else {
     for (const t of datos.trabajos) cola.appendChild(pintarTrabajo(t));
   }
 
   const abiertos = datos.trabajos.filter((t) => ESTADOS_ABIERTOS.has(t.estado)).length;
   $("contador").textContent = abiertos ? `(${abiertos})` : "";
+  pintarPestanaCorreo();
+}
+
+// --------------------------------------------------------------------- //
+// Correo
+// --------------------------------------------------------------------- //
+
+// El orden en que se leen los cajones: primero lo que hay que hacer, y lo
+// ignorable al final y plegado. Es el orden de urgencia, no el del modelo.
+const ORDEN_CAJONES = ["requiere_accion", "no_seguro", "interesante", "ignorar"];
+
+function pintarPestanaCorreo() {
+  correo.replaceChildren();
+
+  const cajones = new Map(ORDEN_CAJONES.map((c) => [c, []]));
+  let triados = 0;
+  for (const t of ultimosTrabajos) {
+    for (const c of t.resultado?.clasificados ?? []) {
+      (cajones.get(c.clase) ?? cajones.get("no_seguro")).push({ ...c, trabajo: t.id });
+      triados += 1;
+    }
+  }
+
+  if (!triados) {
+    correo.appendChild(crear("div", "nota",
+      "Todavía no hay ningún correo triado. Sale solo cuando el disparador mira el buzón."));
+    return;
+  }
+
+  const resumen = crear("div", "cifras");
+  for (const cajon of ORDEN_CAJONES) {
+    const cifra = crear("div", "cifra");
+    cifra.appendChild(crear("b", null, String(cajones.get(cajon).length)));
+    cifra.appendChild(crear("span", "mayus", CLASES_CORREO[cajon]));
+    resumen.appendChild(cifra);
+  }
+  correo.appendChild(resumen);
+
+  for (const cajon of ORDEN_CAJONES) {
+    const correos = cajones.get(cajon);
+    if (!correos.length) continue;
+
+    const tarjeta = crear("div", "tarjeta");
+    const cabeza = crear("div", "cabeza");
+    cabeza.append(crear("span", "clase " + cajon, CLASES_CORREO[cajon]), ` ${correos.length}`);
+    tarjeta.appendChild(cabeza);
+
+    // Lo ignorable va plegado: ocupa casi todo y no se viene a mirar, pero
+    // esconderlo del todo es lo que impide comprobar que el triaje no se está
+    // comiendo nada. Plegado son las dos cosas.
+    const destino = cajon === "ignorar"
+      ? tarjeta.appendChild(crear("details"))
+      : tarjeta;
+    if (cajon === "ignorar") {
+      destino.appendChild(crear("summary", null, "ver los ignorados"));
+    }
+    for (const c of correos) destino.appendChild(lineaCorreo(c));
+
+    correo.appendChild(tarjeta);
+  }
+}
+
+// --------------------------------------------------------------------- //
+// Estado
+// --------------------------------------------------------------------- //
+
+function pintarPieza(p) {
+  const fila = crear("div", "pieza");
+  fila.appendChild(crear("span", "punto " + p.estado));
+
+  const texto = crear("div");
+  texto.appendChild(crear("div", "nombre", p.nombre));
+  texto.appendChild(crear("div", "detalle", p.detalle));
+  if (p.arreglo) texto.appendChild(crear("div", "arreglo", p.arreglo));
+  fila.appendChild(texto);
+  return fila;
+}
+
+function pintarCuota(cuota) {
+  const tarjeta = crear("div", "tarjeta");
+  tarjeta.appendChild(crear("div", "cabeza", `Cuota de hoy · ${cuota.dia}`));
+
+  if (!cuota.servicios.length) {
+    tarjeta.appendChild(crear("div", "detalle", "Nadie ha llamado a ningún modelo de fuera."));
+  }
+  for (const s of cuota.servicios) {
+    const fila = crear("div");
+    fila.style.marginTop = "9px";
+    const tope = s.tope ? `${s.usadas} de ${s.tope}` : `${s.usadas} (sin tope conocido)`;
+    fila.appendChild(crear("div", "nombre", s.modelo));
+    fila.appendChild(crear("div", "detalle", tope));
+    if (s.tope) {
+      const barra = crear("div", "barra");
+      const relleno = crear("span");
+      const parte = Math.min(100, (s.usadas / s.tope) * 100);
+      relleno.style.width = `${parte}%`;
+      if (parte >= 90) relleno.className = "lleno";
+      barra.appendChild(relleno);
+      fila.appendChild(barra);
+    }
+    tarjeta.appendChild(fila);
+  }
+
+  // La advertencia va con el número, no en una nota al pie: un contador que
+  // cuenta por debajo y no lo dice es peor que no tener contador.
+  tarjeta.appendChild(crear("div", "arreglo", cuota.nota));
+  return tarjeta;
+}
+
+async function cambiarConfianza(encender) {
+  await fetch("/confianza", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(encender ? { minutos: 60 } : { activo: false }),
+  });
+  cargarEstado();
+}
+
+function pintarEstado(datos) {
+  panel.replaceChildren();
+
+  // Arriba, lo que se mira de un vistazo: cuánto lleva encendido y cuánta cola
+  // hay abierta. Debajo, el detalle de cada pieza.
+  const resumen = crear("div", "tarjeta");
+  const cifras = crear("div", "cifras");
+  const abiertos = ["pendiente", "en_curso", "esperando"]
+    .reduce((n, e) => n + (datos.trabajos[e] ?? 0), 0);
+  const pares = [
+    [duracion(datos.encendido_segundos), "encendido"],
+    [String(abiertos), "en cola"],
+    [String(datos.trabajos.esperando ?? 0), "esperan un sí"],
+    [String(datos.agentes.length), "agentes"],
+  ];
+  for (const [valor, etiqueta] of pares) {
+    const cifra = crear("div", "cifra");
+    cifra.appendChild(crear("b", null, valor));
+    cifra.appendChild(crear("span", "mayus", etiqueta));
+    cifras.appendChild(cifra);
+  }
+  resumen.appendChild(cifras);
+  panel.appendChild(resumen);
+
+  const piezas = crear("div", "tarjeta");
+  piezas.style.display = "flex";
+  piezas.style.flexDirection = "column";
+  piezas.style.gap = "14px";
+  for (const p of datos.piezas) piezas.appendChild(pintarPieza(p));
+  panel.appendChild(piezas);
+
+  panel.appendChild(pintarCuota(datos.cuota));
+
+  const disparadores = crear("div", "tarjeta");
+  disparadores.appendChild(crear("div", "cabeza", "Disparadores"));
+  const fichas = crear("div", "fichas");
+  fichas.style.marginTop = "9px";
+  for (const d of datos.disparadores) {
+    const ficha = crear("span", "ficha" + (d.activo ? "" : " apagada"),
+      d.activo ? `${d.nombre} · cada ${Math.round(d.intervalo / 60)} min` : `${d.nombre} · apagado`);
+    fichas.appendChild(ficha);
+  }
+  if (!datos.disparadores.length) {
+    fichas.appendChild(crear("span", "ficha apagada", "ninguno registrado"));
+  }
+  disparadores.appendChild(fichas);
+  panel.appendChild(disparadores);
+
+  // El interruptor de confianza vive aquí porque es la única cosa del panel que
+  // se cambia, y porque su estado ya se está pintando dos centímetros más
+  // arriba: verlo y poder apagarlo en el mismo sitio es lo que evita dejárselo
+  // puesto sin querer.
+  const confianza = datos.piezas.find((p) => p.id === "confianza");
+  const acciones = crear("div", "acciones");
+  const encendida = confianza?.estado === "aviso";
+  const boton = crear("button", "pildora" + (encendida ? " peligro" : ""),
+    encendida ? "Apagar el modo confianza" : "Confiar durante 60 min");
+  boton.addEventListener("click", () => cambiarConfianza(!encendida));
+  const refrescar = crear("button", "pildora", "Refrescar");
+  refrescar.addEventListener("click", cargarEstado);
+  acciones.append(boton, refrescar);
+  panel.appendChild(acciones);
+
+  const malas = datos.piezas.filter((p) => p.estado === "malo").length;
+  $("alertas").textContent = malas ? `(${malas})` : "";
+}
+
+async function cargarEstado() {
+  try {
+    const r = await fetch("/estado");
+    if (r.status === 401) { puerta.style.display = "flex"; return; }
+    pintarEstado(await r.json());
+  } catch (err) {
+    panel.replaceChildren(crear("div", "nota", "No se pudo leer el estado: " + err.message));
+  }
 }
 
 // --------------------------------------------------------------------- //
@@ -486,12 +841,12 @@ function conectarEventos() {
   flujo = new EventSource("/eventos");
 
   flujo.onopen = () => {
-    luz.className = "viva";
+    luz.className = "punto viva";
     textoEstado.textContent = "conectado";
   };
 
   flujo.onerror = () => {
-    luz.className = "rota";
+    luz.className = "punto rota";
     textoEstado.textContent = "sin conexión";
     // EventSource reintenta solo; no se cierra a mano para no perder eso.
   };
@@ -501,6 +856,10 @@ function conectarEventos() {
     try { evento = JSON.parse(e.data); } catch { return; }
 
     if (evento.tipo === "mensaje.respondido") return;  // ya pintado al enviar
+    if (evento.tipo === "confianza.cambiada" && pestana === "estado") {
+      cargarEstado();
+      return;
+    }
     if (evento.tipo?.startsWith("trabajo.")) {
       cargarCola();
       const t = evento.datos?.trabajo;
@@ -531,9 +890,17 @@ function conectarEventos() {
 function empezar() {
   puerta.style.display = "none";
   cargarCola();
+  cargarEstado();
   conectarEventos();
   $("entrada").focus();
 }
+
+// Con la pantalla apagada o la app en segundo plano no se sondea nada: iOS
+// congela el temporizador de todas formas, y al volver interesa el dato de
+// ahora y no el de hace media hora.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && pestana === "estado") cargarEstado();
+});
 
 (async () => {
   if (await hayCookie()) empezar();

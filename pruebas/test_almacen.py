@@ -197,3 +197,29 @@ def test_un_enlace_del_tailnet_si_es_alcanzable(cfg) -> None:
     from dataclasses import replace
 
     assert replace(cfg, url_base="http://100.64.0.1:8787").url_base_alcanzable
+
+
+# --------------------------------------------------------------------------- #
+# Cuota de los servicios de fuera
+# --------------------------------------------------------------------------- #
+
+
+def test_el_uso_empieza_a_cero(db) -> None:
+    assert almacen.uso_de_hoy() == {}
+
+
+def test_apuntar_uso_suma(db) -> None:
+    almacen.apuntar_uso("gemma-4-31b-it")
+    almacen.apuntar_uso("gemma-4-31b-it")
+    almacen.apuntar_uso("otro-modelo", 3)
+    assert almacen.uso_de_hoy() == {"gemma-4-31b-it": 2, "otro-modelo": 3}
+
+
+def test_apuntar_uso_sin_base_de_datos_no_lanza(cfg) -> None:
+    """Llevar la cuenta no puede tumbar una clasificación de correo.
+
+    Es el único sitio del sistema donde tragarse el error es lo correcto: lo que
+    se pierde es un número informativo, y lo que se protege es el trabajo.
+    """
+    almacen.cerrar()
+    almacen.apuntar_uso("gemma-4-31b-it")  # no debe lanzar

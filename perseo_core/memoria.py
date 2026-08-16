@@ -500,6 +500,15 @@ def iniciar(cfg: almacen.Configuracion) -> Vault:
     return _vault
 
 
+def respaldo() -> Vault | None:
+    """El vault que está en pie, o `None` si nadie ha llamado a `iniciar`.
+
+    Lo usa la pantalla de estado para preguntarle al plugin de Obsidian por la
+    sesión que ya está abierta, en vez de montar una nueva en cada sondeo.
+    """
+    return _vault
+
+
 def _elegir_respaldo(cfg: almacen.Configuracion) -> Vault:
     """Qué hay detrás del puerto. Ficheros salvo que se pida el plugin.
 
