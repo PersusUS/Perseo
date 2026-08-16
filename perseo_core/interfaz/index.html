@@ -249,6 +249,17 @@
   /* La memoria. El formulario va dentro de la sección y no en el pie: el pie es
      del chat, y con dos campos de escribir a la vez no se sabe cuál contesta. */
   #memoria form { border: none; padding: 0; }
+  /* Anotar necesita dos campos y un botón, así que se apila. Buscar es una
+     línea y se queda en fila: son dos gestos distintos y se parecen poco. */
+  #anotar-memoria { flex-direction: column; }
+  #anotar-memoria[hidden] { display: none; }
+  textarea {
+    font: inherit; border-radius: 12px; border: 1px solid var(--borde);
+    background: var(--superficie); color: var(--texto); padding: 11px 14px;
+    resize: vertical; min-height: 90px;
+  }
+  textarea:focus { outline: none; border-color: rgba(255, 255, 255, .35); }
+  #anotar-memoria button { align-self: flex-end; }
   #notas { display: flex; flex-direction: column; gap: 10px; }
   .nota-vault summary {
     cursor: pointer; text-transform: none; letter-spacing: 0;
@@ -373,9 +384,18 @@
   <section id="cola" hidden></section>
   <section id="correo" hidden></section>
   <section id="memoria" hidden>
+    <div class="filtros" id="modos-memoria">
+      <button class="filtro" id="modo-buscar" aria-pressed="true">buscar</button>
+      <button class="filtro" id="modo-anotar" aria-pressed="false">anotar</button>
+    </div>
     <form id="buscar-memoria">
       <input id="consulta" placeholder="Buscar en el vault…" autocomplete="off" enterkeyhint="search">
       <button type="submit">Buscar</button>
+    </form>
+    <form id="anotar-memoria" hidden>
+      <input id="titulo-nota" placeholder="Título" autocomplete="off">
+      <textarea id="texto-nota" placeholder="Lo que quieras recordar…" rows="4"></textarea>
+      <button type="submit">Anotar</button>
     </form>
     <div id="notas"></div>
   </section>
@@ -508,7 +528,7 @@ function mostrar(cual) {
   } else if (cual === "cola" || cual === "correo") {
     cargarCola();
   } else if (cual === "memoria") {
-    $("consulta").focus();
+    modoMemoria($("anotar-memoria").hidden ? "buscar" : "anotar", false);
   }
 }
 for (const nombre of Object.keys(SECCIONES)) {
@@ -858,6 +878,52 @@ function pintarNota(n) {
   });
   return caja;
 }
+
+// `limpiar` va aparte porque volver a la pestaña no es lo mismo que cambiar de
+// modo: al volver interesa seguir viendo lo que buscaste, y al cambiar de modo
+// el resultado de antes ya no viene a cuento.
+function modoMemoria(cual, limpiar = true) {
+  const buscando = cual === "buscar";
+  $("buscar-memoria").hidden = !buscando;
+  $("anotar-memoria").hidden = buscando;
+  $("modo-buscar").setAttribute("aria-pressed", String(buscando));
+  $("modo-anotar").setAttribute("aria-pressed", String(!buscando));
+  if (limpiar) $("notas").replaceChildren();
+  (buscando ? $("consulta") : $("titulo-nota")).focus();
+}
+$("modo-buscar").addEventListener("click", () => modoMemoria("buscar"));
+$("modo-anotar").addEventListener("click", () => modoMemoria("anotar"));
+
+// Anotar nunca sobrescribe: si la nota existe, el agente le añade una sección
+// con la fecha. Es la regla del vault y aquí no hay ningún botón que la salte —
+// tampoco hay forma de borrar desde esta pantalla, y es a propósito.
+$("anotar-memoria").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const titulo = $("titulo-nota").value.trim();
+  const texto = $("texto-nota").value.trim();
+  const destino = $("notas");
+  if (!titulo || !texto) {
+    destino.replaceChildren(crear("div", "nota", "Hacen falta un título y un texto."));
+    return;
+  }
+
+  const boton = $("anotar-memoria").querySelector("button");
+  boton.disabled = true;
+  destino.replaceChildren(crear("div", "nota", "Anotando…"));
+  try {
+    const resultado = await encolarYEsperar({ accion: "anotar", titulo, texto }, "memoria");
+    if (resultado === null) return;
+    $("titulo-nota").value = "";
+    $("texto-nota").value = "";
+    destino.replaceChildren(crear("div", "nota", resultado?.titular ?? "Anotado."));
+  } catch (err) {
+    // El texto no se borra si falla: es lo que acabas de escribir, y perderlo
+    // por un núcleo que no contestó sería la peor forma de estrenar esto.
+    destino.replaceChildren(crear("div", "nota", "No se pudo anotar: " + err.message));
+  } finally {
+    boton.disabled = false;
+  }
+});
 
 $("buscar-memoria").addEventListener("submit", async (e) => {
   e.preventDefault();
