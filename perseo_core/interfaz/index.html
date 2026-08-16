@@ -111,6 +111,17 @@
     padding: 1px 7px; border-radius: 999px;
     border: 1px solid currentColor; font-size: 11px;
   }
+  /* Una línea por correo que merece mirarse, con su cajón delante. Lo que el
+     triaje manda ignorar no se pinta: taparía justo esto. */
+  .trabajo .correo { margin-top: 6px; color: var(--texto); }
+  .trabajo .motivo { color: var(--tenue); font-size: 12px; margin-left: 2px; }
+  .clase {
+    padding: 1px 6px; border-radius: 999px; font-size: 11px;
+    border: 1px solid currentColor; color: var(--tenue);
+  }
+  .clase.requiere_accion { color: var(--aviso); }
+  .clase.no_seguro { color: var(--aviso); }
+  .clase.interesante { color: var(--acento); }
   .pendiente { color: var(--aviso); }
   .en_curso  { color: var(--acento); }
   .esperando { color: var(--aviso); }
@@ -307,6 +318,50 @@ $("escribir").addEventListener("submit", async (e) => {
 // Cola
 // --------------------------------------------------------------------- //
 
+// Cómo se llama cada cajón del triaje por pantalla. El del modelo es para el
+// código; este es para alguien que mira el móvil con prisa.
+const CLASES_CORREO = {
+  requiere_accion: "acción",
+  interesante: "interesante",
+  no_seguro: "sin decidir",
+  ignorar: "ignorar",
+};
+
+function resumirPeticion(t) {
+  // Un trabajo de correo trae el lote entero dentro de la petición. Volcarlo
+  // llena la pantalla del JSON de veinte correos antes de llegar al resultado.
+  const mensajes = t.peticion?.mensajes;
+  if (Array.isArray(mensajes)) {
+    return `${mensajes.length} correo${mensajes.length === 1 ? "" : "s"} del buzón`;
+  }
+  return t.peticion?.texto ?? t.peticion?.accion ?? JSON.stringify(t.peticion);
+}
+
+function pintarCorreos(destino, resultado) {
+  const titular = document.createElement("div");
+  titular.textContent = resultado.titular ?? "Nada que destacar";
+  destino.appendChild(titular);
+
+  // Lo ignorable no se pinta: si el triaje acierta, es casi todo, y taparía lo
+  // único que se ha venido a mirar. El recuento del titular ya lo cuenta.
+  for (const c of resultado.clasificados) {
+    if (c.clase === "ignorar") continue;
+    const linea = document.createElement("div");
+    linea.className = "correo";
+    const clase = document.createElement("span");
+    clase.className = "clase " + (c.clase ?? "");
+    clase.textContent = CLASES_CORREO[c.clase] ?? c.clase ?? "?";
+    linea.append(clase, ` ${c.remitente ?? "?"} — ${c.asunto ?? "(sin asunto)"}`);
+    if (c.motivo) {
+      const motivo = document.createElement("div");
+      motivo.className = "motivo";
+      motivo.textContent = c.motivo;
+      linea.appendChild(motivo);
+    }
+    destino.appendChild(linea);
+  }
+}
+
 function pintarTrabajo(t) {
   const div = document.createElement("div");
   div.className = "trabajo";
@@ -324,15 +379,22 @@ function pintarTrabajo(t) {
   cuerpo.className = "cuerpo";
   // `texto` y `accion` son los campos que usan los agentes de hoy. El JSON en
   // crudo es el respaldo: feo, pero deja ver qué se pidió en vez de nada.
-  cuerpo.textContent = t.peticion?.texto ?? t.peticion?.accion ?? JSON.stringify(t.peticion);
+  cuerpo.textContent = resumirPeticion(t);
   div.appendChild(cuerpo);
 
   if (t.resultado || t.error) {
     const extra = document.createElement("div");
     extra.className = "resultado";
-    extra.textContent = t.error
-      ? "Error: " + t.error
-      : (t.resultado?.texto ?? JSON.stringify(t.resultado));
+    if (t.error) {
+      extra.textContent = "Error: " + t.error;
+    } else if (Array.isArray(t.resultado?.clasificados)) {
+      // El triaje es lo único que se mira desde el móvil con prisa: llega un
+      // aviso que solo cuenta —"1 requiere acción"— y esta pantalla es donde se
+      // ve de quién. Volcarlo como JSON lo hacía ilegible justo aquí.
+      pintarCorreos(extra, t.resultado);
+    } else {
+      extra.textContent = t.resultado?.titular ?? t.resultado?.texto ?? JSON.stringify(t.resultado);
+    }
     div.appendChild(extra);
   }
 
