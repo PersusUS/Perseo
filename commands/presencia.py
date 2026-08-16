@@ -56,7 +56,11 @@ def _proceso_vivo(pid: int) -> bool:
     así que preguntar mataría justo lo que se quería comprobar. Se abre un
     manejador con el permiso mínimo y se mira si el proceso sigue sin señalar.
     """
-    if pid <= 0:
+    # Un identificador de proceso cabe en 32 bits en los dos sistemas. Lo que se
+    # salga de ahí no es un proceso, es basura en el fichero, y conviene
+    # descartarlo **antes** de preguntar: `os.kill` en Linux y `OpenProcess` en
+    # Windows no lo rechazan igual, y uno de los dos lanza. Lo encontró el CI.
+    if pid <= 0 or pid > 0xFFFF_FFFF:
         return False
 
     if sys.platform == "win32":
@@ -83,6 +87,12 @@ def _proceso_vivo(pid: int) -> bool:
     except PermissionError:
         # Existe, pero es de otro usuario. Para lo que se pregunta aquí, existe.
         return True
+    except (OverflowError, OSError):
+        # Un número que no cabe en el `pid_t` del sistema no es un proceso: es
+        # basura en el fichero. `os.kill` lanza `OverflowError` en Linux con
+        # cualquier PID por encima de `INT_MAX`, y sin esto una marca corrupta
+        # tumbaba al que preguntara. Ver H-21.
+        return False
     return True
 
 

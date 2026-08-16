@@ -45,7 +45,12 @@ from .bus import Bus
 
 logger = logging.getLogger(__name__)
 
-DIRECTORIO_WEB = Path(__file__).resolve().parent / "web"
+# La carpeta se llama `interfaz` y no `web` por una razón concreta: desde la
+# Fase E hay un `web.py` —el agente que lee páginas— en este mismo paquete. Un
+# módulo y un directorio con el mismo nombre conviven hasta que alguien añade un
+# `__init__.py` a la carpeta, y entonces el agente desaparece del registro sin
+# que nada avise. Se ha renombrado antes de que pasara.
+DIRECTORIO_WEB = Path(__file__).resolve().parent / "interfaz"
 
 CLAVE_CFG: web.AppKey[almacen.Configuracion] = web.AppKey("cfg")
 CLAVE_BUS: web.AppKey[Bus] = web.AppKey("bus")

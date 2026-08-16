@@ -33,6 +33,15 @@ def test_un_pid_absurdo_no_esta_vivo(pid: int) -> None:
     assert not presencia._proceso_vivo(pid)
 
 
+def test_un_pid_que_no_cabe_en_el_sistema_no_revienta() -> None:
+    """En Linux, `os.kill` con un PID por encima de INT_MAX lanza OverflowError.
+
+    Lo encontró el CI: en Windows pasaba y en Linux tumbaba a quien preguntara.
+    Un número que no cabe no es un proceso, es basura en el fichero.
+    """
+    assert not presencia._proceso_vivo(2**62)
+
+
 def test_sin_marca_no_hay_pid(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(presencia, "rutas", lambda: [tmp_path / presencia.FICHERO])
     assert presencia.pid_anunciado() is None
