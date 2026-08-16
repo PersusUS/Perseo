@@ -229,11 +229,16 @@ def autorizar(ruta: Path, abrir_navegador: bool = True) -> str:
     recogedor = Recogedor()
     url = url_de_consentimiento(client_id, recogedor.redireccion)
 
-    print("Abriendo el navegador. Si no se abre solo, entra aquí:\n")
-    print(f"  {url}\n")
+    # `flush` en todo lo que se imprime aquí: si esto se ejecuta desde un
+    # lanzador, con la salida redirigida, Python la almacena y no la suelta hasta
+    # salir. Y aquí no se sale: se espera. Sin esto, quien mire la salida no ve
+    # la URL que necesita para dar permiso a mano cuando el navegador no se abre
+    # solo. Es H-34, que se anotó por el detector de aplausos y vale igual aquí.
+    print("Abriendo el navegador. Si no se abre solo, entra aquí:\n", flush=True)
+    print(f"  {url}\n", flush=True)
     if abrir_navegador:
         webbrowser.open(url)
-    print("Esperando a que des permiso…")
+    print("Esperando a que des permiso…", flush=True)
 
     codigo = recogedor.esperar()
     testigo = asyncio.run(canjear(client_id, client_secret, codigo, recogedor.redireccion))
