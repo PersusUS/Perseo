@@ -9,6 +9,7 @@ las tildes rotas es tan inútil como no tenerlo.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from email import message_from_bytes
 from typing import Any
@@ -86,53 +87,49 @@ def _leer_crudo(cuerpo: dict[str, Any]):
     return message_from_bytes(base64.urlsafe_b64decode(cuerpo["message"]["raw"]))
 
 
-@pytest.mark.asyncio
-async def test_el_borrador_va_a_la_ruta_de_borradores() -> None:
+def test_el_borrador_va_a_la_ruta_de_borradores() -> None:
     buzon, sesion = _buzon_falso()
-    await buzon.crear_borrador("ana@example.com", "Hola", "Qué tal.")
+    asyncio.run(buzon.crear_borrador("ana@example.com", "Hola", "Qué tal."))
     assert sesion.url.endswith("/gmail/v1/users/me/drafts")
 
 
-@pytest.mark.asyncio
-async def test_el_mensaje_lleva_destinatario_asunto_y_cuerpo() -> None:
+def test_el_mensaje_lleva_destinatario_asunto_y_cuerpo() -> None:
     buzon, sesion = _buzon_falso()
-    await buzon.crear_borrador("ana@example.com", "Presupuesto", "Adjunto lo hablado.")
+    asyncio.run(buzon.crear_borrador("ana@example.com", "Presupuesto", "Adjunto lo hablado."))
     mensaje = _leer_crudo(sesion.cuerpo)
     assert mensaje["To"] == "ana@example.com"
     assert mensaje["Subject"] == "Presupuesto"
     assert "Adjunto lo hablado." in mensaje.get_payload(decode=True).decode("utf-8")
 
 
-@pytest.mark.asyncio
-async def test_las_tildes_sobreviven() -> None:
+def test_las_tildes_sobreviven() -> None:
     """Un borrador con la eñe rota es tan inútil como no tenerlo."""
     buzon, sesion = _buzon_falso()
-    await buzon.crear_borrador("ana@example.com", "Reunión del miércoles", "Añado la señal.")
+    asyncio.run(
+        buzon.crear_borrador("ana@example.com", "Reunión del miércoles", "Añado la señal.")
+    )
     mensaje = _leer_crudo(sesion.cuerpo)
     assert "Añado la señal." in mensaje.get_payload(decode=True).decode("utf-8")
 
 
-@pytest.mark.asyncio
-async def test_no_se_escribe_el_remitente() -> None:
+def test_no_se_escribe_el_remitente() -> None:
     """Lo pone Gmail con la cuenta del testigo; escribirlo solo sirve para
     equivocarse de dirección."""
     buzon, sesion = _buzon_falso()
-    await buzon.crear_borrador("ana@example.com", "Hola", "Qué tal.")
+    asyncio.run(buzon.crear_borrador("ana@example.com", "Hola", "Qué tal."))
     assert _leer_crudo(sesion.cuerpo)["From"] is None
 
 
-@pytest.mark.asyncio
-async def test_con_hilo_cuelga_de_la_conversacion() -> None:
+def test_con_hilo_cuelga_de_la_conversacion() -> None:
     buzon, sesion = _buzon_falso()
-    await buzon.crear_borrador("ana@example.com", "Re: cita", "Confirmado.", hilo="hilo-9")
+    asyncio.run(buzon.crear_borrador("ana@example.com", "Re: cita", "Confirmado.", hilo="hilo-9"))
     assert sesion.cuerpo["message"]["threadId"] == "hilo-9"
 
 
-@pytest.mark.asyncio
-async def test_sin_hilo_no_se_manda_el_campo() -> None:
+def test_sin_hilo_no_se_manda_el_campo() -> None:
     """Un `threadId` vacío no es "sin hilo": Gmail lo rechaza."""
     buzon, sesion = _buzon_falso()
-    await buzon.crear_borrador("ana@example.com", "Hola", "Qué tal.")
+    asyncio.run(buzon.crear_borrador("ana@example.com", "Hola", "Qué tal."))
     assert "threadId" not in sesion.cuerpo["message"]
 
 
@@ -141,14 +138,12 @@ async def test_sin_hilo_no_se_manda_el_campo() -> None:
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.asyncio
-async def test_el_agente_exige_destinatario_y_texto() -> None:
+def test_el_agente_exige_destinatario_y_texto() -> None:
     with pytest.raises(ValueError):
-        await correo._redactar({"asunto": "Solo el asunto"})
+        asyncio.run(correo._redactar({"asunto": "Solo el asunto"}))
 
 
-@pytest.mark.asyncio
-async def test_un_buzon_que_no_sabe_redactar_lo_dice(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_un_buzon_que_no_sabe_redactar_lo_dice(monkeypatch: pytest.MonkeyPatch) -> None:
     """Con el buzón de mentira no hay borrador, y hay que decirlo: fingir que se
     escribió disimularía que el permiso no está."""
 
@@ -157,11 +152,10 @@ async def test_un_buzon_que_no_sabe_redactar_lo_dice(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(correo, "_buzon", SinRedactar())
     with pytest.raises(RuntimeError, match="gmail.compose"):
-        await correo._redactar({"para": "ana@example.com", "texto": "Hola"})
+        asyncio.run(correo._redactar({"para": "ana@example.com", "texto": "Hola"}))
 
 
-@pytest.mark.asyncio
-async def test_el_titular_no_lleva_el_cuerpo(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_el_titular_no_lleva_el_cuerpo(monkeypatch: pytest.MonkeyPatch) -> None:
     """Sale por Telegram: dice a quién, nunca lo que pone dentro."""
 
     class ConRedactar:
@@ -169,8 +163,10 @@ async def test_el_titular_no_lleva_el_cuerpo(monkeypatch: pytest.MonkeyPatch) ->
             return {"id": "b-1", "mensaje": "m-1"}
 
     monkeypatch.setattr(correo, "_buzon", ConRedactar())
-    resultado = await correo._redactar(
-        {"para": "ana@example.com", "asunto": "Cita", "texto": "SECRETO DEL CUERPO"}
+    resultado = asyncio.run(
+        correo._redactar(
+            {"para": "ana@example.com", "asunto": "Cita", "texto": "SECRETO DEL CUERPO"}
+        )
     )
     assert "SECRETO DEL CUERPO" not in resultado["titular"]
     assert "ana@example.com" in resultado["titular"]

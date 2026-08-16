@@ -12,7 +12,7 @@ del PC y el móvil— preguntan igual de mal.
 
 from __future__ import annotations
 
-import pytest
+import asyncio
 
 from perseo_core.memoria import Nota, buscar_con_reintentos, _terminos
 
@@ -63,8 +63,7 @@ def test_no_se_repiten() -> None:
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.asyncio
-async def test_las_palabras_se_buscan_aunque_la_frase_acierte() -> None:
+def test_las_palabras_se_buscan_aunque_la_frase_acierte() -> None:
     """No es un despilfarro: es lo que permite ordenar.
 
     Que la frase devuelva algo no quiere decir que devuelva lo bueno — el plugin
@@ -73,22 +72,22 @@ async def test_las_palabras_se_buscan_aunque_la_frase_acierte() -> None:
     hacía que "el proyecto MAGI" contestara sobre una plantilla.
     """
     vault = VaultFalso({"n.md": ["proyecto MAGI", "MAGI"]})
-    notas, _ = await buscar_con_reintentos(vault, "proyecto MAGI", 10)
+    notas, _ = asyncio.run(buscar_con_reintentos(vault, "proyecto MAGI", 10))
     assert len(notas) == 1
     assert "proyecto MAGI" in vault.consultas and "MAGI" in vault.consultas
 
 
-@pytest.mark.asyncio
-async def test_la_frase_que_no_existe_se_trocea() -> None:
+def test_la_frase_que_no_existe_se_trocea() -> None:
     """El caso de la llamada real: la nota existe y la frase no."""
     vault = VaultFalso({"02_PROYECTOS/Ada.md": ["Ada"]})
-    notas, buscado = await buscar_con_reintentos(vault, "algo de segundo de carrera sobre Ada", 10)
+    notas, buscado = asyncio.run(
+        buscar_con_reintentos(vault, "algo de segundo de carrera sobre Ada", 10)
+    )
     assert [n.ruta for n in notas] == ["02_PROYECTOS/Ada.md"]
     assert buscado == "Ada"
 
 
-@pytest.mark.asyncio
-async def test_manda_la_palabra_que_menos_devuelve() -> None:
+def test_manda_la_palabra_que_menos_devuelve() -> None:
     """La que menos devuelve es la que más distingue.
 
     "proyecto" sale en media biblioteca y "MAGI" en una nota: por longitud se
@@ -100,38 +99,38 @@ async def test_manda_la_palabra_que_menos_devuelve() -> None:
         "c.md": ["proyecto"],
         "MAGI.md": ["MAGI", "proyecto"],
     })
-    notas, buscado = await buscar_con_reintentos(vault, "el proyecto MAGI ese", 10)
+    notas, buscado = asyncio.run(buscar_con_reintentos(vault, "el proyecto MAGI ese", 10))
     assert notas[0].ruta == "MAGI.md"
     assert buscado.startswith("MAGI")
 
 
-@pytest.mark.asyncio
-async def test_una_sola_palabra_no_se_reintenta() -> None:
+def test_una_sola_palabra_no_se_reintenta() -> None:
     """No hay nada que trocear, y una segunda petición idéntica es tiempo tirado."""
     vault = VaultFalso({})
-    notas, buscado = await buscar_con_reintentos(vault, "Ada", 10)
+    notas, buscado = asyncio.run(buscar_con_reintentos(vault, "Ada", 10))
     assert notas == [] and buscado == "Ada"
     assert vault.consultas == ["Ada"]
 
 
-@pytest.mark.asyncio
-async def test_no_se_repiten_notas_encontradas_por_dos_palabras() -> None:
+def test_no_se_repiten_notas_encontradas_por_dos_palabras() -> None:
     vault = VaultFalso({"n.md": ["Ada", "carrera"]})
-    notas, _ = await buscar_con_reintentos(vault, "carrera de Ada", 10)
+    notas, _ = asyncio.run(buscar_con_reintentos(vault, "carrera de Ada", 10))
     assert len(notas) == 1
 
 
-@pytest.mark.asyncio
-async def test_se_respeta_el_limite() -> None:
+def test_se_respeta_el_limite() -> None:
     vault = VaultFalso({f"n{i}.md": ["Ada", "carrera"] for i in range(10)})
-    notas, _ = await buscar_con_reintentos(vault, "carrera de Ada", 3)
+    notas, _ = asyncio.run(buscar_con_reintentos(vault, "carrera de Ada", 3))
     assert len(notas) == 3
 
 
-@pytest.mark.asyncio
-async def test_no_se_prueban_diez_palabras() -> None:
+def test_no_se_prueban_diez_palabras() -> None:
     """Cada palabra es una petición al vault; una frase larga no mejora por
     buscar su décima."""
     vault = VaultFalso({})
-    await buscar_con_reintentos(vault, "una frase larguisima llena palabras distintas todas ellas", 10)
+    asyncio.run(
+        buscar_con_reintentos(
+            vault, "una frase larguisima llena palabras distintas todas ellas", 10
+        )
+    )
     assert len(vault.consultas) <= 5  # la frase entera y cuatro términos
