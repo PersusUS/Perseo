@@ -258,3 +258,127 @@ class Telegram:
                 message_id=mensaje["message_id"],
                 reply_markup={"inline_keyboard": []},
             )
+
+
+# --------------------------------------------------------------------------- #
+# Puesta en marcha a mano
+#
+# Configurar el canal necesita dos datos y solo uno lo da @BotFather. El otro
+# —el `chat_id` propio— no se puede consultar en ninguna parte: aparece cuando
+# alguien le escribe al bot, y hay que sacarlo de ahí. Esto es eso.
+# --------------------------------------------------------------------------- #
+
+#: De dónde puede salir un chat en una actualización. Un mensaje normal, uno
+#: editado, y el que viene pegado a la pulsación de un botón.
+_ENVOLTORIOS = ("message", "edited_message", "channel_post")
+
+
+def chats_vistos(actualizaciones: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    """Los chats que le han escrito al bot: identificador y a quién pertenece.
+
+    Sin repetir y en orden de aparición, para que la lista sirva para elegir
+    cuando ha escrito más de uno.
+    """
+    vistos: dict[str, str] = {}
+    for actualizacion in actualizaciones:
+        if not isinstance(actualizacion, dict):
+            continue
+        candidatos = [(actualizacion.get(e) or {}).get("chat") for e in _ENVOLTORIOS]
+        pulsacion = actualizacion.get("callback_query") or {}
+        candidatos.append((pulsacion.get("message") or {}).get("chat"))
+        for chat in candidatos:
+            if not isinstance(chat, dict) or chat.get("id") is None:
+                continue
+            vistos.setdefault(str(chat["id"]), _nombre_del_chat(chat))
+    return list(vistos.items())
+
+
+def _nombre_del_chat(chat: dict[str, Any]) -> str:
+    """Cómo llamar a un chat por pantalla. Solo para que el usuario se reconozca."""
+    partes = [str(chat.get(c, "")).strip() for c in ("first_name", "last_name", "title")]
+    nombre = " ".join(p for p in partes if p)
+    usuario = str(chat.get("username", "")).strip()
+    if usuario:
+        nombre = f"{nombre} (@{usuario})" if nombre else f"@{usuario}"
+    return nombre or "sin nombre"
+
+
+async def _pedir(cfg: almacen.Configuracion, metodo: str, **carga: Any) -> dict[str, Any]:
+    """Como `Telegram._llamar`, pero para la línea de comandos: aquí sí se lanza.
+
+    En marcha, que Telegram falle no puede tumbar el núcleo. Configurando es al
+    revés: un fallo silencioso deja al usuario mirando una pantalla que no dice
+    qué ha pasado.
+    """
+    url = f"{cfg.telegram_api}/bot{cfg.telegram_token}/{metodo}"
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as sesion:
+        async with sesion.post(url, json=carga) as respuesta:
+            datos = await respuesta.json()
+    if not datos.get("ok"):
+        raise RuntimeError(f"{metodo} devolvió {datos.get('description')}")
+    return datos
+
+
+def _sincrono() -> None:  # pragma: no cover - atajo para la línea de comandos
+    """`python -m perseo_core.telegram`: descubre el `chat_id` y lo deja puesto.
+
+    **Con el núcleo parado.** Telegram solo deja un `getUpdates` a la vez: con el
+    núcleo sondeando, esto se lleva un 409 que habla de "otra petición" y no de
+    lo que de verdad pasa.
+    """
+    import sys
+
+    cfg = almacen.cargar_configuracion()
+    if not cfg.telegram_token:
+        print(
+            "No hay token del bot. Lo da @BotFather, y se pone en "
+            f"PERSEO_TELEGRAM_TOKEN o en {cfg.directorio_datos / 'telegram.txt'}."
+        )
+        sys.exit(1)
+
+    async def guion() -> None:
+        yo = (await _pedir(cfg, "getMe")).get("result") or {}
+        print(f"El bot es @{yo.get('username')} ({yo.get('first_name')}).")
+
+        # `timeout=0`: aquí se mira lo que hay y se sale. El sondeo largo es del
+        # núcleo. Y sin `offset` no se confirma nada, así que lo que llegue
+        # ahora lo seguirá viendo el núcleo cuando arranque.
+        chats = chats_vistos((await _pedir(cfg, "getUpdates", timeout=0)).get("result") or [])
+
+        if cfg.telegram_chat:
+            print(f"El chat ya está configurado: {cfg.telegram_chat}.")
+            if chats and cfg.telegram_chat not in dict(chats):
+                print(
+                    "Aviso: quien ha escrito al bot no es ese chat "
+                    f"({', '.join(i for i, _ in chats)}). Solo se atiende al configurado."
+                )
+            return
+
+        if not chats:
+            print(
+                "Nadie le ha escrito al bot todavía. Mándale algo desde tu móvil "
+                "(/start vale) y vuelve a ejecutar esto."
+            )
+            return
+
+        if len(chats) > 1:
+            print("Han escrito varios chats. Elige el tuyo y ponlo a mano:")
+            for identificador, nombre in chats:
+                print(f"  {identificador}  {nombre}")
+            print(f"  -> {cfg.directorio_datos / 'telegram_chat.txt'}")
+            return
+
+        identificador, nombre = chats[0]
+        destino = cfg.directorio_datos / "telegram_chat.txt"
+        destino.write_text(identificador, encoding="utf-8")
+        print(f"Chat de {nombre} guardado: {identificador} -> {destino}")
+
+    try:
+        asyncio.run(guion())
+    except (RuntimeError, aiohttp.ClientError) as e:
+        print(f"No: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    _sincrono()
