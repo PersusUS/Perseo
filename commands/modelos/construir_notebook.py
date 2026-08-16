@@ -27,6 +27,57 @@ ORIGEN = (
     "main/train_wakeword.ipynb"
 )
 
+RESPALDO_MD = """\
+## 11-bis. Guardar lo caro en Drive (recomendado en la T4 gratuita)
+
+Colab corta la sesión por inactividad y, al reciclar la máquina, **borra
+`/content` entero**. Si te vas a dormir con la generación en marcha, al volver no
+queda nada: ni los clips, ni el `train.py` clonado, ni la configuración. Pasó el
+2026-08-17, y costó una hora de generación.
+
+Esta celda copia a Drive lo que cuesta tiempo y **restaura** lo que encuentre
+allí al volver a ejecutarla. Es idempotente: lánzala después de cada fase.
+
+Si prefieres no montar Drive, sáltala y ejecuta el notebook de una sentada.
+"""
+
+RESPALDO = """
+import glob
+import os
+import shutil
+
+import yaml
+
+CARPETA_DRIVE = "/content/drive/MyDrive/perseo_entrenamiento"
+
+from google.colab import drive
+drive.mount("/content/drive")
+
+with open("/content/my_model.yaml") as f:
+    cfg = yaml.safe_load(f)
+SALIDA = cfg["output_dir"]
+os.makedirs(CARPETA_DRIVE, exist_ok=True)
+
+# La configuración es barata de copiar y es lo primero que se echa en falta.
+shutil.copy("/content/my_model.yaml", CARPETA_DRIVE + "/my_model.yaml")
+
+def cuantos(ruta):
+    return len(glob.glob(ruta + "/**/*", recursive=True))
+
+aqui, alli = cuantos(SALIDA), cuantos(CARPETA_DRIVE + "/salida")
+if aqui > alli:
+    print("  Guardando en Drive lo generado...")
+    shutil.copytree(SALIDA, CARPETA_DRIVE + "/salida", dirs_exist_ok=True)
+    print("  OK", cuantos(CARPETA_DRIVE + "/salida"), "ficheros a salvo")
+elif alli:
+    print("  Restaurando desde Drive lo de la sesion anterior...")
+    shutil.copytree(CARPETA_DRIVE + "/salida", SALIDA, dirs_exist_ok=True)
+    print("  OK", cuantos(SALIDA), "ficheros recuperados en", SALIDA)
+else:
+    print("  Nada que guardar todavia: ejecutala cuando haya clips.")
+"""
+
+
 PORTADA = """\
 # Entrenar `perseo.onnx`
 
@@ -211,6 +262,30 @@ def main() -> None:
             celda["source"] = [
                 re.sub(r"~30-40 min on L4 / A100", "~30-40 min en L4, ~1 h en T4", texto)
             ]
+
+    # La red de seguridad va justo despues de la generacion, que es la fase que
+    # cuesta una hora y la que se pierde entera si Colab recicla la maquina.
+    i_generar = next(
+        i for i, c in enumerate(celdas) if "--generate_clips" in "".join(c["source"])
+    )
+    celdas.insert(
+        i_generar + 1,
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": RESPALDO_MD.splitlines(keepends=True),
+        },
+    )
+    celdas.insert(
+        i_generar + 2,
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": RESPALDO.strip().splitlines(keepends=True),
+        },
+    )
 
     DESTINO.write_text(
         json.dumps(notebook, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"

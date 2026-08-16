@@ -149,4 +149,5 @@ aplaudir dos veces y hablarle.
 | Se activa con cualquier cosa | Sube el umbral a 0.7, o añade lo que lo dispara a `custom_negative_phrases` y reentrena |
 | El verificador falla al cargar | El `.onnx` está a medio copiar o es el `.tflite` renombrado |
 | Una celda del notebook revienta | Copia el error tal cual. **Nada de esto se ha podido probar desde el repositorio** —aquí no hay GPU—, así que el mensaje concreto vale más que cualquier suposición. Los seis parches de la celda 3 son idempotentes: volver a ejecutarla no rompe nada |
-| Colab corta la sesión a media generación | Las celdas son idempotentes y se saltan lo ya hecho: vuelve a ejecutar desde el principio y retomará donde estaba, salvo que se haya reiniciado la máquina |
+| Colab corta la sesión a media generación | **Si solo se desconectó**, las celdas se saltan lo ya hecho: vuelve a ejecutar desde el principio. **Si recicló la máquina, `/content` está vacío** y se pierde todo — es lo que pasó el 2026-08-17 dejándolo toda la noche. Para eso está la celda 11-bis: guarda los clips en Drive y los restaura al volver |
+| Al volver, falta `/content/my_model.yaml` o `train.py` | Lo mismo: la máquina se recicló. No es un fallo del notebook; el plan gratuito no aguanta una noche sin que nadie toque nada |
