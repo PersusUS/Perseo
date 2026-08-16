@@ -138,6 +138,16 @@ class Triaje:
             ESQUEMA_TRIAJE,
             _INSTRUCCIONES,
             _redactar(mensaje),
+            # El suplente entra aquí y no en el router, y es a propósito. Sin
+            # modelo, el triaje escala **todo** a `no_seguro`: un buzón entero
+            # avisando es la forma más rápida de que se silencie el canal. El
+            # router, en cambio, ya tiene un respaldo seguro —encolar— y por él
+            # pasa lo que le escribes a Perseo, que no tiene por qué salir de
+            # casa. Lo que se manda desde aquí son cabeceras de correos que ya
+            # viven en Gmail.
+            suplente=modelo_local.Suplente(
+                clave=self._cfg.gemini_clave, modelo=self._cfg.modelo_suplente
+            ),
         )
         if decision is None:
             return Clasificacion(

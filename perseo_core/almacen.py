@@ -165,6 +165,13 @@ class Configuracion:
     #: se lee de `<datos>/obsidian.txt`, igual que el token de Telegram: el
     #: directorio de datos está fuera de git.
     vault_rest_clave: str
+    #: Modelo de fuera que responde cuando Ollama no está: `gemma-4-31b-it`, por
+    #: ejemplo. **Vacío = apagado**, y es lo que viene de fábrica: es la única
+    #: pieza que manda a un tercero el texto que se está clasificando.
+    modelo_suplente: str
+    #: Clave de la API de Gemini, para el suplente. Se comparte con la que usa la
+    #: app para la voz: `GEMINI_API_KEY`, o `<datos>/gemini.txt`.
+    gemini_clave: str
 
     @property
     def telegram_configurado(self) -> bool:
@@ -396,6 +403,8 @@ def cargar_configuracion() -> Configuracion:
         vault_respaldo=var("PERSEO_VAULT", "").strip().lower(),
         vault_rest_url=var("PERSEO_VAULT_REST", "https://127.0.0.1:27124").rstrip("/"),
         vault_rest_clave=_de_entorno_o_fichero("PERSEO_VAULT_CLAVE", directorio / "obsidian.txt", guardados),
+        modelo_suplente=var("PERSEO_MODELO_SUPLENTE", "").strip(),
+        gemini_clave=_de_entorno_o_fichero("GEMINI_API_KEY", directorio / "gemini.txt", guardados),
     )
 
 

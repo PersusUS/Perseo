@@ -42,7 +42,13 @@ def _clasificar_con(monkeypatch, respuesta) -> triaje.Clasificacion:
 
     monkeypatch.setattr(modelo_local, "preguntar", falsa)
     clasificador = triaje.Triaje.__new__(triaje.Triaje)
-    clasificador._cfg = type("C", (), {"url_ollama": "", "modelo_router": ""})()
+    # Sin suplente: lo que se prueba aquí es qué hace el triaje cuando no hay
+    # ningún modelo, que es el caso que decide si un buzón entero acaba en avisos.
+    clasificador._cfg = type(
+        "C",
+        (),
+        {"url_ollama": "", "modelo_router": "", "gemini_clave": "", "modelo_suplente": ""},
+    )()
     clasificador._sesion = object()
     return asyncio.run(clasificador.clasificar({"asunto": "x"}))
 

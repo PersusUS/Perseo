@@ -28,6 +28,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
+from dataclasses import dataclass
 from typing import Any
 
 import aiohttp
@@ -38,6 +40,37 @@ logger = logging.getLogger(__name__)
 #: segundos; 30 da margen para un arranque en frío del modelo.
 ESPERA = 30
 
+#: Dónde vive el suplente. Se puede apuntar a otro sitio para verificarlo sin
+#: cuota, igual que con Telegram o con Google.
+def _url_gemini() -> str:
+    import os
+
+    return os.environ.get(
+        "PERSEO_GEMINI_API", "https://generativelanguage.googleapis.com"
+    ).rstrip("/")
+
+
+@dataclass(frozen=True)
+class Suplente:
+    """El modelo de fuera que responde cuando el de casa no está.
+
+    **Apagado salvo que se pida.** Es la única pieza del sistema que manda a un
+    tercero el texto que se está clasificando: para el correo da igual —ese
+    correo ya vive en Gmail— pero por el router pasa lo que le escribes a Perseo.
+    Encenderlo es una decisión, no un valor por defecto sensato.
+
+    Gemma sirve aquí y no sirve para la voz: sus modelos exponen
+    `generateContent` y **no** `bidiGenerateContent`. No sustituye al modelo de
+    voz, sustituye al de casa cuando Ollama está apagado.
+    """
+
+    clave: str
+    modelo: str
+
+    @property
+    def utilizable(self) -> bool:
+        return bool(self.clave and self.modelo)
+
 
 async def preguntar(
     sesion: aiohttp.ClientSession,
@@ -46,13 +79,35 @@ async def preguntar(
     esquema: dict[str, Any],
     sistema: str,
     usuario: str,
+    suplente: Suplente | None = None,
 ) -> dict[str, Any] | None:
     """Pide una respuesta con forma al modelo local. Devuelve `None` si no se pudo.
 
     `None` cubre los tres fallos posibles —Ollama caído, respuesta que no es 200,
     contenido que no es JSON— porque para quien llama son el mismo caso: hoy no
     hay decisión local y hay que tirar por el camino seguro.
+
+    Si hay `suplente` configurado y el de casa no contesta, se pregunta fuera
+    antes de rendirse. El orden no se invierte nunca: el local es gratis y no
+    manda nada a ningún sitio.
     """
+    decision = await _preguntar_ollama(sesion, url_ollama, modelo, esquema, sistema, usuario)
+    if decision is not None:
+        return decision
+    if suplente is not None and suplente.utilizable:
+        logger.info("El modelo local no contestó; se pregunta al suplente %s.", suplente.modelo)
+        return await preguntar_suplente(sesion, suplente, esquema, sistema, usuario)
+    return None
+
+
+async def _preguntar_ollama(
+    sesion: aiohttp.ClientSession,
+    url_ollama: str,
+    modelo: str,
+    esquema: dict[str, Any],
+    sistema: str,
+    usuario: str,
+) -> dict[str, Any] | None:
     cuerpo = {
         "model": modelo,
         "stream": False,
@@ -93,3 +148,99 @@ async def preguntar(
         logger.error("El modelo local devolvió un %s en vez de un objeto.", type(decision).__name__)
         return None
     return decision
+
+
+async def preguntar_suplente(
+    sesion: aiohttp.ClientSession,
+    suplente: Suplente,
+    esquema: dict[str, Any],
+    sistema: str,
+    usuario: str,
+) -> dict[str, Any] | None:
+    """Lo mismo, pero contra Gemma por la API de Gemini.
+
+    Dos diferencias con Ollama que no son opcionales:
+
+    1. **No hay gramática.** Gemma por esta API no acepta `responseSchema`, así
+       que el esquema viaja dentro del texto y la respuesta se lee con tolerancia
+       —un modelo grande la envuelve en ```json más veces de las que uno espera—.
+       Por eso la forma se comprueba después: aquí sí puede llegar cualquier cosa.
+    2. **No hay `systemInstruction`.** Gemma tampoco lo acepta, así que las
+       instrucciones van pegadas delante de la pregunta.
+    """
+    url = f"{_url_gemini()}/v1beta/models/{suplente.modelo}:generateContent"
+    cuerpo = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "text": (
+                            f"{sistema}\n\n"
+                            "Responde SOLO con un objeto JSON que cumpla este esquema, "
+                            "sin texto alrededor ni explicaciones:\n"
+                            f"{json.dumps(esquema, ensure_ascii=False)}\n\n"
+                            f"{usuario}"
+                        )
+                    }
+                ],
+            }
+        ],
+        "generationConfig": {"temperature": 0},
+    }
+
+    try:
+        async with sesion.post(
+            url, params={"key": suplente.clave}, json=cuerpo
+        ) as respuesta:
+            datos = await respuesta.json()
+            if respuesta.status != 200:
+                logger.warning(
+                    "El suplente respondió %d: %.200s",
+                    respuesta.status,
+                    (datos.get("error") or {}).get("message", datos),
+                )
+                return None
+    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
+        logger.warning("El suplente tampoco está disponible (%s).", e)
+        return None
+
+    candidatos = datos.get("candidates") or []
+    partes = ((candidatos[0] if candidatos else {}).get("content") or {}).get("parts") or []
+    crudo = "".join(str(p.get("text", "")) for p in partes)
+
+    decision = primer_objeto(crudo)
+    if decision is None:
+        logger.error("El suplente devolvió algo que no es JSON: %.200s", crudo)
+    return decision
+
+
+#: Un objeto JSON dentro de un texto, con o sin vallas de ```json alrededor.
+_VALLA = re.compile(r"```(?:json)?\s*(.*?)```", re.S)
+
+
+def primer_objeto(texto: str) -> dict[str, Any] | None:
+    """El primer objeto JSON que aparezca en un texto, o `None`.
+
+    Sin gramática que lo garantice, un modelo grande contesta bien y **envuelto**:
+    en vallas de código, con una frase delante, o las dos cosas. Exigir un JSON
+    pelado desperdiciaría respuestas correctas.
+    """
+    if not texto:
+        return None
+
+    candidatos = [c.strip() for c in _VALLA.findall(texto)]
+    candidatos.append(texto.strip())
+    # Y como último recurso, desde la primera llave hasta la última.
+    primera, ultima = texto.find("{"), texto.rfind("}")
+    if 0 <= primera < ultima:
+        candidatos.append(texto[primera : ultima + 1])
+
+    for candidato in candidatos:
+        try:
+            decision = json.loads(candidato)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(decision, dict):
+            return decision
+    return None
