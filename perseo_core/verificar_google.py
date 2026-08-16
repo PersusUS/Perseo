@@ -20,10 +20,16 @@ documentada.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+import os
+import shutil
 import sys
+import tempfile
 import threading
+import urllib.error
 import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -31,7 +37,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from perseo_core import google_api  # noqa: E402
+from perseo_core import autorizar_google, google_api  # noqa: E402
 from perseo_core.arnes_pruebas import comprobar, puerto_libre, resumir  # noqa: E402
 
 CREDENCIALES = google_api.Credenciales(
@@ -40,6 +46,9 @@ CREDENCIALES = google_api.Credenciales(
 
 CUERPO_SECRETO = "El cuerpo entero del correo, que no debe descargarse."
 
+#: El código de un solo uso que Google devuelve tras el consentimiento.
+CODIGO = "codigo-de-un-solo-uso"
+
 
 class FalsoGoogle:
     """Servidor mínimo que imita lo que se usa de Gmail y Calendar."""
@@ -47,6 +56,8 @@ class FalsoGoogle:
     def __init__(self) -> None:
         self.puerto = puerto_libre()
         self.testigos_pedidos = 0
+        #: Lo que se ha mandado a `/token`, para poder mirar con qué se canjeó.
+        self.canjes: list[dict[str, str]] = []
         self.rutas: list[str] = []
         self.parametros: list[dict[str, list[str]]] = []
         #: Cuando está en alto, la siguiente petición se contesta con un 401.
@@ -85,7 +96,26 @@ class FalsoGoogle:
             def do_POST(self) -> None:  # noqa: N802
                 if self.path.rstrip("/").endswith("/token"):
                     largo = int(self.headers.get("Content-Length", "0"))
-                    self.rfile.read(largo)
+                    carga = urllib.parse.parse_qs(self.rfile.read(largo).decode())
+                    falso.canjes.append({c: v[0] for c, v in carga.items()})
+
+                    # El consentimiento pasa por aquí una vez, con un código de
+                    # un solo uso, y es la única vez que Google da
+                    # `refresh_token`. Después ya solo se refresca.
+                    if carga.get("grant_type", [""])[0] == "authorization_code":
+                        if carga.get("code", [""])[0] != CODIGO:
+                            self._responder(400, {"error": "invalid_grant"})
+                            return
+                        self._responder(
+                            200,
+                            {
+                                "access_token": "testigo-recien-dado",
+                                "refresh_token": "refresco-de-verdad",
+                                "expires_in": 3600,
+                            },
+                        )
+                        return
+
                     falso.testigos_pedidos += 1
                     self._responder(
                         200,
@@ -302,8 +332,119 @@ def main() -> None:
 
     asyncio.run(con_google_roto())
 
+    comprobar_consentimiento(falso)
+
     falso.parar()
     resumir()
+
+
+def comprobar_consentimiento(falso: FalsoGoogle) -> None:
+    """El paso que hoy hace el usuario a mano: dar permiso y guardar el testigo.
+
+    Se recorre entero sin cuenta de Google: la pantalla de consentimiento no se
+    abre —se comprueba la URL que se habría abierto— y la vuelta del navegador se
+    imita con una petición al servidor del bucle local que levanta el propio
+    ayudante.
+    """
+    print("\n--- el consentimiento, sin cuenta de Google ---\n")
+    os.environ["PERSEO_GOOGLE_CUENTAS"] = falso.url
+
+    raiz = Path(tempfile.mkdtemp(prefix="perseo_google_"))
+    fichero = raiz / "google.json"
+    fichero.write_text(
+        json.dumps({"installed": {"client_id": "id-de-prueba", "client_secret": "secreto"}}),
+        encoding="utf-8",
+    )
+
+    try:
+        # 1. El fichero recién descargado de la consola todavía no vale para
+        #    `google_api` —le falta el testigo— y sí para el ayudante. Esa
+        #    diferencia es la razón de que este módulo exista.
+        try:
+            google_api.Credenciales.desde_fichero(fichero)
+            comprobar("Sin refresh_token, google_api se niega", False, "no se nego")
+        except google_api.SinCredenciales:
+            comprobar("Sin refresh_token, google_api se niega", True)
+        cliente = autorizar_google.leer_cliente(fichero)
+        comprobar("Y el ayudante sí lo lee", cliente == ("id-de-prueba", "secreto"), str(cliente))
+
+        # 2. Lo que se le pide a Google: leer, y nada más.
+        recogedor = autorizar_google.Recogedor()
+        url = autorizar_google.url_de_consentimiento("id-de-prueba", recogedor.redireccion)
+        comprobar("Se piden los dos ámbitos de solo lectura", "gmail.readonly" in url and "calendar.readonly" in url)
+        comprobar(
+            "Y ninguno que escriba",
+            not any(a in url for a in ("gmail.send", "gmail.modify", "auth/calendar%20", "calendar.events")),
+            url[:80],
+        )
+        comprobar("Se pide acceso sin conexión", "access_type=offline" in url)
+        comprobar(
+            "Y se fuerza la pantalla de permiso",
+            "prompt=consent" in url,
+            "sin esto, la segunda vez no hay refresh_token",
+        )
+        comprobar("La vuelta es al bucle local", "127.0.0.1" in recogedor.redireccion, recogedor.redireccion)
+
+        # 3. La vuelta del navegador. Primero el favicon, que el navegador pide
+        #    solo: si esa petición contara como vuelta, el proceso se daría por
+        #    terminado sin código.
+        recogido: dict[str, Any] = {}
+
+        def esperar() -> None:
+            try:
+                recogido["codigo"] = recogedor.esperar()
+            except autorizar_google.SinConsentimiento as e:
+                recogido["error"] = str(e)
+
+        hilo = threading.Thread(target=esperar, daemon=True)
+        hilo.start()
+        with contextlib.suppress(urllib.error.HTTPError):
+            urllib.request.urlopen(recogedor.redireccion + "favicon.ico", timeout=10).read()
+        urllib.request.urlopen(f"{recogedor.redireccion}?code={CODIGO}", timeout=10).read()
+        hilo.join(timeout=10)
+        comprobar("El código de la URL de vuelta se recoge", recogido.get("codigo") == CODIGO, str(recogido))
+
+        # 4. El canje: el código de un solo uso por el testigo que dura.
+        testigo = asyncio.run(
+            autorizar_google.canjear("id-de-prueba", "secreto", CODIGO, recogedor.redireccion)
+        )
+        comprobar("El código se canjea por un refresh_token", testigo == "refresco-de-verdad", testigo)
+        ultimo = falso.canjes[-1]
+        comprobar("Se canjea como authorization_code", ultimo.get("grant_type") == "authorization_code")
+        comprobar(
+            "Con la misma dirección de vuelta que se anunció",
+            ultimo.get("redirect_uri") == recogedor.redireccion,
+            str(ultimo.get("redirect_uri")),
+        )
+
+        # 5. Y lo guardado es exactamente lo que `google_api` sabe leer.
+        autorizar_google.guardar(fichero, "id-de-prueba", "secreto", testigo)
+        credenciales = google_api.Credenciales.desde_fichero(fichero)
+        comprobar("Lo guardado vale para google_api", credenciales.refresh_token == testigo)
+
+        # 6. Decir que no es un final normal, no una traza.
+        negado = autorizar_google.Recogedor()
+        salida: dict[str, Any] = {}
+
+        def esperar_negativa() -> None:
+            try:
+                negado.esperar()
+            except autorizar_google.SinConsentimiento as e:
+                salida["error"] = str(e)
+
+        hilo = threading.Thread(target=esperar_negativa, daemon=True)
+        hilo.start()
+        urllib.request.urlopen(f"{negado.redireccion}?error=access_denied", timeout=10).read()
+        hilo.join(timeout=10)
+        comprobar(
+            "Negar el permiso se explica en una línea",
+            "access_denied" in salida.get("error", ""),
+            str(salida.get("error")),
+        )
+    finally:
+        shutil.rmtree(raiz, ignore_errors=True)
+        os.environ.pop("PERSEO_GOOGLE_CUENTAS", None)
+    print()
 
 
 if __name__ == "__main__":
