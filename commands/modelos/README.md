@@ -6,8 +6,10 @@ encuentra, carga un modelo de repuesto y lo dice por registro cada vez que
 arranca.
 
 ```
-commands/modelos/perseo.onnx     <- el modelo propio, cuando exista
-commands/modelos/perseo.yml      <- la configuración con la que se entrena
+commands/modelos/perseo.onnx            <- el modelo propio, cuando exista
+commands/modelos/perseo.yml             <- la configuración con la que se entrena
+commands/modelos/entrenar_colab.ipynb   <- el notebook que lo entrena, listo para subir
+commands/modelos/construir_notebook.py  <- cómo se generó ese notebook
 ```
 
 Se puede apuntar a otro sitio con `PERSEO_MODELO_PALABRA=C:\ruta\al\modelo.onnx`,
@@ -74,47 +76,60 @@ puede añadir encima sin volver a empezar.
 
 **No en este portátil.** La RTX 4050 tiene 6 GB y están comprometidos con el
 modelo de 4B del router del núcleo (restricción 1 del handoff). Va a Colab con
-GPU, o a la RunPod.
+GPU.
 
-### 1. Preparar la máquina
+### 0. El notebook oficial no vale — usa `entrenar_colab.ipynb`
+
+Esto es lo primero que hay que saber, porque cuesta una sesión entera
+descubrirlo: el
+[notebook oficial de openWakeWord](https://github.com/dscripka/openWakeWord/blob/main/notebooks/automatic_model_training.ipynb)
+**está roto** desde noviembre de 2025
+([issue #296](https://github.com/dscripka/openWakeWord/issues/296)). Falla en
+cuatro sitios encadenados:
+
+| Error | Qué es |
+|---|---|
+| `ModuleNotFoundError: No module named 'piper'` | La dependencia ya no se instala sola |
+| `generate_samples() missing 1 required positional argument: 'model'` | El notebook no pasa el argumento que la función pide |
+| `ValueError: Error! Clip does not have the correct sample rate!` | Piper devuelve 22.050 Hz y la augmentación quiere 16.000 |
+| `FileNotFoundError: positive_features_test.npy` | Consecuencia del anterior: sin augmentar no hay características que entrenar |
+
+En esta carpeta hay un notebook que sí funciona: **`entrenar_colab.ipynb`**. Se
+sube a Colab, se pone el entorno de ejecución en GPU y se ejecuta entero. Solo
+tiene dos números que tocar, arriba de la celda 10 (`N_MUESTRAS` y `N_PASOS`), y
+vienen puestos para una **T4 gratuita**: unas dos horas de principio a fin.
+
+Sale del notebook de
+[alfiedennen/openwakeword-colab-2026](https://github.com/alfiedennen/openwakeword-colab-2026)
+(MIT, © 2026 Alfie Dennen), que aplica seis parches conocidos y sustituye el
+entrenador de openWakeWord por un bucle de PyTorch propio. **Sus celdas están tal
+cual**; lo único que cambia es la configuración, que aquí lee `perseo.yml` — sin
+eso se perderían los negativos en español y los pesos.
+
+Descarga solo lo que hace falta (`mit_rirs`, FMA, las características de
+ACAV100M y el conjunto de validación de falsos positivos), así que no hay nada
+que preparar a mano.
+
+Para regenerarlo cuando el original cambie:
 
 ```bash
-pip install openwakeword
-git clone https://github.com/dscripka/piper-sample-generator
+python commands/modelos/construir_notebook.py
 ```
 
-Hacen falta además, en el mismo directorio de trabajo:
+**Ojo con una cosa:** `perseo.yml` va **incrustado** dentro del notebook, porque
+el repositorio es privado y desde Colab no se puede leer. Si cambias el `.yml`,
+vuelve a ejecutar ese guion.
 
-| Qué | De dónde | Para qué |
-|---|---|---|
-| `mit_rirs/` | Respuestas al impulso del MIT | Simular habitaciones |
-| `audioset_16k/`, `fma/` | AudioSet y Free Music Archive | Ruido y música de fondo |
-| `validation_set_features.npy` | [openwakeword_features](https://huggingface.co/datasets/davidscripka/openwakeword_features) en Hugging Face | Medir falsos positivos contra ~11 h de habla, ruido y música |
-| `openwakeword_features_ACAV100M_2000_hrs_16bit.npy` | El mismo sitio | Los negativos del entrenamiento |
+### 1. Traerse el modelo
 
-El
-[notebook oficial](https://github.com/dscripka/openWakeWord/blob/main/notebooks/automatic_model_training.ipynb)
-descarga todo eso solo; es la vía cómoda y la que conviene usar. `perseo.yml`
-sustituye a la configuración que el notebook trae de ejemplo.
+La última celda exporta `perseo.onnx` y lo baja. **Bájalo en cuanto salga**: si
+Colab corta la sesión, se pierde lo que no esté en tu disco. El `.tflite` no se
+genera a propósito — en Windows no hay `tflite-runtime`, y por eso el detector
+pide `onnx` explícitamente.
 
-### 2. Lanzar
+El fichero se copia a esta carpeta y ya está: no hay que tocar código.
 
-```bash
-python -m openwakeword.train --training_config perseo.yml --generate_clips
-python -m openwakeword.train --training_config perseo.yml --augment_clips
-python -m openwakeword.train --training_config perseo.yml --train_model
-```
-
-Con `n_samples: 50000` la generación es lo que más tarda: entre una y dos horas
-de GPU. El entrenamiento en sí son minutos.
-
-### 3. Traerse el modelo
-
-Sale `perseo.onnx` (y un `.tflite` que aquí no se usa: en Windows no hay
-`tflite-runtime`, y por eso el detector pide `onnx` explícitamente). El `.onnx` se
-copia a esta carpeta y ya está — no hay que tocar código.
-
-### 4. Comprobarlo
+### 2. Comprobarlo
 
 ```bash
 python commands/verificar_palabra_clave.py
@@ -133,3 +148,5 @@ aplaudir dos veces y hablarle.
 | No reconoce tu voz nunca | Es lo esperable de la vía 1 si tu acento se aleja del inglés. Baja `PERSEO_UMBRAL_PALABRA` a 0.3 y vuelve a probar antes de reentrenar |
 | Se activa con cualquier cosa | Sube el umbral a 0.7, o añade lo que lo dispara a `custom_negative_phrases` y reentrena |
 | El verificador falla al cargar | El `.onnx` está a medio copiar o es el `.tflite` renombrado |
+| Una celda del notebook revienta | Copia el error tal cual. **Nada de esto se ha podido probar desde el repositorio** —aquí no hay GPU—, así que el mensaje concreto vale más que cualquier suposición. Los seis parches de la celda 3 son idempotentes: volver a ejecutarla no rompe nada |
+| Colab corta la sesión a media generación | Las celdas son idempotentes y se saltan lo ya hecho: vuelve a ejecutar desde el principio y retomará donde estaba, salvo que se haya reiniciado la máquina |
