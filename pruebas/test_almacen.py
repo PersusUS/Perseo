@@ -178,3 +178,22 @@ def test_url_por_defecto_prefiere_lo_que_no_es_local() -> None:
     assert almacen._url_por_defecto(("127.0.0.1", "100.64.0.1"), 8787) == (
         "http://100.64.0.1:8787"
     )
+
+
+def test_url_por_defecto_sin_tailnet_se_queda_en_local() -> None:
+    """No hay nada mejor que ofrecer, pero el enlace no vale desde fuera."""
+    assert almacen._url_por_defecto(("127.0.0.1",), 8787) == "http://127.0.0.1:8787"
+
+
+def test_un_enlace_local_se_marca_como_inalcanzable(cfg) -> None:
+    """Es lo que hace que el aviso salga en el registro en vez de en el móvil."""
+    from dataclasses import replace
+
+    assert not replace(cfg, url_base="http://127.0.0.1:8787").url_base_alcanzable
+    assert not replace(cfg, url_base="http://localhost:8787").url_base_alcanzable
+
+
+def test_un_enlace_del_tailnet_si_es_alcanzable(cfg) -> None:
+    from dataclasses import replace
+
+    assert replace(cfg, url_base="http://100.64.0.1:8787").url_base_alcanzable

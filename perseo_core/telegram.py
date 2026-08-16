@@ -81,6 +81,17 @@ class Telegram:
             timeout=aiohttp.ClientTimeout(total=ESPERA_SONDEO + 15)
         )
         logger.info("Telegram en marcha (chat %s).", self._cfg.telegram_chat)
+        if not self._cfg.url_base_alcanzable:
+            # Los avisos salen igual: el titular es lo que importa, y el enlace
+            # es un extra. Pero se dice, porque el síntoma —"le doy a Ver
+            # detalle y sale una página en blanco"— no lleva a la causa ni de
+            # lejos: en el móvil, `127.0.0.1` es el móvil.
+            logger.warning(
+                "El enlace 'ver detalle' apunta a %s, que desde el móvil no lleva a "
+                "ninguna parte. Arranca con PERSEO_CORE_HOST=tailscale, o pon "
+                "PERSEO_URL_BASE a mano.",
+                self._cfg.url_base,
+            )
         try:
             await asyncio.gather(self._anunciar_eventos(), self._atender_respuestas())
         finally:

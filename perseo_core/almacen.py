@@ -25,6 +25,7 @@ import socket
 import sqlite3
 import subprocess
 import threading
+import urllib.parse
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -168,6 +169,18 @@ class Configuracion:
     @property
     def telegram_configurado(self) -> bool:
         return bool(self.telegram_token and self.telegram_chat)
+
+    @property
+    def url_base_alcanzable(self) -> bool:
+        """Si el enlace que sale por Telegram sirve desde fuera de esta máquina.
+
+        `127.0.0.1` en el móvil es **el móvil**: el enlace abre una página en
+        blanco y nadie sabe por qué. Pasa siempre que se arranca sin
+        `PERSEO_CORE_HOST=tailscale`, porque entonces la única interfaz es la
+        local y `_url_por_defecto` no tiene otra cosa que ofrecer.
+        """
+        anfitrion = urllib.parse.urlsplit(self.url_base).hostname or ""
+        return anfitrion not in LOCALES
 
     @property
     def correo_configurado(self) -> bool:
