@@ -1,61 +1,107 @@
-//! La ventana del panel: el mismo tablero que se ve en el movil, dentro de la app.
+//! El panel, hablando con el nucleo desde Rust.
 //!
-//! Perseo tenia dos caras que no se hablaban. En el PC, la ventana de la llamada
-//! —avatar, ola, camara— y nada mas: para saber que habia en la cola, si el
-//! correo se habia triado o si Ollama seguia en pie, habia que abrir el
-//! navegador. En el movil, justo lo contrario.
+//! Perseo tenia dos caras que no se hablaban: en el PC la ventana de la llamada
+//! y nada mas, y para ver la cola habia que abrir el navegador.
 //!
-//! Esto las junta, y lo hace **hospedando en vez de reescribiendo**. Se abre una
-//! ventana con `perseo_core/interfaz/index.html`, servida por el propio nucleo.
-//! Es la misma interfaz, el mismo fichero y el mismo codigo que en el iPhone.
+//! El primer intento fue **hospedar** la interfaz del nucleo en una ventana
+//! aparte. No vale, y por dos motivos que no se arreglan con codigo:
 //!
-//! La alternativa era portar las cuatro pestañas a React aqui dentro, y es
-//! justo lo que no se hace: serian dos paneles haciendo lo mismo, que divergen a
-//! la primera prisa. Este proyecto ya pago esa factura una vez —dos memorias,
-//! dos formas de hacer lo mismo, y lo que pedias por voz no existia para el
-//! movil— y de ahi sale la regla de que las caras no piensan.
+//! 1. **La CSP.** `tauri.conf.json` declara `script-src 'self'`, y esa interfaz
+//!    es un solo fichero con su `<script>` en linea. Pagina cargada, script
+//!    bloqueado, pantalla en blanco.
+//! 2. **La cookie.** La sesion del nucleo es `SameSite=Strict`. Metida en un
+//!    `<iframe>` dentro de la app, el navegador trata como cross-site hasta las
+//!    peticiones que la pagina hace a su propio origen, asi que la cookie no
+//!    viaja y no hay forma de autenticarse.
 //!
-//! Esta ventana **no tiene ningun permiso de Tauri**, y no por descuido:
-//! `capabilities/default.json` se aplica solo a `windows: ["main"]`, asi que la
-//! del panel carga contenido HTTP sin acceso a `invoke` ni a ningun comando. Es
-//! lo que debe ser — ahi dentro solo hay una pagina web hablando con el nucleo
-//! por HTTP, igual que en el navegador del movil.
+//! Asi que el panel del escritorio es una vista de React, y habla con el nucleo
+//! **por aqui**. Eso cuesta tener dos implementaciones de la misma pantalla —la
+//! de React y el fichero suelto del movil— y es un coste real: lo que se cambie
+//! en una hay que llevarlo a la otra. A cambio se gana lo que el usuario pedia,
+//! una sola ventana, y algo que no estaba en la lista: **en el PC no se pega
+//! ningun token**, porque el token lo lee Rust del disco y no pasa por el
+//! frontend.
 //!
-//! Sobre el token: **no se inyecta desde aqui**. La primera vez se pega en la
-//! propia pantalla, igual que en el movil, y el nucleo lo canjea por una cookie
-//! que la ventana conserva entre arranques. Meterlo por `initialization_script`
-//! seria dejar el token dentro del JavaScript de una ventana, que es
-//! exactamente lo que `nucleo.rs` evita al leerlo del disco desde Rust.
+//! Los comandos son concretos y no un proxy generico a `/{ruta}`: un proxy
+//! dejaria que cualquier cosa del frontend llamara a cualquier ruta del nucleo,
+//! y la lista de lo que el panel necesita cabe en una pantalla.
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use serde_json::{json, Value};
+use tauri::AppHandle;
 
-/// Etiqueta de la ventana. Distinta de `main` a proposito: `bandeja.rs` solo
-/// esconde la principal al cerrarla, asi que cerrar el panel lo cierra de
-/// verdad, que es lo que uno espera de un panel.
-pub const VENTANA: &str = "panel";
+use crate::nucleo::{base_url, pedir_json, token};
 
-/// Abre el panel, o lo trae al frente si ya estaba abierto.
+/// GET autenticado contra el nucleo.
+async fn traer(app: &AppHandle, ruta: &str) -> Result<Value, String> {
+    let token = token(app)?;
+    let cliente = reqwest::Client::new();
+    pedir_json(cliente.get(format!("{}{ruta}", base_url())).bearer_auth(&token)).await
+}
+
+/// POST autenticado contra el nucleo.
+async fn mandar(app: &AppHandle, ruta: &str, cuerpo: Value) -> Result<Value, String> {
+    let token = token(app)?;
+    let cliente = reqwest::Client::new();
+    pedir_json(
+        cliente
+            .post(format!("{}{ruta}", base_url()))
+            .bearer_auth(&token)
+            .json(&cuerpo),
+    )
+    .await
+}
+
+/// De que esta capado el sistema hoy: piezas, cuota, disparadores.
 #[tauri::command]
-pub fn abrir_panel(app: AppHandle) -> Result<(), String> {
-    if let Some(ventana) = app.get_webview_window(VENTANA) {
-        let _ = ventana.unminimize();
-        ventana.show().map_err(|e| e.to_string())?;
-        return ventana.set_focus().map_err(|e| e.to_string());
+pub async fn panel_estado(app: AppHandle) -> Result<Value, String> {
+    traer(&app, "/estado").await
+}
+
+/// Los ultimos trabajos de la cola.
+#[tauri::command]
+pub async fn panel_trabajos(app: AppHandle, limite: u32) -> Result<Value, String> {
+    traer(&app, &format!("/trabajos?limite={limite}")).await
+}
+
+/// Uno concreto, para seguir un trabajo recien encolado.
+#[tauri::command]
+pub async fn panel_trabajo(app: AppHandle, id: i64) -> Result<Value, String> {
+    traer(&app, &format!("/trabajos/{id}")).await
+}
+
+/// Aprobar, rechazar o cancelar.
+///
+/// La decision se valida aqui: sin esto, `decision` seria un trozo de URL que
+/// elige el frontend, y eso es una ruta abierta con otro nombre.
+#[tauri::command]
+pub async fn panel_responder(app: AppHandle, id: i64, decision: String) -> Result<Value, String> {
+    if !["aprobar", "rechazar", "cancelar"].contains(&decision.as_str()) {
+        return Err(format!("Decision desconocida: {decision}"));
     }
+    mandar(&app, &format!("/trabajos/{id}/{decision}"), json!({})).await
+}
 
-    let destino = crate::nucleo::base_url();
-    let url = destino
-        .parse()
-        .map_err(|e| format!("La direccion del nucleo no vale ({destino}): {e}"))?;
+/// Encola un trabajo para un agente. Lo usa la pestana de memoria.
+#[tauri::command]
+pub async fn panel_encolar(
+    app: AppHandle,
+    agente: String,
+    peticion: Value,
+) -> Result<Value, String> {
+    mandar(
+        &app,
+        "/trabajos",
+        json!({ "agente": agente, "peticion": peticion, "origen": "texto" }),
+    )
+    .await
+}
 
-    WebviewWindowBuilder::new(&app, VENTANA, WebviewUrl::External(url))
-        .title("Perseo — panel")
-        // Estrecha y alta: la interfaz esta pensada para el movil primero, y con
-        // una ventana ancha las tarjetas se estiran hasta quedar ilegibles.
-        .inner_size(460.0, 860.0)
-        .min_inner_size(360.0, 480.0)
-        .build()
-        .map_err(|e| format!("No se pudo abrir el panel: {e}"))?;
-
-    Ok(())
+/// Enciende o apaga el modo confianza.
+#[tauri::command]
+pub async fn panel_confianza(app: AppHandle, minutos: Option<f64>) -> Result<Value, String> {
+    let cuerpo = match minutos {
+        Some(m) => json!({ "minutos": m }),
+        None => json!({ "activo": false }),
+    };
+    mandar(&app, "/confianza", cuerpo).await
 }

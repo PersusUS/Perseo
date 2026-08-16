@@ -36,9 +36,16 @@ pub async fn capture_screen_base64(quality: u8) -> Result<String, String> {
 
 /// Devuelve la clave de API de Gemini.
 ///
-/// Orden de busqueda: el almacen local primero (donde la deja el usuario desde
-/// la pantalla de Ajustes) y, si esta vacio, la variable de entorno
-/// GEMINI_API_KEY del sistema, leida en tiempo de ejecucion.
+/// Tres sitios, en este orden:
+///
+/// 1. **El almacen local**, donde la deja el usuario desde el boton de Ajustes.
+/// 2. **`GEMINI_API_KEY`** del sistema, leida en tiempo de ejecucion.
+/// 3. **`perseo_core/datos/gemini.txt`**, que es de donde la lee el nucleo.
+///
+/// El tercero se anadio el 2026-08-16 y no es un capricho: la clave estaba
+/// puesta para el nucleo y la app seguia pidiendola por pantalla, asi que en una
+/// misma maquina habia que escribirla dos veces y recordar rotarla en dos
+/// sitios. Ese directorio esta fuera de git, igual que el almacen.
 ///
 /// El motivo de que esto viva en Rust y no en el frontend: cualquier variable
 /// con prefijo VITE_ la incrusta Vite dentro del JavaScript compilado, asi que
@@ -55,7 +62,28 @@ pub fn obtener_api_key(app: AppHandle) -> Result<String, String> {
         }
     }
 
-    Ok(std::env::var("GEMINI_API_KEY").unwrap_or_default())
+    let del_entorno = std::env::var("GEMINI_API_KEY").unwrap_or_default();
+    if !del_entorno.trim().is_empty() {
+        return Ok(del_entorno.trim().to_string());
+    }
+
+    Ok(clave_del_nucleo(&app))
+}
+
+/// La clave que usa el nucleo, si esta puesta. Cadena vacia si no.
+///
+/// Se busca donde `nucleo.rs` busca el token, y por lo mismo: sin rutas
+/// absolutas cableadas, para que valga en `tauri dev` y en el binario instalado.
+fn clave_del_nucleo(app: &AppHandle) -> String {
+    for ruta in crate::nucleo::rutas_datos(app) {
+        if let Ok(contenido) = std::fs::read_to_string(ruta.join("gemini.txt")) {
+            let clave = contenido.trim().to_string();
+            if !clave.is_empty() {
+                return clave;
+            }
+        }
+    }
+    String::new()
 }
 
 /// Guarda la clave de API en el almacen local y la persiste en disco.

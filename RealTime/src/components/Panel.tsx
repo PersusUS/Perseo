@@ -1,0 +1,555 @@
+/**
+ * El panel de Perseo dentro de la ventana de la app.
+ *
+ * Las mismas cuatro pestañas que la interfaz del móvil —cola, correo, memoria y
+ * estado— pero en React y hablando con el núcleo **a través de Rust**
+ * (`src-tauri/src/panel.rs`), no por cookie.
+ *
+ * Por qué existe esta segunda implementación, que es una duplicación de verdad y
+ * conviene tener escrito antes de que alguien la "arregle": hospedar la
+ * interfaz del núcleo aquí dentro no funciona. En una ventana aparte, la CSP de
+ * la app bloquea su `<script>` en línea y sale en blanco; en un `<iframe>`, la
+ * cookie de sesión es `SameSite=Strict` y el navegador no la manda desde un
+ * contexto embebido, así que no hay forma de autenticarse. Ninguna de las dos se
+ * arregla con código nuestro.
+ *
+ * Lo que se gana además de la ventana única: **aquí no se pega ningún token**.
+ * Lo lee Rust del disco, como para las herramientas de voz.
+ *
+ * El precio, y hay que pagarlo a conciencia: lo que se cambie en
+ * `perseo_core/interfaz/index.html` hay que traerlo aquí. Son dos pantallas con
+ * el mismo trabajo. La del móvil manda: es la que se usa a diario.
+ */
+
+import { invoke } from '@tauri-apps/api/core';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+type Pestana = 'cola' | 'correo' | 'memoria' | 'estado';
+
+type Trabajo = {
+  id: number;
+  estado: string;
+  agente: string;
+  origen: string;
+  peticion?: any;
+  resultado?: any;
+  error?: string | null;
+  confirmacion?: { resumen?: string; detalle?: string } | null;
+};
+
+type Pieza = { id: string; nombre: string; estado: string; detalle: string; arreglo: string };
+
+type Estado = {
+  encendido_segundos: number;
+  piezas: Pieza[];
+  trabajos: Record<string, number>;
+  agentes: string[];
+  disparadores: { nombre: string; activo: boolean; intervalo: number }[];
+  cuota: { dia: string; nota: string; servicios: { modelo: string; usadas: number; tope: number | null }[] };
+};
+
+const ESTADOS_ABIERTOS = new Set(['pendiente', 'en_curso', 'esperando']);
+
+/** Cada cuánto se repregunta mientras el panel está delante.
+ *  Se sondea en vez de escuchar el flujo SSE: el flujo se autentica por cookie y
+ *  aquí no hay cookie — es justo la razón de que este panel exista. */
+const REFRESCO = 4000;
+const REFRESCO_ESTADO = 20000;
+
+const CLASES_CORREO: Record<string, string> = {
+  requiere_accion: 'acción',
+  interesante: 'interesante',
+  no_seguro: 'sin decidir',
+  ignorar: 'ignorar',
+};
+
+const ORDEN_CAJONES = ['requiere_accion', 'no_seguro', 'interesante', 'ignorar'];
+
+const FILTROS: Record<string, (t: Trabajo) => boolean> = {
+  todo: () => true,
+  abiertos: t => ESTADOS_ABIERTOS.has(t.estado),
+  esperando: t => t.estado === 'esperando',
+  mios: t => t.origen !== 'disparador',
+  solos: t => t.origen === 'disparador',
+  fallidos: t => t.estado === 'fallido',
+};
+
+const NOMBRES_FILTRO: Record<string, string> = {
+  todo: 'todo',
+  abiertos: 'abiertos',
+  esperando: 'esperan un sí',
+  mios: 'los pedí yo',
+  solos: 'salieron solos',
+  fallidos: 'fallidos',
+};
+
+function duracion(segundos: number): string {
+  const d = Math.floor(segundos / 86400);
+  const h = Math.floor((segundos % 86400) / 3600);
+  const m = Math.floor((segundos % 3600) / 60);
+  if (d) return `${d} d ${h} h`;
+  if (h) return `${h} h ${m} min`;
+  return `${m} min`;
+}
+
+function resumirPeticion(t: Trabajo): string {
+  // Un trabajo de correo trae el lote entero dentro. Volcarlo llena la pantalla
+  // del JSON de veinte correos antes de llegar al resultado.
+  const mensajes = t.peticion?.mensajes;
+  if (Array.isArray(mensajes)) {
+    return `${mensajes.length} correo${mensajes.length === 1 ? '' : 's'} del buzón`;
+  }
+  return t.peticion?.texto ?? t.peticion?.accion ?? JSON.stringify(t.peticion ?? {});
+}
+
+/** Encola un trabajo y espera su resultado sondeando. */
+async function encolarYEsperar(agente: string, peticion: any, segundos = 20): Promise<any> {
+  const trabajo = await invoke<Trabajo>('panel_encolar', { agente, peticion });
+  const limite = Date.now() + segundos * 1000;
+  while (Date.now() < limite) {
+    await new Promise(r => setTimeout(r, 400));
+    const actual = await invoke<Trabajo>('panel_trabajo', { id: trabajo.id });
+    if (actual.estado === 'hecho') return actual.resultado;
+    if (['fallido', 'cancelado', 'rechazado'].includes(actual.estado)) {
+      throw new Error(actual.error || `El trabajo quedó ${actual.estado}`);
+    }
+  }
+  throw new Error('Sigue en marcha; míralo en la cola.');
+}
+
+const LineaCorreo: React.FC<{ c: any }> = ({ c }) => (
+  <div className="pnl-correo">
+    <span className={`pnl-clase ${c.clase ?? ''}`}>{CLASES_CORREO[c.clase] ?? c.clase ?? '?'}</span>
+    {` ${c.remitente ?? '?'} — ${c.asunto ?? '(sin asunto)'}`}
+    {c.motivo && <div className="pnl-motivo">{c.motivo}</div>}
+  </div>
+);
+
+/** Una nota del vault. El contenido se pide solo al desplegarla: una búsqueda
+ *  devuelve diez, y traerlas enteras para leer una es tirar el trabajo. */
+const NotaVault: React.FC<{ n: any }> = ({ n }) => {
+  const [contenido, setContenido] = useState<string | null>(null);
+
+  const abrir = async (e: React.SyntheticEvent<HTMLDetailsElement>) => {
+    if (!e.currentTarget.open || contenido !== null || !n.ruta) return;
+    setContenido('Leyendo…');
+    try {
+      const r = await encolarYEsperar('memoria', { accion: 'leer', ruta: n.ruta });
+      setContenido(r?.contenido ?? '(vacía)');
+    } catch (err: any) {
+      setContenido('No se pudo leer: ' + err);
+    }
+  };
+
+  return (
+    <details className="pnl-tarjeta pnl-nota" onToggle={abrir}>
+      <summary>{n.titulo || n.ruta || '(sin título)'}</summary>
+      {n.ruta && <div className="pnl-ruta">{n.ruta}</div>}
+      {n.extracto && <div className="pnl-extracto">{n.extracto}</div>}
+      {contenido !== null && <div className="pnl-contenido">{contenido}</div>}
+    </details>
+  );
+};
+
+const TarjetaTrabajo: React.FC<{ t: Trabajo; onResponder: (id: number, d: string) => void }> = ({
+  t,
+  onResponder,
+}) => {
+  const notas: any[] = Array.isArray(t.resultado?.notas) ? t.resultado.notas : [];
+  const clasificados: any[] = Array.isArray(t.resultado?.clasificados) ? t.resultado.clasificados : [];
+
+  return (
+    <div className="pnl-tarjeta">
+      <div className="pnl-cabeza">
+        <span className={`pnl-etiqueta ${t.estado}`}>{t.estado}</span>
+        {` #${t.id} · ${t.agente} · ${t.origen}`}
+      </div>
+      <div className="pnl-cuerpo">{resumirPeticion(t)}</div>
+
+      {(t.resultado || t.error) && (
+        <div className="pnl-resultado">
+          {t.error ? (
+            `Error: ${t.error}`
+          ) : notas.length ? (
+            <>
+              <div>{t.resultado.titular ?? 'Sin resultados'}</div>
+              {notas.slice(0, 3).map((n, i) => <NotaVault key={i} n={n} />)}
+              {notas.length > 3 && (
+                <div className="pnl-motivo">y {notas.length - 3} más — búscalas en Memoria</div>
+              )}
+            </>
+          ) : clasificados.length ? (
+            <>
+              <div>{t.resultado.titular ?? 'Nada que destacar'}</div>
+              {clasificados
+                .filter(c => c.clase !== 'ignorar')
+                .map((c, i) => <LineaCorreo key={i} c={c} />)}
+            </>
+          ) : typeof t.resultado?.contenido === 'string' ? (
+            // Leer una nota devuelve la nota entera: doce mil caracteres de
+            // Markdown para decir que se leyó un fichero. Ver H-36.
+            `Leída ${t.resultado.ruta ?? ''} — ${t.resultado.contenido.length} caracteres`
+          ) : (
+            t.resultado?.titular ?? t.resultado?.texto ?? JSON.stringify(t.resultado)
+          )}
+        </div>
+      )}
+
+      {t.estado === 'esperando' && t.confirmacion && (
+        <div className="pnl-pregunta">
+          <div>{t.confirmacion.resumen ?? '¿Confirmas?'}</div>
+          {t.confirmacion.detalle && <div className="pnl-detalle">{t.confirmacion.detalle}</div>}
+        </div>
+      )}
+
+      {ESTADOS_ABIERTOS.has(t.estado) && (
+        <div className="pnl-acciones">
+          {t.estado === 'esperando' && (
+            <>
+              <button className="pnl-pildora aprobar" onClick={() => onResponder(t.id, 'aprobar')}>
+                Aprobar
+              </button>
+              <button className="pnl-pildora peligro" onClick={() => onResponder(t.id, 'rechazar')}>
+                Rechazar
+              </button>
+            </>
+          )}
+          <button className="pnl-pildora peligro" onClick={() => onResponder(t.id, 'cancelar')}>
+            Cancelar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
+  const [pestana, setPestana] = useState<Pestana>('cola');
+  const [trabajos, setTrabajos] = useState<Trabajo[]>([]);
+  const [estado, setEstado] = useState<Estado | null>(null);
+  const [fallo, setFallo] = useState<string>('');
+  const [filtro, setFiltro] = useState<string>('todo');
+
+  const [modoMemoria, setModoMemoria] = useState<'buscar' | 'anotar'>('buscar');
+  const [consulta, setConsulta] = useState('');
+  const [tituloNota, setTituloNota] = useState('');
+  const [textoNota, setTextoNota] = useState('');
+  const [notas, setNotas] = useState<any[] | null>(null);
+  const [avisoMemoria, setAvisoMemoria] = useState('');
+  const trabajando = useRef(false);
+
+  const cargarTrabajos = useCallback(async () => {
+    try {
+      const datos = await invoke<{ trabajos: Trabajo[] }>('panel_trabajos', { limite: 50 });
+      setTrabajos(datos.trabajos);
+      setFallo('');
+    } catch (e: any) {
+      setFallo(String(e));
+    }
+  }, []);
+
+  const cargarEstado = useCallback(async () => {
+    try {
+      setEstado(await invoke<Estado>('panel_estado'));
+      setFallo('');
+    } catch (e: any) {
+      setFallo(String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    cargarTrabajos();
+    cargarEstado();
+    const a = setInterval(cargarTrabajos, REFRESCO);
+    const b = setInterval(cargarEstado, REFRESCO_ESTADO);
+    return () => { clearInterval(a); clearInterval(b); };
+  }, [cargarTrabajos, cargarEstado]);
+
+  const responder = async (id: number, decision: string) => {
+    try {
+      await invoke('panel_responder', { id, decision });
+    } catch (e: any) {
+      // Contestar desde dos sitios a la vez es normal: el núcleo resuelve el
+      // empate y el segundo se lleva un 409. Recargar enseña lo que quedó.
+      setFallo(String(e));
+    }
+    cargarTrabajos();
+  };
+
+  const buscar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!consulta.trim() || trabajando.current) return;
+    trabajando.current = true;
+    setAvisoMemoria(`Buscando «${consulta.trim()}»…`);
+    setNotas(null);
+    try {
+      const r = await encolarYEsperar('memoria', { accion: 'buscar', texto: consulta.trim() });
+      setNotas(r?.notas ?? []);
+      setAvisoMemoria(
+        (r?.notas ?? []).length
+          ? `${r.notas.length} nota(s)`
+          : 'Ninguna nota. Con el plugin de Obsidian la búsqueda es literal: prueba con tildes.'
+      );
+    } catch (err: any) {
+      setAvisoMemoria('No se pudo buscar: ' + err);
+    } finally {
+      trabajando.current = false;
+    }
+  };
+
+  const anotar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tituloNota.trim() || !textoNota.trim()) {
+      setAvisoMemoria('Hacen falta un título y un texto.');
+      return;
+    }
+    if (trabajando.current) return;
+    trabajando.current = true;
+    setAvisoMemoria('Anotando…');
+    try {
+      const r = await encolarYEsperar('memoria', {
+        accion: 'anotar',
+        titulo: tituloNota.trim(),
+        texto: textoNota.trim(),
+      });
+      // Solo se vacía si salió bien: perder lo que acabas de escribir porque el
+      // núcleo no contestó sería la peor forma de estrenar esto.
+      setTituloNota('');
+      setTextoNota('');
+      setAvisoMemoria(r?.titular ?? 'Anotado.');
+    } catch (err: any) {
+      setAvisoMemoria('No se pudo anotar: ' + err);
+    } finally {
+      trabajando.current = false;
+    }
+  };
+
+  const cajones = useMemo(() => {
+    const mapa = new Map<string, any[]>(ORDEN_CAJONES.map(c => [c, []]));
+    for (const t of trabajos) {
+      for (const c of t.resultado?.clasificados ?? []) {
+        (mapa.get(c.clase) ?? mapa.get('no_seguro'))!.push(c);
+      }
+    }
+    return mapa;
+  }, [trabajos]);
+
+  const abiertos = trabajos.filter(t => ESTADOS_ABIERTOS.has(t.estado)).length;
+  const malas = estado?.piezas.filter(p => p.estado === 'malo').length ?? 0;
+  const visibles = trabajos.filter(FILTROS[filtro]);
+  const confianza = estado?.piezas.find(p => p.id === 'confianza');
+  const confiando = confianza?.estado === 'aviso';
+
+  return (
+    <div className="pnl">
+      <header className="pnl-cabecera">
+        <h2>Panel</h2>
+        <button className="pnl-pildora" onClick={onCerrar}>Volver a la llamada</button>
+      </header>
+
+      <nav className="pnl-pestanas">
+        {(['cola', 'correo', 'memoria', 'estado'] as Pestana[]).map(p => (
+          <button
+            key={p}
+            aria-selected={pestana === p}
+            onClick={() => setPestana(p)}
+          >
+            {p}
+            {p === 'cola' && abiertos > 0 && <span className="pnl-cuenta"> ({abiertos})</span>}
+            {p === 'estado' && malas > 0 && <span className="pnl-cuenta"> ({malas})</span>}
+          </button>
+        ))}
+      </nav>
+
+      {fallo && <div className="pnl-nota">{fallo}</div>}
+
+      <div className="pnl-cuerpo-scroll">
+        {pestana === 'cola' && (
+          <>
+            <div className="pnl-filtros">
+              {Object.keys(FILTROS).map(clave => (
+                <button
+                  key={clave}
+                  className="pnl-filtro"
+                  aria-pressed={filtro === clave}
+                  onClick={() => setFiltro(clave)}
+                >
+                  {NOMBRES_FILTRO[clave]} {trabajos.filter(FILTROS[clave]).length}
+                </button>
+              ))}
+            </div>
+            {visibles.length === 0 ? (
+              <div className="pnl-nota">
+                {filtro === 'todo' ? 'No hay nada en la cola.' : 'Nada con ese filtro.'}
+              </div>
+            ) : (
+              visibles.map(t => <TarjetaTrabajo key={t.id} t={t} onResponder={responder} />)
+            )}
+          </>
+        )}
+
+        {pestana === 'correo' && (
+          <>
+            <div className="pnl-cifras">
+              {ORDEN_CAJONES.map(c => (
+                <div className="pnl-cifra" key={c}>
+                  <b>{cajones.get(c)!.length}</b>
+                  <span className="pnl-mayus">{CLASES_CORREO[c]}</span>
+                </div>
+              ))}
+            </div>
+            {ORDEN_CAJONES.every(c => cajones.get(c)!.length === 0) && (
+              <div className="pnl-nota">
+                Todavía no hay ningún correo triado. Sale solo cuando el disparador mira el buzón.
+              </div>
+            )}
+            {ORDEN_CAJONES.filter(c => cajones.get(c)!.length).map(c => (
+              <div className="pnl-tarjeta" key={c}>
+                <div className="pnl-cabeza">
+                  <span className={`pnl-clase ${c}`}>{CLASES_CORREO[c]}</span>
+                  {` ${cajones.get(c)!.length}`}
+                </div>
+                {c === 'ignorar' ? (
+                  <details>
+                    <summary>ver los ignorados</summary>
+                    {cajones.get(c)!.map((x, i) => <LineaCorreo key={i} c={x} />)}
+                  </details>
+                ) : (
+                  cajones.get(c)!.map((x, i) => <LineaCorreo key={i} c={x} />)
+                )}
+              </div>
+            ))}
+          </>
+        )}
+
+        {pestana === 'memoria' && (
+          <>
+            <div className="pnl-filtros">
+              <button className="pnl-filtro" aria-pressed={modoMemoria === 'buscar'}
+                onClick={() => { setModoMemoria('buscar'); setAvisoMemoria(''); setNotas(null); }}>
+                buscar
+              </button>
+              <button className="pnl-filtro" aria-pressed={modoMemoria === 'anotar'}
+                onClick={() => { setModoMemoria('anotar'); setAvisoMemoria(''); setNotas(null); }}>
+                anotar
+              </button>
+            </div>
+
+            {modoMemoria === 'buscar' ? (
+              <form className="pnl-form" onSubmit={buscar}>
+                <input
+                  value={consulta}
+                  onChange={e => setConsulta(e.target.value)}
+                  placeholder="Buscar en el vault…"
+                />
+                <button type="submit">Buscar</button>
+              </form>
+            ) : (
+              <form className="pnl-form pnl-form-alta" onSubmit={anotar}>
+                <input
+                  value={tituloNota}
+                  onChange={e => setTituloNota(e.target.value)}
+                  placeholder="Título"
+                />
+                <textarea
+                  value={textoNota}
+                  onChange={e => setTextoNota(e.target.value)}
+                  placeholder="Lo que quieras recordar…"
+                  rows={4}
+                />
+                <button type="submit">Anotar</button>
+              </form>
+            )}
+
+            {avisoMemoria && <div className="pnl-nota">{avisoMemoria}</div>}
+            {notas?.map((n, i) => <NotaVault key={i} n={n} />)}
+          </>
+        )}
+
+        {pestana === 'estado' && estado && (
+          <>
+            <div className="pnl-tarjeta">
+              <div className="pnl-cifras">
+                <div className="pnl-cifra">
+                  <b>{duracion(estado.encendido_segundos)}</b>
+                  <span className="pnl-mayus">encendido</span>
+                </div>
+                <div className="pnl-cifra">
+                  <b>{abiertos}</b><span className="pnl-mayus">en cola</span>
+                </div>
+                <div className="pnl-cifra">
+                  <b>{estado.trabajos.esperando ?? 0}</b>
+                  <span className="pnl-mayus">esperan un sí</span>
+                </div>
+                <div className="pnl-cifra">
+                  <b>{estado.agentes.length}</b><span className="pnl-mayus">agentes</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="pnl-tarjeta pnl-piezas">
+              {estado.piezas.map(p => (
+                <div className="pnl-pieza" key={p.id}>
+                  <span className={`pnl-punto ${p.estado}`} />
+                  <div>
+                    <div className="pnl-nombre">{p.nombre}</div>
+                    <div className="pnl-detalle">{p.detalle}</div>
+                    {p.arreglo && <div className="pnl-arreglo">{p.arreglo}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pnl-tarjeta">
+              <div className="pnl-cabeza">Cuota de hoy · {estado.cuota.dia}</div>
+              {estado.cuota.servicios.length === 0 && (
+                <div className="pnl-detalle">Nadie ha llamado a ningún modelo de fuera.</div>
+              )}
+              {estado.cuota.servicios.map(s => {
+                const parte = s.tope ? Math.min(100, (s.usadas / s.tope) * 100) : 0;
+                return (
+                  <div key={s.modelo} style={{ marginTop: 9 }}>
+                    <div className="pnl-nombre">{s.modelo}</div>
+                    <div className="pnl-detalle">
+                      {s.tope ? `${s.usadas} de ${s.tope}` : `${s.usadas} (sin tope conocido)`}
+                    </div>
+                    {s.tope && (
+                      <div className="pnl-barra">
+                        <span className={parte >= 90 ? 'lleno' : ''} style={{ width: `${parte}%` }} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="pnl-arreglo">{estado.cuota.nota}</div>
+            </div>
+
+            <div className="pnl-tarjeta">
+              <div className="pnl-cabeza">Disparadores</div>
+              <div className="pnl-fichas">
+                {estado.disparadores.map(d => (
+                  <span key={d.nombre} className={`pnl-ficha ${d.activo ? '' : 'apagada'}`}>
+                    {d.activo ? `${d.nombre} · cada ${Math.round(d.intervalo / 60)} min` : `${d.nombre} · apagado`}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="pnl-acciones">
+              <button
+                className={`pnl-pildora ${confiando ? 'peligro' : ''}`}
+                onClick={async () => {
+                  await invoke('panel_confianza', { minutos: confiando ? null : 60 });
+                  cargarEstado();
+                }}
+              >
+                {confiando ? 'Apagar el modo confianza' : 'Confiar durante 60 min'}
+              </button>
+              <button className="pnl-pildora" onClick={cargarEstado}>Refrescar</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};

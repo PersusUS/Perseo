@@ -13,7 +13,7 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, Window,
+    AppHandle, Emitter, Manager, Window,
 };
 
 /// Identificador de la ventana principal, tal y como la nombra Tauri por
@@ -42,11 +42,12 @@ pub fn instalar(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, evento| match evento.id.as_ref() {
             "mostrar" => mostrar_ventana(app),
+            // El panel es una vista de la ventana principal, no una ventana
+            // aparte: se saca la ventana y se le dice que enseñe el panel.
             "panel" => {
-                if let Err(e) = crate::panel::abrir_panel(app.clone()) {
-                    // Sin nucleo no hay panel. Se anota y se sigue: la bandeja
-                    // no puede caerse por esto.
-                    eprintln!("[bandeja] No se pudo abrir el panel: {e}");
+                mostrar_ventana(app);
+                if let Some(ventana) = app.get_webview_window(VENTANA) {
+                    let _ = ventana.emit("abrir-panel", ());
                 }
             }
             "ocultar" => {

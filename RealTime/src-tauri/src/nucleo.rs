@@ -37,39 +37,39 @@ pub(crate) fn base_url() -> String {
     std::env::var("PERSEO_CORE_URL").unwrap_or_else(|_| "http://127.0.0.1:8787".to_string())
 }
 
-/// Localiza `perseo_core/datos/token.txt` sin rutas absolutas cableadas, igual
-/// que hacia el puente con la carpeta TOOLS. Ver H-15.
-fn ruta_token(app: &AppHandle) -> Option<PathBuf> {
+/// Donde puede estar `perseo_core/datos/`, en orden. Sin rutas absolutas
+/// cableadas, igual que hacia el puente con la carpeta TOOLS: la primera vale en
+/// pruebas, la segunda en el binario instalado y la tercera en `tauri dev`.
+/// Ver H-15. Lo usa tambien `commands.rs` para la clave de Gemini.
+pub(crate) fn rutas_datos(app: &AppHandle) -> Vec<PathBuf> {
+    let mut rutas = Vec::new();
     if let Ok(datos) = std::env::var("PERSEO_CORE_DATOS") {
-        let candidata = PathBuf::from(datos).join("token.txt");
-        if candidata.is_file() {
-            return Some(candidata);
-        }
+        rutas.push(PathBuf::from(datos));
     }
-
     if let Ok(recursos) = app.path().resource_dir() {
-        let candidata = recursos.join("perseo_core").join("datos").join("token.txt");
-        if candidata.is_file() {
-            return Some(candidata);
-        }
+        rutas.push(recursos.join("perseo_core").join("datos"));
     }
+    rutas.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("perseo_core")
+            .join("datos"),
+    );
+    rutas
+}
 
-    let desarrollo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("perseo_core")
-        .join("datos")
-        .join("token.txt");
-    if desarrollo.is_file() {
-        return Some(desarrollo);
-    }
-
-    None
+/// Localiza `perseo_core/datos/token.txt`.
+fn ruta_token(app: &AppHandle) -> Option<PathBuf> {
+    rutas_datos(app)
+        .into_iter()
+        .map(|d| d.join("token.txt"))
+        .find(|c| c.is_file())
 }
 
 /// El token de acceso al nucleo. La variable de entorno manda sobre el fichero,
 /// igual que en `almacen.py`.
-fn token(app: &AppHandle) -> Result<String, String> {
+pub(crate) fn token(app: &AppHandle) -> Result<String, String> {
     if let Ok(del_entorno) = std::env::var("PERSEO_TOKEN") {
         let limpio = del_entorno.trim().to_string();
         if !limpio.is_empty() {
@@ -179,7 +179,7 @@ fn resumir(resultado: &Value) -> String {
     resultado.to_string()
 }
 
-async fn pedir_json(
+pub(crate) async fn pedir_json(
     peticion: reqwest::RequestBuilder,
 ) -> Result<Value, String> {
     let respuesta = peticion

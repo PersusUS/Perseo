@@ -39,7 +39,12 @@ pub fn run() {
             commands::consumir_autollamada,
             nucleo::ejecutar_herramienta,
             nucleo::precalentar_herramientas,
-            panel::abrir_panel
+            panel::panel_estado,
+            panel::panel_trabajos,
+            panel::panel_trabajo,
+            panel::panel_responder,
+            panel::panel_encolar,
+            panel::panel_confianza
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
