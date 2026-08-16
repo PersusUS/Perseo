@@ -246,6 +246,26 @@
   .cifra { display: flex; flex-direction: column; gap: 2px; }
   .cifra b { font-size: 22px; font-weight: 200; }
 
+  /* La memoria. El formulario va dentro de la sección y no en el pie: el pie es
+     del chat, y con dos campos de escribir a la vez no se sabe cuál contesta. */
+  #memoria form { border: none; padding: 0; }
+  #notas { display: flex; flex-direction: column; gap: 10px; }
+  .nota-vault summary {
+    cursor: pointer; text-transform: none; letter-spacing: 0;
+    color: var(--texto); font-size: 15px; margin: 0;
+  }
+  .nota-vault .ruta {
+    font-size: 11px; color: var(--apagado); margin-top: 2px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    overflow-wrap: anywhere;
+  }
+  .nota-vault .extracto { font-size: 13px; color: var(--tenue); margin-top: 6px; }
+  .nota-vault .contenido {
+    margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--borde);
+    font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere;
+    max-height: 50vh; overflow-y: auto;
+  }
+
   /* Filtros de la cola. Van arriba y siempre visibles: si hay que desplegarlos,
      no se usan, y el caso que importa —"¿qué me ha pedido confirmación?"— es
      justo el que se busca con prisa. */
@@ -344,6 +364,7 @@
   <button id="pestana-chat" aria-selected="true">Chat</button>
   <button id="pestana-cola" aria-selected="false">Cola <span class="cuenta" id="contador"></span></button>
   <button id="pestana-correo" aria-selected="false">Correo</button>
+  <button id="pestana-memoria" aria-selected="false">Memoria</button>
   <button id="pestana-estado" aria-selected="false">Estado <span class="cuenta" id="alertas"></span></button>
 </nav>
 
@@ -351,6 +372,13 @@
   <section id="chat"></section>
   <section id="cola" hidden></section>
   <section id="correo" hidden></section>
+  <section id="memoria" hidden>
+    <form id="buscar-memoria">
+      <input id="consulta" placeholder="Buscar en el vault…" autocomplete="off" enterkeyhint="search">
+      <button type="submit">Buscar</button>
+    </form>
+    <div id="notas"></div>
+  </section>
   <section id="estado" hidden></section>
 </main>
 
@@ -394,6 +422,10 @@ const ESTADOS_ABIERTOS = new Set(["pendiente", "en_curso", "esperando"]);
 //: No se refresca si no se está mirando: cada vuelta sondea Ollama y el plugin
 //: de Obsidian, y hacerlo con la pantalla apagada solo gasta batería.
 const REFRESCO_ESTADO = 20000;
+
+//: Cuántas notas de una búsqueda se enseñan dentro de la tarjeta de su trabajo.
+//: El resto se cuenta y se deja para la pestaña de Memoria.
+const NOTAS_EN_LA_COLA = 3;
 
 let flujo = null;
 let pestana = "chat";
@@ -457,7 +489,7 @@ $("entrar").addEventListener("submit", async (e) => {
 // Pestañas
 // --------------------------------------------------------------------- //
 
-const SECCIONES = { chat, cola, correo, estado: panel };
+const SECCIONES = { chat, cola, correo, memoria: $("memoria"), estado: panel };
 
 function mostrar(cual) {
   pestana = cual;
@@ -475,6 +507,8 @@ function mostrar(cual) {
     temporizadorEstado = setInterval(cargarEstado, REFRESCO_ESTADO);
   } else if (cual === "cola" || cual === "correo") {
     cargarCola();
+  } else if (cual === "memoria") {
+    $("consulta").focus();
   }
 }
 for (const nombre of Object.keys(SECCIONES)) {
@@ -579,11 +613,30 @@ function pintarTrabajo(t) {
     const extra = crear("div", "resultado");
     if (t.error) {
       extra.textContent = "Error: " + t.error;
+    } else if (Array.isArray(t.resultado?.notas)) {
+      // Lo mismo que con el triaje: "3 nota(s) sobre «X»" no dice cuáles, y una
+      // búsqueda que no enseña lo que encontró no sirve de nada. Pero aquí van
+      // acotadas: diez notas dentro de una tarjeta de la cola empujan hacia
+      // abajo todo lo demás, y esta pestaña es para ver el trabajo, no para leer.
+      extra.appendChild(crear("div", null, t.resultado.titular ?? "Sin resultados"));
+      for (const n of t.resultado.notas.slice(0, NOTAS_EN_LA_COLA)) {
+        extra.appendChild(pintarNota(n));
+      }
+      const resto = t.resultado.notas.length - NOTAS_EN_LA_COLA;
+      if (resto > 0) {
+        extra.appendChild(crear("div", "motivo", `y ${resto} más — búscalas en Memoria`));
+      }
     } else if (Array.isArray(t.resultado?.clasificados)) {
       // El triaje es lo único que se mira desde el móvil con prisa: llega un
       // aviso que solo cuenta —"1 requiere acción"— y esta pantalla es donde se
       // ve de quién. Volcarlo como JSON lo hacía ilegible justo aquí.
       pintarCorreos(extra, t.resultado);
+    } else if (typeof t.resultado?.contenido === "string") {
+      // Leer una nota devuelve la nota entera. Volcarla aquí llena la cola con
+      // doce mil caracteres de Markdown para decir que se leyó un fichero: es el
+      // mismo error que H-36, con otro agente. El contenido se lee en Memoria.
+      extra.textContent =
+        `Leída ${t.resultado.ruta ?? ""} — ${t.resultado.contenido.length} caracteres`;
     } else {
       extra.textContent = t.resultado?.titular ?? t.resultado?.texto ?? JSON.stringify(t.resultado);
     }
@@ -749,6 +802,89 @@ function pintarPestanaCorreo() {
     correo.appendChild(tarjeta);
   }
 }
+
+// --------------------------------------------------------------------- //
+// Memoria
+// --------------------------------------------------------------------- //
+
+// Buscar es encolar un trabajo para el agente `memoria`, como todo lo demás: no
+// hay una ruta que busque en el vault, y no la hay a propósito. Por HTTP se
+// encolan trabajos, no se ejecutan herramientas.
+async function encolarYEsperar(peticion, agente, segundos = 20) {
+  const r = await fetch("/trabajos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agente, peticion, origen: "texto" }),
+  });
+  if (r.status === 401) { puerta.style.display = "flex"; return null; }
+  const trabajo = await r.json();
+
+  // Se sondea en vez de escuchar el flujo: el evento llega igual, pero aquí hace
+  // falta el resultado del trabajo concreto y no enterarse de que algo cambió.
+  const limite = Date.now() + segundos * 1000;
+  while (Date.now() < limite) {
+    await new Promise((r) => setTimeout(r, 400));
+    const actual = await (await fetch(`/trabajos/${trabajo.id}`)).json();
+    if (actual.estado === "hecho") return actual.resultado;
+    if (["fallido", "cancelado", "rechazado"].includes(actual.estado)) {
+      throw new Error(actual.error || `El trabajo quedó ${actual.estado}`);
+    }
+  }
+  throw new Error("Sigue en marcha; míralo en la cola.");
+}
+
+function pintarNota(n) {
+  const caja = crear("details", "tarjeta nota-vault");
+  const titulo = crear("summary", null, n.titulo || n.ruta || "(sin título)");
+  caja.appendChild(titulo);
+  if (n.ruta) caja.appendChild(crear("div", "ruta", n.ruta));
+  if (n.extracto) caja.appendChild(crear("div", "extracto", n.extracto));
+
+  // La nota entera se pide solo al abrirla: una búsqueda devuelve diez, y
+  // traerlas enteras por el túnel para leer una es tirar el ancho de banda.
+  let traida = false;
+  caja.addEventListener("toggle", async () => {
+    if (!caja.open || traida || !n.ruta) return;
+    traida = true;
+    const cuerpo = crear("div", "contenido", "Leyendo…");
+    caja.appendChild(cuerpo);
+    try {
+      const r = await encolarYEsperar({ accion: "leer", ruta: n.ruta }, "memoria");
+      cuerpo.textContent = r?.contenido ?? "(vacía)";
+    } catch (e) {
+      cuerpo.textContent = "No se pudo leer: " + e.message;
+      traida = false;
+    }
+  });
+  return caja;
+}
+
+$("buscar-memoria").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const texto = $("consulta").value.trim();
+  if (!texto) return;
+
+  const destino = $("notas");
+  destino.replaceChildren(crear("div", "nota", `Buscando «${texto}»…`));
+  try {
+    const resultado = await encolarYEsperar({ accion: "buscar", texto }, "memoria");
+    if (resultado === null) return;
+    const notas = resultado?.notas ?? [];
+    destino.replaceChildren();
+    if (!notas.length) {
+      // Con el plugin de Obsidian la búsqueda es literal y no dobla tildes: es
+      // la diferencia de comportamiento entre los dos respaldos, y aquí es donde
+      // se nota. Decirlo evita pensar que la nota no existe.
+      destino.appendChild(crear("div", "nota",
+        `Ninguna nota con «${texto}». Si el vault va por el plugin de Obsidian, la búsqueda es literal: prueba con tildes.`));
+      return;
+    }
+    destino.appendChild(crear("div", "mayus", `${notas.length} nota(s)`));
+    for (const n of notas) destino.appendChild(pintarNota(n));
+  } catch (err) {
+    destino.replaceChildren(crear("div", "nota", "No se pudo buscar: " + err.message));
+  }
+});
 
 // --------------------------------------------------------------------- //
 // Estado
