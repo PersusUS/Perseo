@@ -85,6 +85,15 @@ obsidian_vault/
 RAG/
 
 # =========================
+# Grafo de conocimiento regenerable
+# =========================
+# Salida de /graphify: se reconstruye leyendo el repositorio y pesa ~1,1 MB en
+# dos ficheros (graph.html y graph.json). Además retrata la estructura del
+# proyecto en un momento concreto, así que envejece mal: lo que valga la pena
+# recordar del grafo va en la bitácora, no aquí.
+graphify-out/
+
+# =========================
 # Estado del núcleo (perseo-core)
 # =========================
 # Cola de trabajos y token de acceso. La cola guarda el texto literal de lo que
