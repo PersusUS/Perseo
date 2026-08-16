@@ -49,6 +49,9 @@ def datos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "PERSEO_WEB",
         "PERSEO_WEB_LOCAL",
         "OBSIDIAN_VAULT_PATH",
+        "PERSEO_VAULT",
+        "PERSEO_VAULT_REST",
+        "PERSEO_VAULT_CLAVE",
     ):
         monkeypatch.delenv(variable, raising=False)
 

@@ -177,7 +177,7 @@ python perseo_core/verificar_telegram.py        # el canal, contra un Telegram d
 python perseo_core/verificar_router.py          # el router, contra Ollama
 python perseo_core/verificar_fase_d.py          # el triaje de correo, sin Gmail
 python perseo_core/verificar_agenda.py          # los avisos, sin Google Calendar
-python perseo_core/verificar_memoria.py         # el vault, sobre uno temporal
+python perseo_core/verificar_memoria.py         # el vault, en fichero y por el plugin
 python perseo_core/verificar_pc.py              # intentos de inyección contra `pc`
 python perseo_core/verificar_dev.py             # `dev`, sin gastar suscripción
 python perseo_core/verificar_web.py             # `web`, sin salir a internet

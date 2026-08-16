@@ -171,3 +171,133 @@ def test_anotar_sin_texto_se_rechaza(vault: Path, monkeypatch) -> None:
     monkeypatch.setattr(memoria, "_vault", memoria.VaultFicheros(vault))
     with pytest.raises(ValueError):
         asyncio.run(memoria._memoria({"peticion": {"accion": "anotar", "titulo": "X"}}))
+
+
+# --------------------------------------------------------------------------- #
+# El respaldo del plugin de Obsidian
+#
+# Aquí no hay red: lo que se comprueba es lo que se decide **antes** de mandar
+# una petición —qué ruta se acepta, qué URL sale, qué respaldo se elige— que es
+# justo lo que no puede depender de que Obsidian esté abierto. El camino HTTP
+# entero, contra un plugin de mentira, está en `verificar_memoria.py`.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture()
+def vault_rest() -> memoria.VaultRest:
+    return memoria.VaultRest("https://127.0.0.1:27124", "clave-de-prueba")
+
+
+@pytest.mark.parametrize(
+    "intento",
+    ["../secreto.md", SUBIR_DOS, "Notas/../../fuera.md", FUERA_DEL_DISCO, "/etc/passwd", ""],
+)
+def test_rest_ninguna_ruta_sale_del_vault(vault_rest, intento: str) -> None:
+    """Sin disco que resolver, esta comprobación es la única que hay."""
+    with pytest.raises(memoria.FueraDelVault):
+        memoria._ruta_relativa(intento)
+
+
+def test_rest_las_barras_invertidas_cuentan_como_separador() -> None:
+    r"""`..\..\x` no puede colar en Linux por ser allí un nombre de fichero."""
+    with pytest.raises(memoria.FueraDelVault):
+        memoria._ruta_relativa(r"..\..\secreto.md")
+    assert memoria._ruta_relativa(r"Memorias_Sistema\Reforma.md") == "Memorias_Sistema/Reforma.md"
+
+
+def test_rest_una_ruta_normal_pasa_tal_cual() -> None:
+    assert memoria._ruta_relativa("./Notas/Cumpleanos.md") == "Notas/Cumpleanos.md"
+
+
+def test_rest_la_url_escapa_el_nombre_pero_no_la_jerarquia(vault_rest) -> None:
+    url = vault_rest._url("/vault/", "Memorias Sistema/Reforma baño.md")
+    assert url.startswith("https://127.0.0.1:27124/vault/")
+    assert " " not in url and "ñ" not in url
+    assert url.count("/vault/") == 1 and "Sistema/Reforma" in url.replace("%20", " ")
+
+
+def test_rest_un_titulo_imposible_se_rechaza_antes_de_salir_a_la_red(vault_rest) -> None:
+    with pytest.raises(ValueError):
+        asyncio.run(vault_rest.anotar("///", "texto"))
+
+
+def test_rest_leer_fuera_del_vault_no_llega_a_pedir_nada(vault_rest) -> None:
+    with pytest.raises(memoria.FueraDelVault):
+        asyncio.run(vault_rest.leer("../secreto.md"))
+
+
+def test_rest_una_busqueda_vacia_no_pregunta(vault_rest) -> None:
+    assert asyncio.run(vault_rest.buscar("   ")) == []
+
+
+def test_rest_las_notas_salen_de_la_respuesta_del_plugin() -> None:
+    crudas = [
+        {"filename": "Notas/Cumpleanos.md", "matches": [{"context": "es en marzo"}]},
+        {"filename": "Memorias_Sistema/Reforma.md", "matches": []},
+    ]
+    notas = memoria._notas_de_busqueda(crudas, 10)
+
+    assert [n.ruta for n in notas] == ["Notas/Cumpleanos.md", "Memorias_Sistema/Reforma.md"]
+    assert notas[0].titulo == "Cumpleanos"
+    assert notas[0].extracto == "es en marzo"
+    # El plugin no dice cuándo se modificó, y no se inventa una fecha.
+    assert notas[0].modificada == ""
+
+
+def test_rest_la_busqueda_respeta_el_limite_y_aguanta_basura() -> None:
+    crudas = ["no soy un dict", {"sin": "filename"}, {"filename": "a.md"}, {"filename": "b.md"}]
+    assert [n.ruta for n in memoria._notas_de_busqueda(crudas, 1)] == ["a.md"]
+    assert memoria._notas_de_busqueda("esto tampoco es una lista", 10) == []
+
+
+@pytest.mark.parametrize(
+    ("base", "verifica"),
+    [
+        ("https://127.0.0.1:27124", False),
+        ("https://localhost:27124", False),
+        ("http://127.0.0.1:27123", True),
+        ("https://obsidian.example.com", True),
+    ],
+)
+def test_rest_el_certificado_solo_se_deja_pasar_en_el_bucle_local(base: str, verifica: bool) -> None:
+    """El plugin firma su propio certificado; fuera de casa eso no vale."""
+    assert memoria._verificar_certificado(base) is verifica
+
+
+def test_los_dos_respaldos_escriben_el_mismo_markdown(vault: Path) -> None:
+    """Si uno de los dos cambia de formato, esto se entera antes que el vault."""
+    ruta = asyncio.run(memoria.VaultFicheros(vault).anotar("Reforma", "lo primero"))
+    escrito = (vault / ruta).read_text(encoding="utf-8")
+    momento = escrito.splitlines()[3].removeprefix("fecha_creacion: ")
+
+    assert escrito == memoria._nota_nueva("Reforma", "lo primero", momento)
+
+
+def test_el_respaldo_por_defecto_son_ficheros(cfg, tmp_path: Path, monkeypatch) -> None:
+    from dataclasses import replace
+
+    monkeypatch.setattr(memoria, "_vault", None)
+    elegido = memoria.iniciar(replace(cfg, vault=str(tmp_path / "v")))
+    assert isinstance(elegido, memoria.VaultFicheros)
+
+
+def test_con_rest_y_clave_se_usa_el_plugin(cfg, tmp_path: Path, monkeypatch) -> None:
+    from dataclasses import replace
+
+    monkeypatch.setattr(memoria, "_vault", None)
+    elegido = memoria.iniciar(
+        replace(cfg, vault=str(tmp_path / "v"), vault_respaldo="rest", vault_rest_clave="k")
+    )
+    assert isinstance(elegido, memoria.VaultRest)
+    asyncio.run(memoria.detener())
+
+
+def test_rest_sin_clave_no_deja_al_nucleo_sin_memoria(cfg, tmp_path: Path, monkeypatch) -> None:
+    """No configurado no es lo mismo que roto: se avisa y se sigue con ficheros."""
+    from dataclasses import replace
+
+    monkeypatch.setattr(memoria, "_vault", None)
+    elegido = memoria.iniciar(
+        replace(cfg, vault=str(tmp_path / "v"), vault_respaldo="rest", vault_rest_clave="")
+    )
+    assert isinstance(elegido, memoria.VaultFicheros)

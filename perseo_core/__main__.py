@@ -129,7 +129,7 @@ async def arrancar() -> None:
         await runner.cleanup()
         await router.cerrar()
         await correo.detener()
-        memoria.detener()
+        await memoria.detener()
         dev.detener()
         await web.detener()
         almacen.cerrar()

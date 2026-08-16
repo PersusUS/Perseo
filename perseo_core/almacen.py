@@ -153,6 +153,17 @@ class Configuracion:
     #: puesta no tiene que cambiar nada. Que las rutas del vault no coincidieran
     #: entre módulos fue H-22.
     vault: str
+    #: Qué hay detrás del puerto del vault: vacío (ficheros, como hasta ahora) o
+    #: `rest`, el plugin Local REST API de Obsidian. Con `rest` la ruta del
+    #: vault deja de usarse: quien sabe dónde están las notas es Obsidian.
+    vault_respaldo: str
+    #: Dónde escucha el plugin. Por defecto su HTTPS del bucle local, que es lo
+    #: que trae encendido de fábrica.
+    vault_rest_url: str
+    #: La clave del plugin, que sale en sus ajustes. Si no está en la variable
+    #: se lee de `<datos>/obsidian.txt`, igual que el token de Telegram: el
+    #: directorio de datos está fuera de git.
+    vault_rest_clave: str
 
     @property
     def telegram_configurado(self) -> bool:
@@ -337,6 +348,9 @@ def cargar_configuracion() -> Configuracion:
         agenda_falsa=os.environ.get("PERSEO_AGENDA_FALSA", str(directorio / "agenda.json")),
         agenda_antelacion=int(os.environ.get("PERSEO_AGENDA_ANTELACION", "60")),
         vault=os.environ.get("OBSIDIAN_VAULT_PATH", str(RAIZ.parent / "obsidian_vault")),
+        vault_respaldo=os.environ.get("PERSEO_VAULT", "").strip().lower(),
+        vault_rest_url=os.environ.get("PERSEO_VAULT_REST", "https://127.0.0.1:27124").rstrip("/"),
+        vault_rest_clave=_de_entorno_o_fichero("PERSEO_VAULT_CLAVE", directorio / "obsidian.txt"),
     )
 
 
