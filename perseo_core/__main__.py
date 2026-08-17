@@ -63,9 +63,24 @@ def _tls(cfg: almacen.Configuracion) -> ssl.SSLContext | None:
     return contexto
 
 
+def _tls_de(host: str, contexto: ssl.SSLContext | None) -> ssl.SSLContext | None:
+    """El certificado va en el tailnet y **no** en el bucle local.
+
+    Parece un detalle y no lo es. El certificado lo emite Tailscale para
+    `msi.taild61051.ts.net`, así que sirve para el móvil y no para nadie que
+    entre por `127.0.0.1`: ahí la verificación falla por nombre. Y por
+    `127.0.0.1` entran la app de escritorio, el detector y `perseo estado`.
+
+    Como además el bucle local ya cuenta como contexto seguro para el
+    navegador, cifrarlo no aportaría nada y rompería a los tres clientes de
+    casa. Así que cada interfaz se sirve como le corresponde.
+    """
+    return None if host in almacen.LOCALES else contexto
+
+
 def _avisar_de_la_escucha(cfg: almacen.Configuracion) -> None:
-    esquema = "https" if cfg.tls_listo else "http"
     for host in cfg.hosts:
+        esquema = "http" if (host in almacen.LOCALES or not cfg.tls_listo) else "https"
         logger.info("Escuchando en %s://%s:%d", esquema, host, cfg.puerto)
         if host in almacen.LOCALES:
             continue
@@ -118,9 +133,12 @@ async def arrancar() -> None:
     runner = servidor.AppRunner(api.crear_app(cfg, bus, router))
     await runner.setup()
     # Una lista de hosts, nunca `0.0.0.0`: se abren exactamente las interfaces
-    # enumeradas y ninguna más.
-    sitio = servidor.TCPSite(runner, list(cfg.hosts), cfg.puerto, ssl_context=_tls(cfg))
-    await sitio.start()
+    # enumeradas y ninguna más. Y **un sitio por interfaz**, porque no todas se
+    # sirven igual: ver `_tls_de`.
+    contexto = _tls(cfg)
+    for host in cfg.hosts:
+        sitio = servidor.TCPSite(runner, host, cfg.puerto, ssl_context=_tls_de(host, contexto))
+        await sitio.start()
     _avisar_de_la_escucha(cfg)
 
     # Espera hasta que llegue una señal de parada. En Windows `add_signal_handler`

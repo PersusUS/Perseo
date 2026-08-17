@@ -266,3 +266,13 @@ def test_una_url_absurda_tampoco_lanza() -> None:
     import manage_startup
 
     assert not manage_startup.nucleo_responde("esto no es una url")
+
+
+def test_un_entorno_con_bom_se_lee_igual(datos: Path) -> None:
+    """El Bloc de notas y PowerShell 5.1 escriben UTF-8 con BOM. Con `utf-8` eso
+    era un JSON roto, y el núcleo arrancaba sin correo, sin agenda y sin tailnet
+    sin quejarse. Pasó de verdad el 2026-08-17."""
+    (datos / "entorno.json").write_text(
+        json.dumps({"PERSEO_CORREO": "gmail"}), encoding="utf-8-sig"
+    )
+    assert almacen.ajustes_guardados(datos) == {"PERSEO_CORREO": "gmail"}

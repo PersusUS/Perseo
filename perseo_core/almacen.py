@@ -376,7 +376,12 @@ def ajustes_guardados(directorio: Path) -> dict[str, str]:
     if not fichero.is_file():
         return {}
     try:
-        crudo = json.loads(fichero.read_text(encoding="utf-8"))
+        # `utf-8-sig` y no `utf-8`: este fichero se edita a mano, y el Bloc de
+        # notas, `Set-Content -Encoding utf8` de PowerShell 5.1 y media Windows
+        # le ponen un BOM delante. Con `utf-8` eso es un JSONDecodeError, y el
+        # resultado es un núcleo sin correo, sin agenda y sin tailnet que
+        # arranca igual y no se queja. Pasó el 2026-08-17.
+        crudo = json.loads(fichero.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError) as e:
         logger.warning("No se pudo leer %s (%s); se sigue solo con el entorno.", fichero, e)
         return {}
