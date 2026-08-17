@@ -14,6 +14,7 @@ import asyncio
 import contextlib
 import logging
 import signal
+import ssl
 import sys
 
 # Con alias: este paquete tiene su propio `web` —el agente— y sin el alias uno
@@ -42,9 +43,30 @@ def _configurar_registro() -> None:
     )
 
 
+def _tls(cfg: almacen.Configuracion) -> ssl.SSLContext | None:
+    """El contexto para servir por HTTPS, o `None` para seguir en HTTP.
+
+    Esto existe por el micrófono del móvil: el navegador solo deja grabar en un
+    contexto seguro, y `http://` por el tailnet no lo es. El certificado lo da
+    `tailscale cert`; con las rutas vacías —o apuntando a algo que ya no está—
+    el núcleo arranca en HTTP como siempre, que es mejor que no arrancar.
+    """
+    if not cfg.tls_listo:
+        if cfg.tls_certificado or cfg.tls_clave:
+            logger.warning(
+                "Hay certificado configurado pero no se encuentra (%s). Se sirve por HTTP.",
+                cfg.tls_certificado or cfg.tls_clave,
+            )
+        return None
+    contexto = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    contexto.load_cert_chain(cfg.tls_certificado, cfg.tls_clave)
+    return contexto
+
+
 def _avisar_de_la_escucha(cfg: almacen.Configuracion) -> None:
+    esquema = "https" if cfg.tls_listo else "http"
     for host in cfg.hosts:
-        logger.info("Escuchando en http://%s:%d", host, cfg.puerto)
+        logger.info("Escuchando en %s://%s:%d", esquema, host, cfg.puerto)
         if host in almacen.LOCALES:
             continue
         # No es un error —la Fase B lo requiere— pero sí algo que conviene ver
@@ -97,7 +119,7 @@ async def arrancar() -> None:
     await runner.setup()
     # Una lista de hosts, nunca `0.0.0.0`: se abren exactamente las interfaces
     # enumeradas y ninguna más.
-    sitio = servidor.TCPSite(runner, list(cfg.hosts), cfg.puerto)
+    sitio = servidor.TCPSite(runner, list(cfg.hosts), cfg.puerto, ssl_context=_tls(cfg))
     await sitio.start()
     _avisar_de_la_escucha(cfg)
 
