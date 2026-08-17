@@ -235,7 +235,7 @@ export class GeminiLiveClient {
                     },
                     parametro: {
                       type: Type.STRING,
-                      description: "El ejecutable, URL, texto exacto a teclear, atajo, volumen, coordenadas X,Y, clic('izquierdo', 'derecho') o el término exacto de búsqueda para Youtube (ej. 'Mozart Requiem')."
+                      description: "El ejecutable, URL, texto exacto a teclear, atajo, volumen, coordenadas X,Y, clic o el término exacto de búsqueda para Youtube (ej. 'Mozart Requiem'). Para 'click_raton' hacen falta las coordenadas ('300,450' o 'derecho 300,450'): no ves la pantalla, así que no puedes saber dónde está lo que quieres clicar, y un clic sin coordenadas cae donde el usuario tenga el ratón. Si no sabes las coordenadas, dilo y pide que te las indiquen en vez de clicar."
                     }
                   },
                   required: ["accion", "parametro"]

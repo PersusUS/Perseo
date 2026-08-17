@@ -86,3 +86,89 @@ def test_buscar_en_youtube_sin_termino_se_rechaza() -> None:
 
 def test_la_accion_no_distingue_mayusculas_ni_espacios() -> None:
     assert pc.controlar("  APAGAR_EQUIPO ", "").startswith("Error:")
+
+
+# --------------------------------------------------------------------------- #
+# El ratón: nunca a ciegas
+# --------------------------------------------------------------------------- #
+
+
+class _RatonFalso:
+    """Lo justo de pyautogui para comprobar el ratón sin mover nada."""
+
+    def __init__(self, posicion: tuple[int, int] = (0, 0)) -> None:
+        self.posicion = posicion
+        self.clics: list[str] = []
+        self.movimientos: list[tuple[int, int]] = []
+
+    def size(self) -> tuple[int, int]:
+        return (1920, 1080)
+
+    def position(self) -> tuple[int, int]:
+        return self.posicion
+
+    def moveTo(self, x: int, y: int, duration: float = 0) -> None:  # noqa: N802
+        self.posicion = (x, y)
+        self.movimientos.append((x, y))
+
+    def click(self) -> None:
+        self.clics.append("izquierdo")
+
+    def rightClick(self) -> None:  # noqa: N802
+        self.clics.append("derecho")
+
+    def doubleClick(self) -> None:  # noqa: N802
+        self.clics.append("doble")
+
+
+@pytest.fixture()
+def raton(monkeypatch: pytest.MonkeyPatch) -> _RatonFalso:
+    falso = _RatonFalso()
+    monkeypatch.setattr(pc, "_pyautogui", lambda: falso)
+    monkeypatch.setattr(pc, "_ultimo_destino", None)
+    return falso
+
+
+def test_clicar_sin_haber_movido_el_raton_se_rechaza(raton: _RatonFalso) -> None:
+    """El fallo de la llamada del 2026-08-17: el modelo dijo «clico el primer
+    resultado» y clicó donde estaba el ratón de la persona."""
+    respuesta = pc.controlar("click_raton", "izquierdo")
+    assert respuesta.startswith("Error:")
+    assert not raton.clics
+
+
+def test_clicar_con_coordenadas_mueve_primero(raton: _RatonFalso) -> None:
+    respuesta = pc.controlar("click_raton", "300,450")
+    assert respuesta.startswith("Éxito:")
+    assert raton.movimientos == [(300, 450)]
+    assert raton.clics == ["izquierdo"]
+
+
+def test_el_tipo_de_clic_sigue_valiendo_con_coordenadas(raton: _RatonFalso) -> None:
+    assert pc.controlar("click_raton", "derecho 300,450").startswith("Éxito:")
+    assert raton.clics == ["derecho"]
+
+
+def test_mover_y_luego_clicar_si_vale(raton: _RatonFalso) -> None:
+    """Mover y clicar es el camino bueno: Perseo sabe dónde está el cursor."""
+    assert pc.controlar("mover_raton", "800,600").startswith("Éxito:")
+    assert pc.controlar("click_raton", "").startswith("Éxito:")
+    assert raton.clics == ["izquierdo"]
+
+
+def test_si_el_usuario_mueve_el_raton_despues_no_se_clica(raton: _RatonFalso) -> None:
+    """Lo más importante: entre mover y clicar, la persona usa su ratón."""
+    pc.controlar("mover_raton", "800,600")
+    raton.posicion = (20, 20)
+    assert pc.controlar("click_raton", "").startswith("Error:")
+    assert not raton.clics
+
+
+def test_las_coordenadas_no_se_salen_de_la_pantalla(raton: _RatonFalso) -> None:
+    pc.controlar("click_raton", "99999,99999")
+    assert raton.movimientos == [(1919, 1079)]
+
+
+def test_unas_coordenadas_rotas_no_clican(raton: _RatonFalso) -> None:
+    assert pc.controlar("click_raton", "abc,def").startswith("Error:")
+    assert not raton.clics

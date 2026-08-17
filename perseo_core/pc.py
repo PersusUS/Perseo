@@ -136,6 +136,77 @@ def _pyautogui() -> Any:
     return pyautogui
 
 
+# ─── El ratón ──────────────────────────────────────────────────────────────
+#
+# Un clic sin coordenadas cae donde esté el cursor, que es donde lo dejó la
+# persona. En una llamada del 2026-08-17 el modelo dijo "hago clic en el primer
+# resultado" y clicó en otra cosa: no ve la pantalla, así que no sabía dónde
+# estaba ese resultado ni que el ratón no se había movido. Lo que sigue existe
+# para que eso devuelva un error en vez de un clic en cualquier parte.
+
+#: Dónde dejó Perseo el ratón la última vez. `None` es "no lo he tocado".
+_ultimo_destino: tuple[int, int] | None = None
+
+
+def _apuntar_movimiento(destino: tuple[int, int] | None) -> None:
+    global _ultimo_destino
+    _ultimo_destino = destino
+
+
+def _coordenadas(crudo: str) -> tuple[int, int] | str:
+    """Convierte 'x,y' en un par de enteros, o devuelve el error a enseñar."""
+    partes = crudo.split(",")
+    if len(partes) != 2:
+        return "Error: formato de coordenadas inválido. Debe ser 'x,y'."
+    try:
+        return int(partes[0].strip()), int(partes[1].strip())
+    except ValueError:
+        return "Error: las coordenadas deben ser números enteros."
+
+
+def _partir_clic(parametro: str) -> tuple[str, tuple[int, int] | str | None]:
+    """Separa el tipo de clic de las coordenadas, que pueden no venir.
+
+    Se aceptan las tres formas que usa el modelo sin ponerse de acuerdo consigo
+    mismo: `''`, `'izquierdo'`, `'300,450'` y `'derecho 300,450'`.
+    """
+    texto = parametro.strip().lower()
+    if not texto:
+        return "", None
+
+    piezas = texto.replace(";", " ").split()
+    tipo = ""
+    coordenadas: tuple[int, int] | str | None = None
+    for pieza in piezas:
+        if "," in pieza:
+            coordenadas = _coordenadas(pieza)
+        else:
+            # Si vienen dos palabras que no son coordenadas, la segunda deja el
+            # tipo en algo que la lista blanca rechazará. Es lo que se quiere.
+            tipo = pieza if not tipo else f"{tipo} {pieza}"
+    return tipo, coordenadas
+
+
+def _dentro_de_la_pantalla(pyautogui: Any, x: int, y: int) -> tuple[int, int]:
+    ancho, alto = pyautogui.size()
+    return max(0, min(x, ancho - 1)), max(0, min(y, alto - 1))
+
+
+def _el_raton_sigue_donde_lo_dejamos(pyautogui: Any, margen: int = 3) -> bool:
+    """Si el cursor está donde lo puso Perseo, con margen de unos píxeles.
+
+    El margen no es por capricho: el sistema redondea, y un ratón con
+    aceleración no siempre para en el píxel exacto que se le pidió.
+    """
+    if _ultimo_destino is None:
+        return False
+    try:
+        x, y = pyautogui.position()
+    except Exception:  # noqa: BLE001  (sin cursor legible, no se clica a ciegas)
+        return False
+    return abs(x - _ultimo_destino[0]) <= margen and abs(y - _ultimo_destino[1]) <= margen
+
+
 # ─── La acción, sin nada de asyncio ────────────────────────────────────────
 
 
@@ -227,34 +298,43 @@ def controlar(accion: str, parametro: str = "") -> str:
             return f"Éxito: acción de volumen '{modo}' enviada al sistema."
 
         if accion == "mover_raton":
-            coords = parametro.split(",")
-            if len(coords) != 2:
-                return "Error: formato de coordenadas inválido. Debe ser 'x,y'."
-            try:
-                x, y = int(coords[0].strip()), int(coords[1].strip())
-            except ValueError:
-                return "Error: las coordenadas deben ser números enteros."
+            destino = _coordenadas(parametro)
+            if isinstance(destino, str):
+                return destino
 
             try:
                 pyautogui = _pyautogui()
             except ImportError:
                 return "Error: la librería 'pyautogui' no está instalada."
 
-            ancho, alto = pyautogui.size()
-            x = max(0, min(x, ancho - 1))
-            y = max(0, min(y, alto - 1))
+            x, y = _dentro_de_la_pantalla(pyautogui, *destino)
             pyautogui.moveTo(x, y, duration=0.5)
+            _apuntar_movimiento((x, y))
             return f"Éxito: ratón movido a ({x}, {y})."
 
         if accion == "click_raton":
-            tipo = parametro.strip().lower()
+            tipo, destino = _partir_clic(parametro)
             if tipo not in ("", "izquierdo", "derecho", "doble"):
                 return "Error: tipo de clic no reconocido. Use 'izquierdo', 'derecho' o 'doble'."
+            if isinstance(destino, str):
+                return destino
 
             try:
                 pyautogui = _pyautogui()
             except ImportError:
                 return "Error: la librería 'pyautogui' no está instalada."
+
+            if destino is not None:
+                x, y = _dentro_de_la_pantalla(pyautogui, *destino)
+                pyautogui.moveTo(x, y, duration=0.3)
+                _apuntar_movimiento((x, y))
+            elif not _el_raton_sigue_donde_lo_dejamos(pyautogui):
+                return (
+                    "Error: no se puede clicar a ciegas. El ratón está donde lo dejó el "
+                    "usuario, no donde lo puso Perseo. Indica dónde clicar con "
+                    "'click_raton' y coordenadas 'x,y', o mueve el ratón antes con "
+                    "'mover_raton'."
+                )
 
             if tipo == "derecho":
                 pyautogui.rightClick()
@@ -262,7 +342,9 @@ def controlar(accion: str, parametro: str = "") -> str:
                 pyautogui.doubleClick()
             else:
                 pyautogui.click()
-            return f"Éxito: clic '{tipo or 'izquierdo'}' ejecutado."
+
+            donde = f" en ({destino[0]}, {destino[1]})" if destino else ""
+            return f"Éxito: clic '{tipo or 'izquierdo'}' ejecutado{donde}."
 
         if accion == "buscar_youtube":
             termino = parametro.strip()
