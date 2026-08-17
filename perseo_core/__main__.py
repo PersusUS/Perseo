@@ -60,6 +60,13 @@ def _tls(cfg: almacen.Configuracion) -> ssl.SSLContext | None:
         return None
     contexto = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     contexto.load_cert_chain(cfg.tls_certificado, cfg.tls_clave)
+    # Sin esto el servidor no contesta al ALPN que ofrece el cliente, y la pila
+    # de red de iOS corta la conexión sin dar ninguna razón: desde el iPhone se
+    # ve un "no se puede conectar" idéntico al de un puerto cerrado. Windows y
+    # Python se lo tragan, así que el fallo solo aparece en el móvil — que es el
+    # único sitio donde hace falta este HTTPS. Costó una mañana el 2026-08-17.
+    # Solo `http/1.1`: aiohttp no habla HTTP/2, y ofrecer `h2` sería mentir.
+    contexto.set_alpn_protocols(["http/1.1"])
     return contexto
 
 
