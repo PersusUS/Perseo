@@ -6,6 +6,8 @@ que se rechazan **antes** de llamar a nadie.
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from perseo_core import pc
@@ -37,7 +39,7 @@ def test_las_inyecciones_se_bloquean(accion: str, parametro: str, motivo: str) -
 
 def test_una_url_http_no_es_una_inyeccion() -> None:
     """El rechazo tiene que ser por el esquema, no por ser una URL."""
-    assert not pc._abrir_url.__doc__ is None  # la función existe y está documentada
+    assert pc._abrir_url.__doc__ is not None  # la función existe y está documentada
     partes = pc._es_url("https://example.com")
     assert partes is True
 
@@ -172,3 +174,39 @@ def test_las_coordenadas_no_se_salen_de_la_pantalla(raton: _RatonFalso) -> None:
 def test_unas_coordenadas_rotas_no_clican(raton: _RatonFalso) -> None:
     assert pc.controlar("click_raton", "abc,def").startswith("Error:")
     assert not raton.clics
+
+
+# --------------------------------------------------------------------------- #
+# Abrir una aplicación que no está en el PATH
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="App Paths es del registro de Windows")
+def test_el_bloc_de_notas_se_encuentra() -> None:
+    """Lo que sí está en el PATH tiene que seguir encontrándose."""
+    assert pc.resolver_ejecutable("notepad.exe")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="App Paths es del registro de Windows")
+def test_chrome_se_encuentra_aunque_no_este_en_el_path() -> None:
+    """El fallo de la llamada del 2026-08-17: `Popen(['chrome.exe'])` falla
+    porque los navegadores no están en el PATH. Windows los resuelve por el
+    registro, y ahora esto también.
+
+    Si esta máquina no tiene Chrome, la prueba no tiene nada que decir.
+    """
+    if not pc._en_app_paths("chrome.exe"):
+        pytest.skip("Chrome no está instalado en esta máquina")
+    assert pc.resolver_ejecutable("chrome.exe")
+
+
+def test_un_ejecutable_inventado_no_se_encuentra() -> None:
+    assert pc.resolver_ejecutable("no-existe-de-verdad.exe") is None
+
+
+def test_una_app_permitida_pero_no_instalada_lo_dice(monkeypatch: pytest.MonkeyPatch) -> None:
+    """«No está instalada» es lo único que el usuario puede arreglar; «error del
+    sistema al ejecutar la acción» no le dice nada."""
+    monkeypatch.setattr(pc, "resolver_ejecutable", lambda _: None)
+    respuesta = pc.controlar("abrir_app", "chrome")
+    assert respuesta.startswith("Error:") and "no se encuentra instalada" in respuesta
