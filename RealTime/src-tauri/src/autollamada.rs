@@ -31,6 +31,18 @@ pub fn vigilar(app: AppHandle) {
         loop {
             tokio::time::sleep(INTERVALO).await;
 
+            // Dos marcadores, y la diferencia importa: la palabra clave saca la
+            // ventana **y** entra en llamada; `perseo` desde la terminal solo
+            // quiere la ventana delante.
+            if let Some(ruta) = commands::rutas_marcador_mostrar(&app)
+                .into_iter()
+                .find(|ruta| ruta.is_file())
+            {
+                if std::fs::remove_file(&ruta).is_ok() {
+                    bandeja::mostrar_ventana(&app);
+                }
+            }
+
             let encontrado = commands::rutas_marcador_autollamada(&app)
                 .into_iter()
                 .find(|ruta| ruta.is_file());

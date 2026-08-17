@@ -136,6 +136,9 @@ venv.bak/
 # Senal efimera de auto-llamada que deja el detector de aplausos (H-09)
 .perseo-autollamada
 
+# La otra senal: `perseo` pide que la ventana vuelva de la bandeja, sin llamada.
+.perseo-mostrar
+
 # PID que deja la app para que el detector sepa si esta abierta (presencia.rs).
 # Estado de ejecucion en la raiz del repo: mismo caso que H-09.
 .perseo-app.pid

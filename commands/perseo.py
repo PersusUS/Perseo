@@ -165,9 +165,22 @@ def arrancar_detector() -> bool:
     return True
 
 
+#: Fichero que Rust vigila para sacar la ventana del escondite. Es distinto del
+#: de la palabra clave (`.perseo-autollamada`), que además entra en llamada.
+MARCADOR_MOSTRAR = RAIZ / ".perseo-mostrar"
+
+
 def arrancar_app() -> bool:
     if presencia.app_viva():
-        print("  [ya estaba]  La app de voz")
+        # Cerrar la ventana no cierra Perseo: la esconde en la bandeja. Así que
+        # "ya estaba" era verdad y a la vez inútil — el usuario escribía `perseo`
+        # y no pasaba nada en pantalla, que desde fuera se ve igual que una app
+        # rota. Se pide que vuelva.
+        try:
+            MARCADOR_MOSTRAR.write_text("", encoding="utf-8")
+            print("  [al frente]  La app de voz ya estaba; se saca de la bandeja")
+        except OSError:
+            print("  [ya estaba]  La app de voz (escondida en la bandeja)")
         return False
 
     binario = _app()

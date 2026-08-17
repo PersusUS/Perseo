@@ -13,6 +13,8 @@ const CLAVE_API: &str = "gemini_api_key";
 /// Fichero marcador que deja el detector de aplausos para pedir que la
 /// aplicacion entre en llamada sola. Se borra al leerlo.
 const MARCADOR_AUTOLLAMADA: &str = ".perseo-autollamada";
+/// Marcador que solo pide sacar la ventana del escondite, sin entrar en llamada.
+const MARCADOR_MOSTRAR: &str = ".perseo-mostrar";
 
 #[tauri::command]
 pub async fn capture_screen_base64(quality: u8) -> Result<String, String> {
@@ -134,18 +136,35 @@ pub fn consumir_autollamada(app: AppHandle) -> bool {
 }
 
 pub fn rutas_marcador_autollamada(app: &AppHandle) -> Vec<std::path::PathBuf> {
+    rutas_de_marcador(app, MARCADOR_AUTOLLAMADA)
+}
+
+/// Donde se busca el marcador que solo pide **enseniar la ventana**.
+///
+/// Existe porque cerrar la ventana no cierra Perseo: la esconde en la bandeja.
+/// Con la app escondida, `perseo` desde la terminal decia "[ya estaba] la app de
+/// voz" y no pasaba nada en pantalla, que desde fuera se ve exactamente igual
+/// que una app rota. Ahora deja este fichero y la ventana vuelve.
+///
+/// Es un marcador aparte y no el de autollamada porque sacar la ventana y
+/// entrar en llamada son dos cosas distintas, y solo una la pidio el usuario.
+pub fn rutas_marcador_mostrar(app: &AppHandle) -> Vec<std::path::PathBuf> {
+    rutas_de_marcador(app, MARCADOR_MOSTRAR)
+}
+
+fn rutas_de_marcador(app: &AppHandle, nombre: &str) -> Vec<std::path::PathBuf> {
     use tauri::Manager;
 
     let mut rutas = Vec::new();
     if let Ok(dir) = app.path().app_config_dir() {
-        rutas.push(dir.join(MARCADOR_AUTOLLAMADA));
+        rutas.push(dir.join(nombre));
     }
     // Arbol de fuentes, para `tauri dev`.
     rutas.push(
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")
-            .join(MARCADOR_AUTOLLAMADA),
+            .join(nombre),
     );
     rutas
 }
