@@ -556,6 +556,34 @@ html, body, #root {
 
 .pnl-correo { margin-top: 7px; }
 .pnl-motivo { color: var(--fg-dim); font-size: 12px; }
+
+/* Medidores de la máquina. Mismo dibujo que en el móvil a propósito: dos
+   formas distintas del mismo dato acaban discrepando. */
+.pnl-medidas { display: flex; flex-direction: column; gap: 11px; margin-top: 10px; }
+.pnl-medida-cabeza {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12px; color: var(--fg-dim);
+}
+.pnl-carril {
+  height: 4px; border-radius: 999px; background: var(--surface);
+  overflow: hidden; margin-top: 5px;
+}
+.pnl-relleno { height: 100%; background: var(--fg); border-radius: 999px; transition: width .6s ease; }
+.pnl-relleno.aviso { background: #fbbf24; }
+.pnl-relleno.malo { background: #f87171; }
+
+/* Un correo resuelto se apaga y baja al fondo de su cajón, pero sigue ahí:
+   esconderlo quitaría la forma de ver que el triaje se ha comido algo. */
+.pnl-correo.resuelto { opacity: .4; }
+.pnl-correo.resuelto .pnl-asunto { text-decoration: line-through; }
+.pnl-acciones-correo { display: flex; gap: 6px; margin-top: 6px; align-items: center; flex-wrap: wrap; }
+.pnl-acciones-correo button {
+  background: none; border: 1px solid var(--border); color: var(--fg-dim);
+  border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 11px;
+  cursor: pointer;
+}
+.pnl-acciones-correo button:hover { color: var(--fg); border-color: var(--fg); }
+.pnl-acciones-correo button.hecho { border-color: #4ade80; color: #4ade80; }
 .pnl-clase {
   padding: 1px 7px; border-radius: 999px; font-size: 10px;
   border: 1px solid currentColor; color: var(--fg-muted);

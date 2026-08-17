@@ -45,6 +45,10 @@ pub fn run() {
             panel::panel_responder,
             panel::panel_encolar,
             panel::panel_confianza,
+            panel::panel_correos,
+            panel::panel_marcar_correo,
+            panel::panel_proyectos,
+            panel::panel_abrir_proyecto,
             panel::panel_mensaje
         ])
         .run(tauri::generate_context!())

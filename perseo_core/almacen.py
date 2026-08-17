@@ -52,6 +52,15 @@ ABIERTOS = (PENDIENTE, EN_CURSO, ESPERANDO)
 
 ORIGENES = ("voz", "texto", "disparador")
 
+# Qué se ha hecho con un correo triado. `PENDIENTE_CORREO` no se guarda: es lo
+# que significa no estar en la tabla, y marcar uno como pendiente otra vez es
+# borrar la fila. Así el estado de un correo que nadie ha tocado no depende de
+# que alguien lo escribiera bien.
+ATENDIDO = "atendido"
+DESCARTADO = "descartado"
+PENDIENTE_CORREO = "pendiente"
+ESTADOS_CORREO = (ATENDIDO, DESCARTADO, PENDIENTE_CORREO)
+
 _ESQUEMA = """
 CREATE TABLE IF NOT EXISTS trabajos (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,6 +89,16 @@ CREATE TABLE IF NOT EXISTS uso (
     servicio  TEXT    NOT NULL,
     contador  INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (dia, servicio)
+);
+
+-- Qué se ha hecho con cada correo triado. El triaje dice de qué va un correo y
+-- ahí se quedaba: «requiere acción» sin forma de decir que ya está. Solo se
+-- guardan los que se han tocado; lo que no aparece está pendiente, así que la
+-- tabla crece con las decisiones y no con el buzón.
+CREATE TABLE IF NOT EXISTS correos (
+    id_mensaje      TEXT PRIMARY KEY,
+    estado          TEXT NOT NULL,
+    actualizado_en  TEXT NOT NULL
 );
 """
 
@@ -183,10 +202,25 @@ class Configuracion:
     #: Clave de la API de Gemini, para el suplente. Se comparte con la que usa la
     #: app para la voz: `GEMINI_API_KEY`, o `<datos>/gemini.txt`.
     gemini_clave: str
+    #: Certificado y clave para servir por HTTPS. Existen por el micrófono: el
+    #: navegador solo deja grabar en un contexto seguro, y `http://` por el
+    #: tailnet no lo es —el bucle local sí, por eso en el PC se puede probar sin
+    #: esto—. Los da `tailscale cert`. Vacíos = HTTP de siempre.
+    tls_certificado: str
+    tls_clave: str
 
     @property
     def telegram_configurado(self) -> bool:
         return bool(self.telegram_token and self.telegram_chat)
+
+    @property
+    def tls_listo(self) -> bool:
+        """Si hay con qué servir HTTPS. Que los ficheros existan se mira aquí:
+        una ruta escrita a mano que ya no apunta a nada dejaría al núcleo sin
+        arrancar, y prefiero HTTP a nada."""
+        if not (self.tls_certificado and self.tls_clave):
+            return False
+        return Path(self.tls_certificado).is_file() and Path(self.tls_clave).is_file()
 
     @property
     def url_base_alcanzable(self) -> bool:
@@ -416,6 +450,8 @@ def cargar_configuracion() -> Configuracion:
         vault_rest_clave=_de_entorno_o_fichero("PERSEO_VAULT_CLAVE", directorio / "obsidian.txt", guardados),
         modelo_suplente=var("PERSEO_MODELO_SUPLENTE", "").strip(),
         gemini_clave=_de_entorno_o_fichero("GEMINI_API_KEY", directorio / "gemini.txt", guardados),
+        tls_certificado=var("PERSEO_TLS_CERT", ""),
+        tls_clave=var("PERSEO_TLS_CLAVE", ""),
     )
 
 
@@ -790,6 +826,52 @@ def recuperar_huerfanos() -> int:
     if recuperados:
         logger.warning("%d trabajo(s) huérfano(s) devueltos a la cola.", recuperados)
     return recuperados
+
+
+# --------------------------------------------------------------------------- #
+# Correos triados: qué se ha hecho con cada uno
+# --------------------------------------------------------------------------- #
+
+
+def marcar_correo(id_mensaje: str, estado: str) -> dict[str, str]:
+    """Deja escrito qué se ha hecho con un correo. Marcar dos veces no duplica.
+
+    `pendiente` borra la fila en vez de guardarla: no estar en la tabla es lo
+    que significa estar pendiente, y con dos formas de decir lo mismo la que
+    nadie mire acaba mintiendo.
+    """
+    id_mensaje = id_mensaje.strip()
+    if not id_mensaje:
+        raise ValueError("Un correo sin id no se puede marcar.")
+    if estado not in ESTADOS_CORREO:
+        raise ValueError(f"Estado de correo desconocido: {estado!r}")
+
+    ahora = _ahora()
+    with _cerrojo:
+        if estado == PENDIENTE_CORREO:
+            _db().execute("DELETE FROM correos WHERE id_mensaje = ?", (id_mensaje,))
+        else:
+            _db().execute(
+                """
+                INSERT INTO correos (id_mensaje, estado, actualizado_en) VALUES (?, ?, ?)
+                ON CONFLICT (id_mensaje)
+                DO UPDATE SET estado = excluded.estado, actualizado_en = excluded.actualizado_en
+                """,
+                (id_mensaje, estado, ahora),
+            )
+        _db().commit()
+    return {"id": id_mensaje, "estado": estado, "actualizado_en": ahora}
+
+
+def correos_marcados() -> dict[str, str]:
+    """Los correos que alguien ha tocado, por id. El resto están pendientes.
+
+    Se devuelve entero y no por lotes: son las decisiones de un buzón personal,
+    no un histórico. Si algún día pesa, se corta por fecha.
+    """
+    with _cerrojo:
+        filas = _db().execute("SELECT id_mensaje, estado FROM correos").fetchall()
+    return {f["id_mensaje"]: f["estado"] for f in filas}
 
 
 # --------------------------------------------------------------------------- #

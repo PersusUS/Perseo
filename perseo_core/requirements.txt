@@ -10,6 +10,13 @@
 
 aiohttp>=3.9
 
+# La telemetría de la pantalla de estado: CPU, memoria, disco, red y batería.
+# Es la segunda dependencia en cinco fases, y entra porque leer eso en Windows
+# sin ella son tres APIs distintas y ninguna portable. Si falta, el núcleo
+# arranca igual: `estado.telemetria()` devuelve `disponible: false` y la
+# pantalla enseña un hueco en vez de romperse.
+psutil>=5.9
+
 # Opcional, y a propósito fuera de la lista: `pyautogui`, que solo necesita el
 # agente `pc` para teclear y mover el ratón. Sin ella el núcleo arranca igual,
 # abrir aplicaciones y URLs sigue funcionando, y las acciones que la necesitan

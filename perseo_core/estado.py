@@ -37,12 +37,13 @@ import asyncio
 import logging
 import time
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import aiohttp
 
-from . import almacen, politica
+from . import agenda, almacen, politica
 from .agentes import REGISTRO, Router
 from .disparadores import REGISTRO as DISPARADORES
 
@@ -60,6 +61,9 @@ APAGADO = "apagado"
 #: abre desde el móvil por el tailnet, y una comprobación que tarda es peor que
 #: una que dice que no.
 TOPE_SONDEO = 4
+
+#: La raíz del repositorio, para mirar el disco donde vive Perseo.
+RAIZ = Path(__file__).resolve().parent.parent
 
 #: Cuánto se recuerda cada sondeo. Ollama y Obsidian son locales y baratos;
 #: Google pide un testigo nuevo a un servidor de fuera, así que se pregunta una
@@ -390,6 +394,148 @@ def _cuota(cfg: almacen.Configuracion, usos: dict[str, int]) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------------- #
+# Telemetría de la máquina
+# --------------------------------------------------------------------------- #
+
+
+def _bytes_legibles(n: float) -> str:
+    for unidad in ("B", "kB", "MB", "GB", "TB"):
+        if n < 1024 or unidad == "TB":
+            return f"{n:.0f} {unidad}" if unidad == "B" else f"{n:.1f} {unidad}"
+        n /= 1024
+    return f"{n:.1f} TB"
+
+
+#: Últimos contadores de red, para poder dar velocidad y no un total desde el
+#: arranque de Windows —que es un número enorme que no dice nada—.
+_ultima_red: tuple[float, int, int] | None = None
+
+
+def telemetria() -> dict[str, Any]:
+    """CPU, memoria, disco y red de esta máquina. **Nunca lanza.**
+
+    Es la única pieza del estado que habla de la máquina y no de Perseo, y va
+    aparte por eso: si un día el núcleo vive en la Raspberry Pi, esto describe
+    la Pi. Sin `psutil` se devuelve `disponible: false` y la pantalla enseña un
+    hueco en vez de romperse.
+    """
+    global _ultima_red
+    try:
+        import psutil  # noqa: PLC0415  (perezoso: el núcleo arranca sin él)
+    except ImportError:
+        return {"disponible": False, "motivo": "psutil no está instalado"}
+
+    try:
+        memoria = psutil.virtual_memory()
+        disco = psutil.disk_usage(str(RAIZ.anchor or RAIZ))
+        red = psutil.net_io_counters()
+        ahora = time.monotonic()
+
+        subida = bajada = 0.0
+        if _ultima_red is not None:
+            momento, enviados, recibidos = _ultima_red
+            transcurrido = max(ahora - momento, 0.001)
+            subida = max(red.bytes_sent - enviados, 0) / transcurrido
+            bajada = max(red.bytes_recv - recibidos, 0) / transcurrido
+        _ultima_red = (ahora, red.bytes_sent, red.bytes_recv)
+
+        datos: dict[str, Any] = {
+            "disponible": True,
+            # `interval=None` da el porcentaje desde la llamada anterior, que es
+            # justo lo que se quiere en una pantalla que se refresca sola. Con un
+            # intervalo, esta función bloquearía el bucle ese tiempo.
+            "cpu": psutil.cpu_percent(interval=None),
+            "nucleos": psutil.cpu_count(logical=True),
+            "memoria": {
+                "usado": memoria.total - memoria.available,
+                "total": memoria.total,
+                "porcentaje": memoria.percent,
+                "legible": f"{_bytes_legibles(memoria.total - memoria.available)} de {_bytes_legibles(memoria.total)}",
+            },
+            "disco": {
+                "usado": disco.used,
+                "total": disco.total,
+                "porcentaje": disco.percent,
+                "legible": f"{_bytes_legibles(disco.used)} de {_bytes_legibles(disco.total)}",
+            },
+            "red": {
+                "subida": subida,
+                "bajada": bajada,
+                "legible": f"↑ {_bytes_legibles(subida)}/s · ↓ {_bytes_legibles(bajada)}/s",
+            },
+        }
+
+        bateria = psutil.sensors_battery()
+        if bateria is not None:
+            datos["bateria"] = {
+                "porcentaje": round(bateria.percent),
+                "enchufado": bool(bateria.power_plugged),
+            }
+        return datos
+    except Exception as e:  # noqa: BLE001  (un número informativo no tumba el panel)
+        logger.warning("No se pudo leer la telemetría: %s", e)
+        return {"disponible": False, "motivo": str(e)}
+
+
+# --------------------------------------------------------------------------- #
+# Presencia: lo que un asistente sabe sin que se lo preguntes
+# --------------------------------------------------------------------------- #
+
+
+async def presencia(cfg: almacen.Configuracion) -> dict[str, Any]:
+    """Qué hay delante ahora mismo: qué se está haciendo, qué correo espera y
+    qué toca en la agenda.
+
+    Todo lo de aquí ya estaba en el sistema —en la cola, en el triaje, en el
+    calendario— y era el usuario quien tenía que ir a buscarlo a tres sitios.
+    """
+    datos: dict[str, Any] = {"haciendo": None, "correo": {}, "proximo_evento": None}
+
+    try:
+        trabajos, marcados = await asyncio.gather(
+            asyncio.to_thread(almacen.listar, None, 50),
+            asyncio.to_thread(almacen.correos_marcados),
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("No se pudo reunir la presencia: %s", e)
+        return datos
+
+    en_curso = [t for t in trabajos if t["estado"] == almacen.EN_CURSO]
+    esperando = [t for t in trabajos if t["estado"] == almacen.ESPERANDO]
+    if en_curso:
+        datos["haciendo"] = {"id": en_curso[0]["id"], "agente": en_curso[0]["agente"]}
+    datos["esperando_un_si"] = len(esperando)
+
+    # Correos triados que nadie ha resuelto todavía, por cajón. Es el mismo
+    # criterio que la pestaña de Correo: lo que no está marcado está pendiente.
+    pendientes: dict[str, int] = {}
+    for trabajo in trabajos:
+        resultado = trabajo.get("resultado")
+        if not isinstance(resultado, dict):
+            continue
+        for correo in resultado.get("clasificados") or []:
+            if correo.get("clase") == "ignorar" or marcados.get(correo.get("id")):
+                continue
+            pendientes[correo["clase"]] = pendientes.get(correo["clase"], 0) + 1
+    datos["correo"] = pendientes
+
+    # El calendario se pregunta solo si está configurado: sin esto, una pantalla
+    # que se refresca sola pediría un testigo de Google cada pocos segundos.
+    calendario = agenda.abrir_calendario(cfg)
+    if calendario is not None:
+        try:
+            eventos = await asyncio.wait_for(
+                calendario.proximos(timedelta(hours=24)), timeout=TOPE_SONDEO
+            )
+            if eventos:
+                datos["proximo_evento"] = eventos[0].a_dict()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("No se pudo mirar el calendario: %s", e)
+
+    return datos
+
+
 async def reunir(cfg: almacen.Configuracion, router: Router) -> dict[str, Any]:
     """Todo lo que pinta la pestaña de Estado, en una sola respuesta."""
     async with aiohttp.ClientSession() as http:
@@ -423,9 +569,11 @@ async def reunir(cfg: almacen.Configuracion, router: Router) -> dict[str, Any]:
         _confianza(),
     ]
 
-    recuento, usos = await asyncio.gather(
+    recuento, usos, contexto, maquina = await asyncio.gather(
         asyncio.to_thread(almacen.recuento_por_estado),
         asyncio.to_thread(almacen.uso_de_hoy),
+        presencia(cfg),
+        asyncio.to_thread(telemetria),
     )
 
     return {
@@ -433,6 +581,8 @@ async def reunir(cfg: almacen.Configuracion, router: Router) -> dict[str, Any]:
         "encendido_desde": _ARRANQUE_RELOJ.replace(microsecond=0).isoformat(),
         "encendido_segundos": int(time.monotonic() - _ARRANQUE),
         "router_local": router.disponible,
+        "maquina": maquina,
+        "presencia": contexto,
         "piezas": [asdict(p) for p in piezas],
         "trabajos": recuento,
         "agentes": sorted(REGISTRO),

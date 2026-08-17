@@ -39,7 +39,7 @@ from typing import Any
 
 from aiohttp import web
 
-from . import almacen, estado, politica
+from . import almacen, estado, politica, proyectos
 from .agentes import REGISTRO, Router
 from .bus import Bus
 
@@ -430,6 +430,99 @@ async def _responder_confirmacion(peticion: web.Request) -> web.Response:
     return web.json_response(trabajo)
 
 
+async def _listar_correos(peticion: web.Request) -> web.Response:
+    """Qué se ha hecho con cada correo triado. Lo que no salga está pendiente."""
+    marcados = await asyncio.to_thread(almacen.correos_marcados)
+    return web.json_response({"marcados": marcados})
+
+
+async def _marcar_correo(peticion: web.Request) -> web.Response:
+    """Mueve un correo a atendido, descartado o de vuelta a pendiente.
+
+    Es el único sitio donde el triaje deja de ser de solo lectura. No toca
+    Gmail: aquí se anota lo que **tú** has hecho, y marcar leído en el buzón es
+    otra cosa que además necesitaría un permiso que el testigo no tiene.
+    """
+    datos = await _cuerpo_json(peticion)
+    estado = str(datos.get("estado", "")).strip().lower()
+    if estado not in almacen.ESTADOS_CORREO:
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": f"Estado inválido. Válidos: {list(almacen.ESTADOS_CORREO)}"}),
+            content_type="application/json",
+        )
+
+    id_mensaje = peticion.match_info["id"]
+    try:
+        marcado = await asyncio.to_thread(almacen.marcar_correo, id_mensaje, estado)
+    except ValueError as e:
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": str(e)}), content_type="application/json"
+        )
+
+    peticion.app[CLAVE_BUS].publicar("correo.marcado", correo=marcado)
+    return web.json_response(marcado)
+
+
+#: Lo que usa la app de escritorio para hablar. El móvil se conecta al mismo
+#: sitio: dos modelos distintos serían dos Perseos con la misma voz.
+MODELO_VOZ = "gemini-2.5-flash-native-audio-latest"
+VERSION_VOZ = "v1alpha"
+
+
+async def _clave_voz(peticion: web.Request) -> web.Response:
+    """La clave de Gemini, para que el móvil hable con el modelo directamente.
+
+    Sí, esto entrega una clave por la red, y conviene tener escrito por qué es
+    aceptable **aquí** y no en general:
+
+      * va detrás del token, igual que la cola y el vault;
+      * el núcleo solo escucha en el bucle local y en el tailnet, así que "la
+        red" son tus dispositivos;
+      * la alternativa —hacer de proxy del audio— pondría al núcleo a reenviar
+        dos flujos de sonido en tiempo real, y con eso la latencia deja de ser
+        la de una conversación.
+
+    Si algún día el núcleo se abre a algo que no sea el tailnet, esta ruta es la
+    primera que hay que quitar.
+    """
+    cfg = peticion.app[CLAVE_CFG]
+    if not cfg.gemini_clave:
+        raise web.HTTPServiceUnavailable(
+            text=json.dumps({"error": "No hay clave de Gemini configurada"}),
+            content_type="application/json",
+        )
+    return web.json_response(
+        {"clave": cfg.gemini_clave, "modelo": MODELO_VOZ, "version": VERSION_VOZ}
+    )
+
+
+async def _listar_proyectos(peticion: web.Request) -> web.Response:
+    """Los otros proyectos que se pueden abrir desde el panel."""
+    cfg = peticion.app[CLAVE_CFG]
+    lista = await asyncio.to_thread(proyectos.listar, cfg.directorio_datos)
+    return web.json_response(
+        {
+            "proyectos": [p.a_dict() for p in lista],
+            # Sin fichero no hay proyectos, y no es un fallo: la pantalla enseña
+            # dónde se crea en vez de un hueco sin explicación.
+            "fichero": str(cfg.directorio_datos / proyectos.NOMBRE_FICHERO),
+        }
+    )
+
+
+async def _abrir_proyecto(peticion: web.Request) -> web.Response:
+    """Abre uno. Por aquí llega **cuál**, nunca qué ejecutar: ver `proyectos`."""
+    cfg = peticion.app[CLAVE_CFG]
+    resultado = await asyncio.to_thread(
+        proyectos.abrir, cfg.directorio_datos, peticion.match_info["id"]
+    )
+    if resultado.startswith("Error:"):
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": resultado}), content_type="application/json"
+        )
+    return web.json_response({"resultado": resultado})
+
+
 async def _eventos(peticion: web.Request) -> web.StreamResponse:
     """Flujo SSE con todo lo que pasa en el núcleo."""
     respuesta = web.StreamResponse(
@@ -496,6 +589,11 @@ def crear_app(cfg: almacen.Configuracion, bus: Bus, router: Router) -> web.Appli
             web.get("/trabajos/{id}", _ver_trabajo),
             web.post("/trabajos/{id}/cancelar", _cancelar_trabajo),
             web.post("/trabajos/{id}/{decision:aprobar|rechazar}", _responder_confirmacion),
+            web.get("/correos", _listar_correos),
+            web.post("/correos/{id}/estado", _marcar_correo),
+            web.get("/clave-voz", _clave_voz),
+            web.get("/proyectos", _listar_proyectos),
+            web.post("/proyectos/{id}/abrir", _abrir_proyecto),
             web.get("/confianza", _ver_confianza),
             web.post("/confianza", _cambiar_confianza),
             web.get("/eventos", _eventos),

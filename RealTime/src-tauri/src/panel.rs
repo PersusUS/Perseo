@@ -81,6 +81,51 @@ pub async fn panel_responder(app: AppHandle, id: i64, decision: String) -> Resul
     mandar(&app, &format!("/trabajos/{id}/{decision}"), json!({})).await
 }
 
+/// Que se ha hecho con cada correo triado. Lo que no salga esta pendiente.
+#[tauri::command]
+pub async fn panel_correos(app: AppHandle) -> Result<Value, String> {
+    traer(&app, "/correos").await
+}
+
+/// Marca un correo como atendido, descartado, o de vuelta a pendiente.
+///
+/// El estado se valida aqui por el mismo motivo que la decision de
+/// `panel_responder`: si lo elige el frontend entero, la ruta la escribe el
+/// frontend.
+#[tauri::command]
+pub async fn panel_marcar_correo(
+    app: AppHandle,
+    id: String,
+    estado: String,
+) -> Result<Value, String> {
+    if !["atendido", "descartado", "pendiente"].contains(&estado.as_str()) {
+        return Err(format!("Estado desconocido: {estado}"));
+    }
+    // El id de Gmail es hexadecimal, asi que en vez de arrastrar una
+    // dependencia para escapar la URL se comprueba que sea lo que dice ser.
+    // Cualquier otra cosa seria un trozo de ruta escrito desde el frontend.
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err(format!("Id de correo no valido: {id}"));
+    }
+    mandar(&app, &format!("/correos/{id}/estado"), json!({ "estado": estado })).await
+}
+
+/// Los otros proyectos que se pueden abrir desde el panel.
+#[tauri::command]
+pub async fn panel_proyectos(app: AppHandle) -> Result<Value, String> {
+    traer(&app, "/proyectos").await
+}
+
+/// Abre uno. Por aqui viaja **cual**, nunca que ejecutar: la lista vive en
+/// `<datos>/proyectos.json` y la valida el nucleo.
+#[tauri::command]
+pub async fn panel_abrir_proyecto(app: AppHandle, id: String) -> Result<Value, String> {
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err(format!("Id de proyecto no valido: {id}"));
+    }
+    mandar(&app, &format!("/proyectos/{id}/abrir"), json!({})).await
+}
+
 /// Encola un trabajo para un agente. Lo usa la pestana de memoria.
 #[tauri::command]
 pub async fn panel_encolar(

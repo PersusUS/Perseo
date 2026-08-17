@@ -223,3 +223,51 @@ def test_apuntar_uso_sin_base_de_datos_no_lanza(cfg) -> None:
     """
     almacen.cerrar()
     almacen.apuntar_uso("gemma-4-31b-it")  # no debe lanzar
+
+
+# --------------------------------------------------------------------------- #
+# Correos triados: qué se ha hecho con cada uno
+# --------------------------------------------------------------------------- #
+
+
+def test_sin_marcar_nada_no_hay_correos(db) -> None:
+    """Lo que no está en la tabla está pendiente: es el estado de casi todos."""
+    assert almacen.correos_marcados() == {}
+
+
+def test_marcar_un_correo_lo_deja_escrito(db) -> None:
+    marcado = almacen.marcar_correo("msg-1", almacen.ATENDIDO)
+    assert marcado["estado"] == almacen.ATENDIDO
+    assert almacen.correos_marcados() == {"msg-1": almacen.ATENDIDO}
+
+
+def test_marcar_dos_veces_no_duplica(db) -> None:
+    """La misma pregunta puede estar abierta en la web y en el móvil."""
+    almacen.marcar_correo("msg-1", almacen.ATENDIDO)
+    almacen.marcar_correo("msg-1", almacen.DESCARTADO)
+    assert almacen.correos_marcados() == {"msg-1": almacen.DESCARTADO}
+
+
+def test_volver_a_pendiente_borra_la_fila(db) -> None:
+    """Pendiente es no estar. Con dos formas de decirlo, una acaba mintiendo."""
+    almacen.marcar_correo("msg-1", almacen.ATENDIDO)
+    almacen.marcar_correo("msg-1", almacen.PENDIENTE_CORREO)
+    assert almacen.correos_marcados() == {}
+
+
+def test_un_estado_inventado_no_pasa(db) -> None:
+    with pytest.raises(ValueError):
+        almacen.marcar_correo("msg-1", "archivado")
+
+
+def test_un_correo_sin_id_no_se_marca(db) -> None:
+    with pytest.raises(ValueError):
+        almacen.marcar_correo("   ", almacen.ATENDIDO)
+
+
+def test_los_correos_marcados_sobreviven_al_reinicio(db, cfg) -> None:
+    """Es una decisión tuya, no un cacheo: si se pierde al reiniciar, no sirve."""
+    almacen.marcar_correo("msg-1", almacen.ATENDIDO)
+    almacen.cerrar()
+    almacen.abrir(cfg)
+    assert almacen.correos_marcados() == {"msg-1": almacen.ATENDIDO}

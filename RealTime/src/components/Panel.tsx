@@ -46,6 +46,10 @@ type Estado = {
   agentes: string[];
   disparadores: { nombre: string; activo: boolean; intervalo: number }[];
   cuota: { dia: string; nota: string; servicios: { modelo: string; usadas: number; tope: number | null }[] };
+  /** La máquina donde vive el núcleo. Sin `psutil` llega `disponible: false`. */
+  maquina?: any;
+  /** Qué se está haciendo, qué correo espera y qué toca en la agenda. */
+  presencia?: any;
 };
 
 const ESTADOS_ABIERTOS = new Set(['pendiente', 'en_curso', 'esperando']);
@@ -117,11 +121,139 @@ async function encolarYEsperar(agente: string, peticion: any, segundos = 20): Pr
   throw new Error('Sigue en marcha; míralo en la cola.');
 }
 
-const LineaCorreo: React.FC<{ c: any }> = ({ c }) => (
-  <div className="pnl-correo">
+/** Una línea de correo triado, y qué se ha hecho con él.
+ *
+ *  Las acciones solo salen en la pestaña de Correo (`onMarcar`): en la cola,
+ *  una línea de correo es el resultado de un trabajo —lo que pasó— y ahí no se
+ *  decide nada. Un correo resuelto no se esconde, se apaga: esconderlo quitaría
+ *  la única forma de ver que el triaje se ha comido algo. */
+const LineaCorreo: React.FC<{
+  c: any;
+  estado?: string;
+  onMarcar?: (id: string, estado: string) => void;
+}> = ({ c, estado, onMarcar }) => (
+  <div className={'pnl-correo' + (estado ? ' resuelto' : '')}>
     <span className={`pnl-clase ${c.clase ?? ''}`}>{CLASES_CORREO[c.clase] ?? c.clase ?? '?'}</span>
-    {` ${c.remitente ?? '?'} — ${c.asunto ?? '(sin asunto)'}`}
+    {` ${c.remitente ?? '?'} — `}
+    <span className="pnl-asunto">{c.asunto ?? '(sin asunto)'}</span>
     {c.motivo && <div className="pnl-motivo">{c.motivo}</div>}
+    {onMarcar && c.id && (
+      <div className="pnl-acciones-correo">
+        {estado ? (
+          <>
+            <span className="pnl-motivo">{estado === 'atendido' ? 'Atendido' : 'Descartado'}</span>
+            <button onClick={() => onMarcar(c.id, 'pendiente')}>Reabrir</button>
+          </>
+        ) : (
+          <>
+            <button className="hecho" onClick={() => onMarcar(c.id, 'atendido')}>Hecho</button>
+            <button onClick={() => onMarcar(c.id, 'descartado')}>Descartar</button>
+          </>
+        )}
+      </div>
+    )}
+  </div>
+);
+
+/** Una barra con su número. Misma información que en el móvil, misma forma:
+ *  dos dibujos distintos del mismo dato acaban discrepando. */
+const Barra: React.FC<{ etiqueta: string; porcentaje: number; detalle?: string }> = ({
+  etiqueta, porcentaje, detalle,
+}) => (
+  <div className="pnl-medida">
+    <div className="pnl-medida-cabeza">
+      <span className="pnl-mayus">{etiqueta}</span>
+      <span>{Math.round(porcentaje)}%</span>
+    </div>
+    <div className="pnl-carril">
+      <div
+        className={'pnl-relleno' + (porcentaje >= 90 ? ' malo' : porcentaje >= 70 ? ' aviso' : '')}
+        style={{ width: `${Math.min(100, Math.max(0, porcentaje))}%` }}
+      />
+    </div>
+    {detalle && <div className="pnl-motivo">{detalle}</div>}
+  </div>
+);
+
+/** Lo que un asistente debería saber sin que se lo preguntes. Va lo primero de
+ *  la pestaña porque es lo único que cambia lo que haces ahora. */
+const Presencia: React.FC<{ p: any }> = ({ p }) => {
+  const pendientes = Object.entries(p.correo ?? {}) as [string, number][];
+  const total = pendientes.reduce((n, [, c]) => n + c, 0);
+  const cuando = p.proximo_evento?.momento
+    ? new Date(p.proximo_evento.momento).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+    : 'sin hora';
+
+  return (
+    <div className="pnl-tarjeta">
+      <div className="pnl-cabeza">Ahora mismo</div>
+      <div className="pnl-detalle">
+        {p.haciendo ? `Trabajando: #${p.haciendo.id} · ${p.haciendo.agente}` : 'Sin nada entre manos'}
+      </div>
+      {!!p.esperando_un_si && (
+        <div className="pnl-detalle">{p.esperando_un_si} esperando un sí</div>
+      )}
+      <div className="pnl-detalle">
+        {total
+          ? `${total} correo${total === 1 ? '' : 's'} sin resolver` +
+            (p.correo?.requiere_accion ? ` · ${p.correo.requiere_accion} requieren acción` : '')
+          : 'Correo al día'}
+      </div>
+      {p.proximo_evento && (
+        <div className="pnl-detalle">
+          Próximo: {p.proximo_evento.titulo ?? '(sin título)'} a las {cuando}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** La máquina donde vive el núcleo — lo único de esta pantalla que no habla de
+ *  Perseo. Si un día el núcleo se muda a la Raspberry, describe la Raspberry. */
+const Maquina: React.FC<{ m: any }> = ({ m }) => (
+  <div className="pnl-tarjeta">
+    <div className="pnl-cabeza">
+      Máquina
+      {m.bateria && (
+        <span className="pnl-ficha">
+          {m.bateria.porcentaje}%{m.bateria.enchufado ? ' · enchufada' : ''}
+        </span>
+      )}
+    </div>
+    <div className="pnl-medidas">
+      <Barra etiqueta="CPU" porcentaje={m.cpu ?? 0} detalle={`${m.nucleos ?? '?'} hilos`} />
+      <Barra etiqueta="RAM" porcentaje={m.memoria?.porcentaje ?? 0} detalle={m.memoria?.legible} />
+      <Barra etiqueta="Disco" porcentaje={m.disco?.porcentaje ?? 0} detalle={m.disco?.legible} />
+    </div>
+    {m.red?.legible && <div className="pnl-motivo">Red · {m.red.legible}</div>}
+  </div>
+);
+
+/** Los otros proyectos. La lista sale de un fichero del disco: desde aquí se
+ *  manda cuál abrir, nunca qué ejecutar. */
+const Proyectos: React.FC<{
+  lista: any[];
+  fichero: string;
+  onAbrir: (id: string) => void;
+}> = ({ lista, fichero, onAbrir }) => (
+  <div className="pnl-tarjeta">
+    <div className="pnl-cabeza">Proyectos</div>
+    {lista.length ? (
+      <div className="pnl-fichas" style={{ marginTop: 9 }}>
+        {lista.map(p => (
+          <button
+            key={p.id}
+            className="pnl-filtro"
+            title={p.descripcion || p.destino}
+            onClick={() => onAbrir(p.id)}
+          >
+            {p.nombre}
+          </button>
+        ))}
+      </div>
+    ) : (
+      <div className="pnl-motivo">Ninguno declarado. Se añaden en {fichero}</div>
+    )}
   </div>
 );
 
@@ -240,6 +372,9 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
   const [tituloNota, setTituloNota] = useState('');
   const [textoNota, setTextoNota] = useState('');
   const [notas, setNotas] = useState<any[] | null>(null);
+  const [marcados, setMarcados] = useState<Record<string, string>>({});
+  const [proyectos, setProyectos] = useState<any[]>([]);
+  const [ficheroProyectos, setFicheroProyectos] = useState('');
   const [avisoMemoria, setAvisoMemoria] = useState('');
   const trabajando = useRef(false);
 
@@ -262,13 +397,61 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
     }
   }, []);
 
+  /** Qué se ha hecho con cada correo. Va aparte de los trabajos porque el
+   *  triaje dice de qué va un correo y esto dice qué has hecho tú con él: lo
+   *  primero lo decide un modelo, lo segundo no lo decide nadie más. */
+  const cargarMarcados = useCallback(async () => {
+    try {
+      const datos = await invoke<{ marcados: Record<string, string> }>('panel_correos');
+      setMarcados(datos.marcados ?? {});
+    } catch {
+      // Perder las marcas no es perder los correos: se pintan pendientes.
+      setMarcados({});
+    }
+  }, []);
+
+  const abrirProyecto = async (id: string) => {
+    try {
+      await invoke('panel_abrir_proyecto', { id });
+    } catch (e: any) {
+      setFallo(String(e));
+    }
+  };
+
+  useEffect(() => {
+    // La lista de proyectos sale de un fichero que casi nunca cambia: se pide
+    // al abrir el panel y no en cada refresco.
+    invoke<{ proyectos: any[]; fichero: string }>('panel_proyectos')
+      .then(d => { setProyectos(d.proyectos ?? []); setFicheroProyectos(d.fichero ?? ''); })
+      .catch(() => setProyectos([]));
+  }, []);
+
   useEffect(() => {
     cargarTrabajos();
     cargarEstado();
+    cargarMarcados();
     const a = setInterval(cargarTrabajos, REFRESCO);
     const b = setInterval(cargarEstado, REFRESCO_ESTADO);
-    return () => { clearInterval(a); clearInterval(b); };
-  }, [cargarTrabajos, cargarEstado]);
+    const c = setInterval(cargarMarcados, REFRESCO);
+    return () => { clearInterval(a); clearInterval(b); clearInterval(c); };
+  }, [cargarTrabajos, cargarEstado, cargarMarcados]);
+
+  const marcarCorreo = async (id: string, estado: string) => {
+    // Optimista y luego se confirma: el sondeo tarda cuatro segundos y un botón
+    // que no responde hasta entonces se pulsa dos veces.
+    setMarcados(previos => {
+      const siguiente = { ...previos };
+      if (estado === 'pendiente') delete siguiente[id];
+      else siguiente[id] = estado;
+      return siguiente;
+    });
+    try {
+      await invoke('panel_marcar_correo', { id, estado });
+    } catch (e: any) {
+      setFallo(String(e));
+    }
+    cargarMarcados();
+  };
 
   const responder = async (id: number, decision: string) => {
     try {
@@ -443,13 +626,22 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
 
         {pestana === 'correo' && (
           <>
+            {/* La cifra grande es lo que queda por hacer, no lo que llegó: un
+                contador que nunca baja deja de mirarse a la semana. */}
             <div className="pnl-cifras">
-              {ORDEN_CAJONES.map(c => (
-                <div className="pnl-cifra" key={c}>
-                  <b>{cajones.get(c)!.length}</b>
-                  <span className="pnl-mayus">{CLASES_CORREO[c]}</span>
-                </div>
-              ))}
+              {ORDEN_CAJONES.map(c => {
+                const todos = cajones.get(c)!;
+                const pendientes = todos.filter(x => !marcados[x.id]).length;
+                return (
+                  <div className="pnl-cifra" key={c}>
+                    <b>{pendientes}</b>
+                    <span className="pnl-mayus">{CLASES_CORREO[c]}</span>
+                    {pendientes !== todos.length && (
+                      <div className="pnl-motivo">de {todos.length}</div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             {ORDEN_CAJONES.every(c => cajones.get(c)!.length === 0) && (
               <div className="pnl-nota">
@@ -462,14 +654,22 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
                   <span className={`pnl-clase ${c}`}>{CLASES_CORREO[c]}</span>
                   {` ${cajones.get(c)!.length}`}
                 </div>
-                {c === 'ignorar' ? (
-                  <details>
-                    <summary>ver los ignorados</summary>
-                    {cajones.get(c)!.map((x, i) => <LineaCorreo key={i} c={x} />)}
-                  </details>
-                ) : (
-                  cajones.get(c)!.map((x, i) => <LineaCorreo key={i} c={x} />)
-                )}
+                {(() => {
+                  // Lo resuelto al fondo de su cajón, sin desaparecer.
+                  const lineas = [...cajones.get(c)!]
+                    .sort((a, b) => (marcados[a.id] ? 1 : 0) - (marcados[b.id] ? 1 : 0))
+                    .map((x, i) => (
+                      <LineaCorreo key={i} c={x} estado={marcados[x.id]} onMarcar={marcarCorreo} />
+                    ));
+                  return c === 'ignorar' ? (
+                    <details>
+                      <summary>ver los ignorados</summary>
+                      {lineas}
+                    </details>
+                  ) : (
+                    lineas
+                  );
+                })()}
               </div>
             ))}
           </>
@@ -539,6 +739,10 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
                 </div>
               </div>
             </div>
+
+            <Presencia p={estado.presencia ?? {}} />
+            {estado.maquina?.disponible && <Maquina m={estado.maquina} />}
+            <Proyectos lista={proyectos} fichero={ficheroProyectos} onAbrir={abrirProyecto} />
 
             <div className="pnl-tarjeta pnl-piezas">
               {estado.piezas.map(p => (
