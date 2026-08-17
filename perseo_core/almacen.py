@@ -208,6 +208,11 @@ class Configuracion:
     #: esto—. Los da `tailscale cert`. Vacíos = HTTP de siempre.
     tls_certificado: str
     tls_clave: str
+    #: Puerto del HTTPS. **Aparte del de siempre y no en su lugar**: un socket
+    #: que habla TLS no contesta a quien llega en claro, así que servir HTTPS en
+    #: el puerto de siempre no cambia la dirección, la rompe — y con ella los
+    #: accesos directos que ya hay guardados. Ver `_donde_escuchar`.
+    tls_puerto: int
 
     @property
     def telegram_configurado(self) -> bool:
@@ -457,6 +462,7 @@ def cargar_configuracion() -> Configuracion:
         gemini_clave=_de_entorno_o_fichero("GEMINI_API_KEY", directorio / "gemini.txt", guardados),
         tls_certificado=var("PERSEO_TLS_CERT", ""),
         tls_clave=var("PERSEO_TLS_CLAVE", ""),
+        tls_puerto=int(var("PERSEO_TLS_PUERTO", str(puerto + 1))),
     )
 
 

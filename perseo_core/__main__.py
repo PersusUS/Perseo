@@ -63,25 +63,45 @@ def _tls(cfg: almacen.Configuracion) -> ssl.SSLContext | None:
     return contexto
 
 
-def _tls_de(host: str, contexto: ssl.SSLContext | None) -> ssl.SSLContext | None:
-    """El certificado va en el tailnet y **no** en el bucle local.
+def _donde_escuchar(
+    cfg: almacen.Configuracion,
+) -> list[tuple[str, int, ssl.SSLContext | None]]:
+    """Qué se abre y cómo. El HTTPS **añade**, nunca sustituye.
 
-    Parece un detalle y no lo es. El certificado lo emite Tailscale para
-    `msi.taild61051.ts.net`, así que sirve para el móvil y no para nadie que
-    entre por `127.0.0.1`: ahí la verificación falla por nombre. Y por
-    `127.0.0.1` entran la app de escritorio, el detector y `perseo estado`.
+    Se aprendió por las malas el 2026-08-17: al empezar a servir HTTPS en la
+    interfaz del tailnet, `http://100.64.0.1:8787` —que es lo que tenían
+    guardado el navegador del PC y el acceso directo del móvil— dejó de
+    contestar. Un socket que habla TLS no puede contestar a quien llega en
+    claro, así que aquello no fue un cambio de dirección: fue romperla.
 
-    Como además el bucle local ya cuenta como contexto seguro para el
-    navegador, cifrarlo no aportaría nada y rompería a los tres clientes de
-    casa. Así que cada interfaz se sirve como le corresponde.
+    Por eso el puerto de siempre sigue siendo HTTP en todas las interfaces, y el
+    HTTPS vive en uno propio. Nada de lo que funcionaba deja de funcionar, y el
+    micrófono del móvil —que necesita contexto seguro— tiene por dónde entrar.
+
+    Y el certificado va **solo** en el tailnet: lo emite Tailscale para
+    `msi.taild61051.ts.net`, así que por `127.0.0.1` fallaría la verificación
+    por nombre. Ahí entran la app de escritorio, el detector y `perseo estado`,
+    y el bucle local ya cuenta como contexto seguro de todas formas.
     """
-    return None if host in almacen.LOCALES else contexto
+    sitios: list[tuple[str, int, ssl.SSLContext | None]] = [
+        (host, cfg.puerto, None) for host in cfg.hosts
+    ]
+
+    contexto = _tls(cfg)
+    if contexto is not None:
+        sitios += [
+            (host, cfg.tls_puerto, contexto)
+            for host in cfg.hosts
+            if host not in almacen.LOCALES
+        ]
+    return sitios
 
 
-def _avisar_de_la_escucha(cfg: almacen.Configuracion) -> None:
-    for host in cfg.hosts:
-        esquema = "http" if (host in almacen.LOCALES or not cfg.tls_listo) else "https"
-        logger.info("Escuchando en %s://%s:%d", esquema, host, cfg.puerto)
+def _avisar_de_la_escucha(
+    cfg: almacen.Configuracion, sitios: list[tuple[str, int, ssl.SSLContext | None]]
+) -> None:
+    for host, puerto, contexto in sitios:
+        logger.info("Escuchando en %s://%s:%d", "https" if contexto else "http", host, puerto)
         if host in almacen.LOCALES:
             continue
         # No es un error —la Fase B lo requiere— pero sí algo que conviene ver
@@ -135,11 +155,11 @@ async def arrancar() -> None:
     # Una lista de hosts, nunca `0.0.0.0`: se abren exactamente las interfaces
     # enumeradas y ninguna más. Y **un sitio por interfaz**, porque no todas se
     # sirven igual: ver `_tls_de`.
-    contexto = _tls(cfg)
-    for host in cfg.hosts:
-        sitio = servidor.TCPSite(runner, host, cfg.puerto, ssl_context=_tls_de(host, contexto))
+    sitios = _donde_escuchar(cfg)
+    for host, puerto, contexto in sitios:
+        sitio = servidor.TCPSite(runner, host, puerto, ssl_context=contexto)
         await sitio.start()
-    _avisar_de_la_escucha(cfg)
+    _avisar_de_la_escucha(cfg, sitios)
 
     # Espera hasta que llegue una señal de parada. En Windows `add_signal_handler`
     # no está implementado, así que se cae al manejador síncrono de `signal`.
