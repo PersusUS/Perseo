@@ -273,6 +273,35 @@ export class GeminiLiveClient {
           onclose: (event: any) => {
             console.log('[Gemini] WebSocket Closed:', event);
             this.isConnecting = false;
+
+            // Un testigo de sesión caducado no da error: el servidor cierra con
+            // 1007 «Invalid session handle» y nada más. Como el testigo se
+            // guardaba igual y el reintento lo volvía a mandar, cada intento
+            // fallaba idéntico y la app se quedaba en «Conectando…» para
+            // siempre, sin forma de salir desde la interfaz. Se tira y se
+            // empieza de cero, que es exactamente lo que hace falta. Ver H-48.
+            const motivo = String(event?.reason ?? '');
+
+            // Por qué se cortó, en pantalla. Un cierre silencioso con reintento
+            // detrás es indistinguible de "la app no funciona": se pasaron
+            // horas mirando el certificado, la clave y la red antes de descubrir
+            // que el servidor lo estaba diciendo y nadie lo enseñaba (H-48).
+            if (!this.isManualDisconnect) {
+              this.onError(
+                `Se cortó la conexión (${event?.code ?? 'sin código'})` +
+                  (motivo ? `: ${motivo}` : '')
+              );
+            }
+
+            if (this.testigoSesion && (event?.code === 1007 || /session handle/i.test(motivo))) {
+              console.warn('[Gemini] El servidor rechazó el testigo de sesión; se empieza de cero.');
+              this.testigoSesion = null;
+              localStorage.removeItem(CLAVE_TESTIGO);
+              // Sin memoria de la sesión anterior, pero conectando: se reintenta
+              // ya, no dentro de la espera larga que tocaría por los fallos.
+              this.retryCount = 0;
+            }
+
             if (!this.isManualDisconnect) {
                 this.handleReconnect();
             }
