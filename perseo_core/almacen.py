@@ -514,10 +514,18 @@ def _url_por_defecto(hosts: tuple[str, ...], puerto: int) -> str:
 
     Se prefiere una interfaz no local: el enlace lo abre el móvil desde el
     tailnet, y `127.0.0.1` allí apunta al propio teléfono.
+
+    Y entre las no locales, **la IPv4 antes que la IPv6**. Desde que se escucha
+    también en la `fd7a:…` (H-46), la primera de la lista podría ser una IPv6, y
+    un enlace con una IPv6 dentro se lee fatal y encima hay que acordarse de los
+    corchetes. Si solo hubiera IPv6, se pone con sus corchetes y se manda.
     """
-    for host in hosts:
-        if host not in LOCALES:
+    externos = [host for host in hosts if host not in LOCALES]
+    for host in externos:
+        if ":" not in host:
             return f"http://{host}:{puerto}"
+    if externos:
+        return f"http://[{externos[0]}]:{puerto}"
     return f"http://{hosts[0]}:{puerto}"
 
 

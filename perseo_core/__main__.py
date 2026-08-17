@@ -108,7 +108,10 @@ def _avisar_de_la_escucha(
     cfg: almacen.Configuracion, sitios: list[tuple[str, int, ssl.SSLContext | None]]
 ) -> None:
     for host, puerto, contexto in sitios:
-        logger.info("Escuchando en %s://%s:%d", "https" if contexto else "http", host, puerto)
+        # Una IPv6 sin corchetes deja una línea que no se puede copiar y pegar:
+        # `http://fd7a:...:8787` no es una URL válida.
+        anfitrion = f"[{host}]" if ":" in host else host
+        logger.info("Escuchando en %s://%s:%d", "https" if contexto else "http", anfitrion, puerto)
         if host in almacen.LOCALES:
             continue
         # No es un error —la Fase B lo requiere— pero sí algo que conviene ver
