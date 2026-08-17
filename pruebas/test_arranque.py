@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -155,6 +154,48 @@ def test_si_aguanto_en_pie_la_espera_se_reinicia() -> None:
 @pytest.mark.parametrize("vivio", [0.0, 119.9])
 def test_el_arranque_corto_no_cuenta_como_bueno(vivio: float) -> None:
     assert vigilante.siguiente_espera(5.0, vivio) == 10.0
+
+
+# --------------------------------------------------------------------------- #
+# El registro del núcleo (H-41)
+# --------------------------------------------------------------------------- #
+
+
+def test_un_registro_pequeno_se_queda_donde_esta(tmp_path: Path) -> None:
+    registro = tmp_path / "nucleo.log"
+    registro.write_text("dos líneas de nada", encoding="utf-8")
+    assert vigilante.apartar_si_crece(registro, tope=1024) is False
+    assert registro.exists()
+
+
+def test_un_registro_grande_se_aparta(tmp_path: Path) -> None:
+    """Esto arranca con Windows: sin tope, un registro que nadie mira se come
+    el disco."""
+    registro = tmp_path / "nucleo.log"
+    registro.write_text("x" * 2048, encoding="utf-8")
+
+    assert vigilante.apartar_si_crece(registro, tope=1024) is True
+
+    assert not registro.exists()
+    apartado = tmp_path / "nucleo.log.viejo"
+    assert apartado.read_text(encoding="utf-8") == "x" * 2048
+
+
+def test_apartar_dos_veces_no_acumula_ficheros(tmp_path: Path) -> None:
+    """Se guarda la última muerte, no el histórico."""
+    registro = tmp_path / "nucleo.log"
+    registro.write_text("viejo" * 500, encoding="utf-8")
+    vigilante.apartar_si_crece(registro, tope=1024)
+    registro.write_text("nuevo" * 500, encoding="utf-8")
+    vigilante.apartar_si_crece(registro, tope=1024)
+
+    assert sorted(p.name for p in tmp_path.glob("nucleo.log*")) == ["nucleo.log.viejo"]
+    assert (tmp_path / "nucleo.log.viejo").read_text(encoding="utf-8").startswith("nuevo")
+
+
+def test_sin_registro_todavia_no_hay_nada_que_apartar(tmp_path: Path) -> None:
+    """La primera vez el fichero no existe, y eso no es un problema."""
+    assert vigilante.apartar_si_crece(tmp_path / "nucleo.log", tope=1024) is False
 
 
 # --------------------------------------------------------------------------- #

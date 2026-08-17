@@ -9,7 +9,7 @@ entera: no hay cola, no hay triaje, no hay avisos. Y el síntoma es que Perseo
 Así que en el registro va esto, no el núcleo: un padre que arranca al hijo, se
 queda esperando y lo vuelve a arrancar si se muere.
 
-Tres reglas:
+Cuatro reglas:
 
 1. **La espera crece.** Si el núcleo revienta al arrancar —configuración rota,
    puerto ocupado— reintentar cada segundo llena el disco de registro y no
@@ -20,6 +20,11 @@ Tres reglas:
 3. **Se deja escrito.** Todo va a `<datos>/vigilante.log`, con fecha, porque
    este proceso no tiene consola: lo lanza `pythonw` desde el registro. Es H-34
    aplicado antes de que muerda.
+4. **Lo que diga el núcleo también se guarda**, en `<datos>/nucleo.log`. El
+   vigilante arranca sin consola, así que el núcleo hereda un `sys.stderr` que
+   vale `None`: su registro se lo traga `logging` sin quejarse y sus trazas no
+   aparecen en ninguna parte. Sin esto, `vigilante.log` apunta *que* se murió y
+   nadie apunta *por qué* (H-41).
 
     python commands/vigilante.py           # a mano, para verlo trabajar
     python commands/manage_startup.py install PerseoNucleo
@@ -45,6 +50,11 @@ ESPERA_MAXIMA = 60.0
 #: luego se cae heredaría la espera larga de un fallo de hace días.
 ARRANQUE_BUENO = 120.0
 
+#: Cuánto puede ocupar `nucleo.log` antes de apartarlo. El núcleo escribe una
+#: línea por trabajo y esto arranca con Windows: sin tope, un registro que nadie
+#: mira se come el disco en unos meses.
+TOPE_REGISTRO = 5 * 1024 * 1024
+
 
 def siguiente_espera(espera: float, vivio: float) -> float:
     """Cuánto esperar antes de volver a arrancar.
@@ -56,6 +66,24 @@ def siguiente_espera(espera: float, vivio: float) -> float:
     if vivio >= ARRANQUE_BUENO:
         return ESPERA_INICIAL
     return min(espera * 2, ESPERA_MAXIMA)
+
+
+def apartar_si_crece(registro: Path, tope: int = TOPE_REGISTRO) -> bool:
+    """Aparta el registro a `.viejo` si pasó del tope. Devuelve si lo apartó.
+
+    Se mira antes de cada arranque y no mientras el núcleo escribe: en Windows
+    no se puede renombrar un fichero que otro proceso tiene abierto, y el único
+    momento en que seguro no lo tiene es justo antes de arrancarlo.
+    """
+    try:
+        if registro.stat().st_size < tope:
+            return False
+        registro.replace(registro.with_suffix(registro.suffix + ".viejo"))
+    except OSError:
+        # Un registro que no se puede apartar no es motivo para dejar el núcleo
+        # apagado. Se sigue escribiendo en el de siempre.
+        return False
+    return True
 
 
 def _apuntar(registro: Path, mensaje: str) -> None:
@@ -77,33 +105,60 @@ def _directorio_datos() -> Path:
 
 
 def vigilar() -> int:
-    registro = _directorio_datos() / "vigilante.log"
+    datos = _directorio_datos()
+    registro = datos / "vigilante.log"
+    registro_nucleo = datos / "nucleo.log"
     espera = ESPERA_INICIAL
     _apuntar(registro, f"Vigilante en marcha sobre {RAIZ}.")
 
     while True:
         comienzo = time.monotonic()
+        apartar_si_crece(registro_nucleo)
         try:
-            proceso = subprocess.Popen(
-                [sys.executable, "-m", "perseo_core"],
-                cwd=str(RAIZ),
-                # El núcleo hereda el entorno, pero lo que de verdad lo
-                # configura cuando arranca con Windows es `datos/entorno.json`:
-                # una entrada del registro no trae variables de nadie.
-                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-            )
+            # Sin esto el núcleo escribe en el vacío: lanzado desde aquí hereda
+            # un `sys.stderr` que vale `None`, y `logging` se traga el fallo de
+            # escritura porque su propio aviso de error va al mismo sitio.
+            salida = registro_nucleo.open("a", encoding="utf-8")
         except OSError as e:
-            _apuntar(registro, f"No se pudo arrancar el núcleo: {e}. Se reintenta en {espera:.0f}s.")
-            time.sleep(espera)
-            espera = min(espera * 2, ESPERA_MAXIMA)
-            continue
+            # Preferible un núcleo mudo a un núcleo apagado.
+            _apuntar(registro, f"No se pudo abrir {registro_nucleo.name}: {e}. El núcleo arranca sin registro.")
+            salida = None
 
         try:
-            codigo = proceso.wait()
-        except KeyboardInterrupt:
-            _apuntar(registro, "Vigilante interrumpido; se para el núcleo.")
-            proceso.terminate()
-            return 0
+            if salida is not None:
+                marca = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                salida.write(f"\n===== Arranque del núcleo {marca} =====\n")
+                salida.flush()
+            try:
+                proceso = subprocess.Popen(
+                    [sys.executable, "-m", "perseo_core"],
+                    cwd=str(RAIZ),
+                    # El núcleo hereda el entorno, pero lo que de verdad lo
+                    # configura cuando arranca con Windows es `datos/entorno.json`:
+                    # una entrada del registro no trae variables de nadie.
+                    env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                    stdout=salida,
+                    # Junto y en orden: una traza se entiende con las líneas de
+                    # registro que la rodean, y en dos ficheros no se cruzan.
+                    stderr=subprocess.STDOUT if salida is not None else None,
+                )
+            except OSError as e:
+                _apuntar(registro, f"No se pudo arrancar el núcleo: {e}. Se reintenta en {espera:.0f}s.")
+                time.sleep(espera)
+                espera = min(espera * 2, ESPERA_MAXIMA)
+                continue
+
+            try:
+                codigo = proceso.wait()
+            except KeyboardInterrupt:
+                _apuntar(registro, "Vigilante interrumpido; se para el núcleo.")
+                proceso.terminate()
+                return 0
+        finally:
+            # El hijo ya tiene su propio descriptor; este sobra, y dejarlo
+            # abierto en cada vuelta va sumando hasta quedarse sin ninguno.
+            if salida is not None:
+                salida.close()
 
         vivio = time.monotonic() - comienzo
         if codigo == 0:
