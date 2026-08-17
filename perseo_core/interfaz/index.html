@@ -1407,7 +1407,19 @@ class VozEnVivo {
       );
     }
 
-    const { clave, modelo, version } = await (await fetch("/clave-voz")).json();
+    // La sesión va por cookie, y una cookie es de **un origen**. Entrar por
+    // `https://…:8788` cuando la de siempre era `http://…:8787` es entrar en
+    // otro sitio para el navegador: no lleva sesión y hay que pegar el token
+    // otra vez. Sin este aviso, el síntoma era un fallo raro tres pasos después.
+    const respuesta = await fetch("/clave-voz");
+    if (respuesta.status === 401) {
+      puerta.style.display = "flex";
+      throw new Error("Esta dirección no tiene sesión todavía: pega el token y vuelve a darle.");
+    }
+    if (!respuesta.ok) {
+      throw new Error("El núcleo no da la clave de voz: mira que GEMINI_API_KEY esté puesta.");
+    }
+    const { clave, modelo, version } = await respuesta.json();
 
     // El micro primero: si no hay permiso, mejor enterarse antes de abrir la
     // sesión con el modelo, que gasta cuota.
