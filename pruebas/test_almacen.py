@@ -271,3 +271,37 @@ def test_los_correos_marcados_sobreviven_al_reinicio(db, cfg) -> None:
     almacen.cerrar()
     almacen.abrir(cfg)
     assert almacen.correos_marcados() == {"msg-1": almacen.ATENDIDO}
+
+
+# --------------------------------------------------------------------------- #
+# Dónde escucha el núcleo cuando se le pide el tailnet
+# --------------------------------------------------------------------------- #
+
+
+def test_tailscale_abre_las_dos_direcciones(monkeypatch: pytest.MonkeyPatch) -> None:
+    """MagicDNS publica un registro A y otro AAAA por máquina, y un iPhone
+    resuelve la IPv6 primero. Escuchando solo en la IPv4, entrar por el nombre
+    no llegaba a ninguna parte y por la dirección numérica sí (H-46)."""
+    monkeypatch.setattr(
+        almacen, "direcciones_tailscale", lambda: ("100.64.0.1", "fd7a:115c:a1e0::1")
+    )
+    assert almacen._resolver_hosts("tailscale") == (
+        "127.0.0.1",
+        "100.64.0.1",
+        "fd7a:115c:a1e0::1",
+    )
+
+
+def test_sin_tailnet_solo_queda_lo_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Abrir todas las interfaces por no encontrar una es el fallo que la Fase 3
+    quería evitar: si no hay tailnet, se sigue solo en local."""
+    monkeypatch.setattr(almacen, "direcciones_tailscale", tuple)
+    assert almacen._resolver_hosts("tailscale") == ("127.0.0.1",)
+
+
+def test_la_direccion_de_los_enlaces_es_la_ipv4(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Una IPv6 entre corchetes en el enlace de Telegram solo estorba."""
+    monkeypatch.setattr(
+        almacen, "direcciones_tailscale", lambda: ("100.64.0.1", "fd7a:115c:a1e0::1")
+    )
+    assert almacen.direccion_tailscale() == "100.64.0.1"

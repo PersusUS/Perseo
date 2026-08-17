@@ -257,21 +257,25 @@ _RUTAS_TAILSCALE = (
 LOCALES = ("127.0.0.1", "localhost", "::1")
 
 
-def direccion_tailscale() -> str | None:
-    """Devuelve la dirección de esta máquina dentro del tailnet, o `None`.
+def direcciones_tailscale() -> tuple[str, ...]:
+    """Las direcciones de esta máquina en el tailnet: la IPv4 y la IPv6.
 
-    Se pregunta primero a la propia herramienta de Tailscale, que es la única
-    fuente que no se puede confundir. Si no está instalada se recorren las
-    interfaces buscando una del rango CGNAT — funciona, pero conviene saber que
-    ese rango también lo usan algunos operadores en la interfaz de salida, así
-    que es el segundo intento y no el primero.
+    **Las dos, y esto costó una mañana el 2026-08-17.** MagicDNS publica para
+    cada nodo un registro `A` y otro `AAAA` —la `fd7a:…`—, y un iPhone que
+    resuelve por el túnel prefiere la IPv6. Escuchando solo en la IPv4, entrar
+    por la dirección numérica funcionaba y entrar por el nombre no: el móvil
+    llamaba a una puerta donde no había nadie. Desde el PC no se veía, porque
+    ahí el nombre resolvía a la IPv4.
+
+    La IPv4 va primero: es la que se pone en los enlaces (`_url_por_defecto`),
+    donde una IPv6 entre corchetes solo estorba.
     """
     for ruta in _RUTAS_TAILSCALE:
         if not ruta.exists():
             continue
         try:
             salida = subprocess.run(
-                [str(ruta), "ip", "-4"],
+                [str(ruta), "ip"],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -279,10 +283,28 @@ def direccion_tailscale() -> str | None:
             ).stdout.strip()
         except (OSError, subprocess.SubprocessError):
             continue
-        for linea in salida.splitlines():
-            candidata = linea.strip()
-            if candidata:
-                return candidata
+        encontradas = tuple(linea.strip() for linea in salida.splitlines() if linea.strip())
+        if encontradas:
+            return encontradas
+
+    suelta = _direccion_tailscale_por_interfaz()
+    return (suelta,) if suelta else ()
+
+
+def direccion_tailscale() -> str | None:
+    """La IPv4 del tailnet. Se conserva porque es la que va en los enlaces."""
+    for direccion in direcciones_tailscale():
+        if ":" not in direccion:
+            return direccion
+    return None
+
+
+def _direccion_tailscale_por_interfaz() -> str | None:
+    """Sin la herramienta de Tailscale, se busca una interfaz del rango CGNAT.
+
+    Funciona, pero conviene saber que ese rango también lo usan algunos
+    operadores en la interfaz de salida: por eso es el segundo intento.
+    """
 
     try:
         vistas = {
@@ -315,8 +337,8 @@ def _resolver_hosts(crudo: str) -> tuple[str, ...]:
             resueltos.append(pieza)
             continue
 
-        direccion = direccion_tailscale()
-        if direccion is None:
+        direcciones = direcciones_tailscale()
+        if not direcciones:
             logger.error(
                 "Se pidió escuchar en Tailscale pero no se encontró la dirección del "
                 "tailnet. ¿Está Tailscale conectado? Se sigue solo en local."
@@ -325,7 +347,10 @@ def _resolver_hosts(crudo: str) -> tuple[str, ...]:
         # El bucle local va siempre con Tailscale: si no, la app del PC y las
         # pruebas dejarían de poder hablar con el núcleo.
         resueltos.append("127.0.0.1")
-        resueltos.append(direccion)
+        # Las dos del tailnet, IPv4 e IPv6: MagicDNS publica un registro de cada
+        # tipo y un iPhone resuelve la IPv6 primero. Con solo la IPv4, entrar
+        # por el nombre no llegaba a ninguna parte (H-46).
+        resueltos.extend(direcciones)
 
     if not resueltos:
         resueltos.append("127.0.0.1")
