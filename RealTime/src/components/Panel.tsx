@@ -41,6 +41,9 @@ type Pieza = { id: string; nombre: string; estado: string; detalle: string; arre
 
 type Estado = {
   encendido_segundos: number;
+  /** Cuándo lo reunió el núcleo, en ISO. Sirve para saber si esta pantalla se
+   *  quedó congelada: la diferencia con el reloj se enseña en la lectura. */
+  generado?: string;
   piezas: Pieza[];
   trabajos: Record<string, number>;
   agentes: string[];
@@ -202,15 +205,125 @@ const Barra: React.FC<{ etiqueta: string; porcentaje: number; detalle?: string }
 
 /** Lo que un asistente debería saber sin que se lo preguntes. Va lo primero de
  *  la pestaña porque es lo único que cambia lo que haces ahora. */
-const Presencia: React.FC<{ p: any }> = ({ p }) => {
-  const pendientes = Object.entries(p.correo ?? {}) as [string, number][];
-  const total = pendientes.reduce((n, [, c]) => n + c, 0);
-  const cuando = p.proximo_evento?.momento
-    ? new Date(p.proximo_evento.momento).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
-    : 'sin hora';
+/** La línea de lectura de arriba del todo: reloj, tiempo encendido y un punto
+ *  que late.
+ *
+ *  No dice nada que no esté ya en las cifras de debajo, y aun así hace falta:
+ *  es lo que convierte una pantalla de datos en un puesto encendido. El punto
+ *  late porque un panel quieto y un panel colgado se ven igual. */
+const Lectura: React.FC<{ encendido: string; generado?: string }> = ({ encendido, generado }) => {
+  const [reloj, setReloj] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setReloj(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const hora = reloj.toLocaleTimeString('es-ES', { hour12: false });
+  // El desfase entre el reloj y el último vistazo al núcleo: si esto crece, la
+  // pantalla dejó de refrescarse y el resto de números son de hace rato.
+  const desde = generado ? Math.max(0, Math.round((reloj.getTime() - new Date(generado).getTime()) / 1000)) : null;
 
   return (
-    <div className="pnl-tarjeta">
+    <div className="pnl-lectura">
+      <span className="pnl-latido" />
+      <span>PERSEO // NÚCLEO ACTIVO</span>
+      <span className="pnl-lectura-sep">·</span>
+      <span>{hora}</span>
+      <span className="pnl-lectura-sep">·</span>
+      <span>EN PIE {encendido}</span>
+      {desde !== null && (
+        <>
+          <span className="pnl-lectura-sep">·</span>
+          <span>DATOS DE HACE {desde}s</span>
+        </>
+      )}
+    </div>
+  );
+};
+
+/** La línea de una magnitud en el tiempo, dibujada a mano en SVG.
+ *
+ *  Un número dice si la CPU está alta **ahora**; la línea dice si lleva diez
+ *  minutos así, que es la pregunta que uno se hace de verdad mirando esto. Sin
+ *  ejes ni rejilla: el eje va de 0 a 100 siempre, así que dos líneas se comparan
+ *  entre sí sin leer un solo número.
+ */
+const Linea: React.FC<{ puntos: number[]; etiqueta: string; valor: string }> = ({
+  puntos,
+  etiqueta,
+  valor,
+}) => {
+  const ancho = 240;
+  const alto = 34;
+  // Con una sola muestra no hay línea que dibujar; se repite para que salga
+  // una recta en vez de un hueco, que en una pantalla que se acaba de abrir
+  // parece que la telemetría no va.
+  const serie = puntos.length === 1 ? [puntos[0], puntos[0]] : puntos;
+  const paso = serie.length > 1 ? ancho / (serie.length - 1) : ancho;
+  const y = (v: number) => alto - (Math.max(0, Math.min(100, v)) / 100) * alto;
+  const camino = serie.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * paso).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const relleno = `${camino} L${ancho},${alto} L0,${alto} Z`;
+
+  return (
+    <div className="pnl-linea">
+      <div className="pnl-linea-cabeza">
+        <span className="pnl-mayus">{etiqueta}</span>
+        <span className="pnl-linea-valor">{valor}</span>
+      </div>
+      <svg viewBox={`0 0 ${ancho} ${alto}`} preserveAspectRatio="none" aria-hidden>
+        {/* La mitad de la escala, para tener contra qué leer la línea sin ejes. */}
+        <line className="pnl-linea-mitad" x1="0" y1={alto / 2} x2={ancho} y2={alto / 2} />
+        <path className="pnl-linea-area" d={relleno} />
+        <path className="pnl-linea-trazo" d={camino} />
+        {/* Dónde está *ahora*: sin esto, en una línea plana no se sabe cuál es
+            el extremo vivo y cuál el viejo. */}
+        <circle className="pnl-linea-punta" cx={ancho} cy={y(serie[serie.length - 1])} r="2" />
+      </svg>
+    </div>
+  );
+};
+
+/** El día: lo que hay en la agenda y el correo que nadie ha resuelto.
+ *
+ *  Los dos datos ya estaban en el sistema —en el calendario y en el triaje— y
+ *  había que ir a buscarlos a dos sitios. Aquí se leen de una mirada, que es
+ *  para lo que sirve un tablero. */
+const ElDia: React.FC<{ p: any }> = ({ p }) => {
+  const eventos: any[] = p.eventos?.length ? p.eventos : p.proximo_evento ? [p.proximo_evento] : [];
+  const pendientes = Object.entries(p.correo ?? {}) as [string, number][];
+  const total = pendientes.reduce((n, [, c]) => n + c, 0);
+
+  const hora = (e: any) =>
+    e?.momento
+      ? new Date(e.momento).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+      : '--:--';
+
+  return (
+    <div className="pnl-tarjeta pnl-hud">
+      <div className="pnl-cabeza">El día</div>
+      {eventos.length ? (
+        eventos.map((e, i) => (
+          <div className="pnl-cita" key={e.id ?? i}>
+            <span className="pnl-cita-hora">{hora(e)}</span>
+            <span className="pnl-cita-titulo">{e.titulo ?? '(sin título)'}</span>
+          </div>
+        ))
+      ) : (
+        <div className="pnl-detalle">Nada en la agenda de las próximas 24 h.</div>
+      )}
+      <div className="pnl-detalle pnl-separado">
+        {total
+          ? `${total} correo${total === 1 ? '' : 's'} sin resolver` +
+            (p.correo?.requiere_accion ? ` · ${p.correo.requiere_accion} requieren acción` : '')
+          : 'Correo al día'}
+      </div>
+    </div>
+  );
+};
+
+const Presencia: React.FC<{ p: any }> = ({ p }) => {
+  return (
+    <div className="pnl-tarjeta pnl-hud">
       <div className="pnl-cabeza">Ahora mismo</div>
       <div className="pnl-detalle">
         {p.haciendo ? `Trabajando: #${p.haciendo.id} · ${p.haciendo.agente}` : 'Sin nada entre manos'}
@@ -218,25 +331,18 @@ const Presencia: React.FC<{ p: any }> = ({ p }) => {
       {!!p.esperando_un_si && (
         <div className="pnl-detalle">{p.esperando_un_si} esperando un sí</div>
       )}
-      <div className="pnl-detalle">
-        {total
-          ? `${total} correo${total === 1 ? '' : 's'} sin resolver` +
-            (p.correo?.requiere_accion ? ` · ${p.correo.requiere_accion} requieren acción` : '')
-          : 'Correo al día'}
-      </div>
-      {p.proximo_evento && (
-        <div className="pnl-detalle">
-          Próximo: {p.proximo_evento.titulo ?? '(sin título)'} a las {cuando}
-        </div>
-      )}
+      {/* El correo y la agenda se cuentan en «El día», justo debajo: repetirlos
+          aquí era la misma frase dos veces en la misma pantalla. */}
     </div>
   );
 };
 
 /** La máquina donde vive el núcleo — lo único de esta pantalla que no habla de
  *  Perseo. Si un día el núcleo se muda a la Raspberry, describe la Raspberry. */
-const Maquina: React.FC<{ m: any }> = ({ m }) => (
-  <div className="pnl-tarjeta">
+const Maquina: React.FC<{ m: any }> = ({ m }) => {
+  const historial: any[] = Array.isArray(m.historial) ? m.historial : [];
+  return (
+  <div className="pnl-tarjeta pnl-hud">
     <div className="pnl-cabeza">
       Máquina
       {m.bateria && (
@@ -250,9 +356,24 @@ const Maquina: React.FC<{ m: any }> = ({ m }) => (
       <Barra etiqueta="RAM" porcentaje={m.memoria?.porcentaje ?? 0} detalle={m.memoria?.legible} />
       <Barra etiqueta="Disco" porcentaje={m.disco?.porcentaje ?? 0} detalle={m.disco?.legible} />
     </div>
+    {historial.length > 0 && (
+      <div className="pnl-lineas">
+        <Linea
+          etiqueta="CPU"
+          valor={`${Math.round(m.cpu ?? 0)}%`}
+          puntos={historial.map(h => h.cpu)}
+        />
+        <Linea
+          etiqueta="RAM"
+          valor={`${Math.round(m.memoria?.porcentaje ?? 0)}%`}
+          puntos={historial.map(h => h.memoria)}
+        />
+      </div>
+    )}
     {m.red?.legible && <div className="pnl-motivo">Red · {m.red.legible}</div>}
   </div>
-);
+  );
+};
 
 /** Una nota del vault. El contenido se pide solo al desplegarla: una búsqueda
  *  devuelve diez, y traerlas enteras para leer una es tirar el trabajo. */
@@ -705,7 +826,8 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
 
         {pestana === 'estado' && estado && (
           <>
-            <div className="pnl-tarjeta">
+            <Lectura encendido={duracion(estado.encendido_segundos)} generado={estado.generado} />
+            <div className="pnl-tarjeta pnl-hud">
               <div className="pnl-cifras">
                 <div className="pnl-cifra">
                   <b>{duracion(estado.encendido_segundos)}</b>
@@ -725,6 +847,7 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
             </div>
 
             <Presencia p={estado.presencia ?? {}} />
+            <ElDia p={estado.presencia ?? {}} />
             {estado.maquina?.disponible && <Maquina m={estado.maquina} />}
 
             <div className="pnl-tarjeta pnl-piezas">

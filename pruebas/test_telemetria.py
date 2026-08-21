@@ -93,3 +93,44 @@ def test_la_presencia_cuenta_solo_lo_que_falta_por_resolver(db, datos: Path) -> 
     almacen.marcar_correo("m1", almacen.ATENDIDO)
     marcado = asyncio.run(estado.presencia(cfg=almacen.cargar_configuracion()))
     assert marcado["correo"] == {"requiere_accion": 1}
+
+
+# --------------------------------------------------------------------------- #
+# La máquina en el tiempo (T-7, 2026-08-21)
+# --------------------------------------------------------------------------- #
+
+
+def test_la_telemetria_deja_muestras_para_dibujar_una_linea() -> None:
+    """Un número suelto dice si la CPU está alta ahora; la línea dice si lleva
+    diez minutos así, que es la pregunta que se hace de verdad mirando esto."""
+    pytest.importorskip("psutil")
+    estado.olvidar_historial()
+
+    datos = estado.telemetria()
+    assert datos["disponible"]
+    assert len(datos["historial"]) == 1
+    muestra = datos["historial"][0]
+    assert set(muestra) == {"momento", "cpu", "memoria"}
+
+
+def test_dos_vistazos_seguidos_no_son_dos_muestras(monkeypatch: pytest.MonkeyPatch) -> None:
+    """La pantalla se mira desde el PC y desde el móvil a la vez, y cada vistazo
+    llama aquí: sin suelo de tiempo, el historial se llena de puntos del mismo
+    instante y la línea deja de significar nada."""
+    pytest.importorskip("psutil")
+    estado.olvidar_historial()
+
+    estado.telemetria()
+    datos = estado.telemetria()
+    assert len(datos["historial"]) == 1
+
+    # Con el suelo por los suelos, la segunda sí cuenta.
+    monkeypatch.setattr(estado, "SEGUNDOS_ENTRE_MUESTRAS", 0.0)
+    datos = estado.telemetria()
+    assert len(datos["historial"]) == 2
+
+
+def test_el_historial_no_crece_para_siempre() -> None:
+    """Vive en memoria dentro de un proceso que está encendido meses."""
+    assert estado._HISTORIAL.maxlen is not None
+    assert estado._HISTORIAL.maxlen <= 200

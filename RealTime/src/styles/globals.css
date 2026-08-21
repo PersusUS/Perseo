@@ -853,3 +853,149 @@ html, body, #root {
   font-size: 12px;
   color: var(--fg-muted);
 }
+
+
+/* ── Puesto de mando (T-7, 2026-08-21) ──────────────────────────────────────
+   El encargo fue «rollo NERV, cyberpunk japonés de los noventa», y el límite
+   —también del encargo— es que siga siendo esta app: negro, monocroma y con la
+   ola al fondo. Así que nada de neones. Lo que da ese aire es la geometría:
+   esquinas marcadas como una mira, etiquetas en versalitas muy espaciadas, y
+   una línea que se mueve. El color sigue reservado para los puntos de estado. */
+.pnl-hud {
+  position: relative;
+  /* Una rejilla tan tenue que no se ve, pero se nota: le quita a la tarjeta el
+     aspecto de rectángulo liso sin meter ni un elemento más en el DOM. */
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 22px 22px, 22px 22px;
+}
+
+/* Las cuatro esquinas, con dos pseudoelementos y ningún nodo extra. */
+.pnl-hud::before,
+.pnl-hud::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.pnl-hud::before {
+  top: 6px;
+  left: 6px;
+  border-top: 1px solid var(--fg);
+  border-left: 1px solid var(--fg);
+}
+
+.pnl-hud::after {
+  right: 6px;
+  bottom: 6px;
+  border-right: 1px solid var(--fg);
+  border-bottom: 1px solid var(--fg);
+}
+
+.pnl-lineas {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.pnl-linea svg {
+  width: 100%;
+  height: 34px;
+  display: block;
+  margin-top: 5px;
+  /* Que la línea no se ensanche al estirarse: se dibuja en un lienzo de 240 de
+     ancho y se escala, y sin esto el trazo engordaría con la ventana. */
+  vector-effect: non-scaling-stroke;
+}
+
+.pnl-linea-cabeza {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pnl-linea-valor {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.pnl-linea-trazo {
+  fill: none;
+  stroke: var(--fg);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.pnl-linea-area { fill: rgba(255, 255, 255, 0.07); stroke: none; }
+
+.pnl-cita {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.pnl-cita:last-of-type { border-bottom: none; }
+
+.pnl-cita-hora {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  color: var(--fg);
+  min-width: 44px;
+}
+
+.pnl-cita-titulo {
+  font-size: 12px;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pnl-separado { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border); }
+
+.pnl-lectura {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 2px 4px 10px;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pnl-lectura-sep { opacity: 0.4; }
+
+/* El punto que late. Un panel quieto y un panel colgado se ven igual. */
+.pnl-latido {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fg);
+  animation: latido 2.4s ease-in-out infinite;
+}
+
+@keyframes latido {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+.pnl-linea-mitad {
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.pnl-linea-punta { fill: var(--fg); }

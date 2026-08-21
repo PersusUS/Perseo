@@ -36,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import deque
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -411,6 +412,23 @@ def _bytes_legibles(n: float) -> str:
 #: arranque de Windows —que es un número enorme que no dice nada—.
 _ultima_red: tuple[float, int, int] | None = None
 
+#: Las últimas muestras de CPU y memoria, para dibujar una línea en vez de un
+#: número. Vive en memoria y se pierde al reiniciar el núcleo, y está bien: esto
+#: es para mirar de reojo si algo se está calentando ahora, no una serie
+#: histórica. Guardarla en la base de datos sería otra tabla que crece sola.
+_HISTORIAL: deque[dict[str, float]] = deque(maxlen=90)
+
+#: Cuándo se apuntó la última, sin redondear. Ver `_apuntar_muestra`.
+_ultima_muestra: float | None = None
+
+#: Cada cuánto se apunta una muestra. `telemetria()` se llama en cada vistazo a
+#: la pantalla, y con dos clientes mirando eso son dos muestras por refresco: sin
+#: este suelo, el historial se llenaría de puntos del mismo instante.
+SEGUNDOS_ENTRE_MUESTRAS = 8.0
+
+#: Cuántas citas del día caben en la pantalla antes de que deje de leerse.
+EVENTOS_EN_PANTALLA = 4
+
 
 def telemetria() -> dict[str, Any]:
     """CPU, memoria, disco y red de esta máquina. **Nunca lanza.**
@@ -472,10 +490,39 @@ def telemetria() -> dict[str, Any]:
                 "porcentaje": round(bateria.percent),
                 "enchufado": bool(bateria.power_plugged),
             }
+
+        _apuntar_muestra(datos["cpu"], memoria.percent)
+        datos["historial"] = list(_HISTORIAL)
         return datos
     except Exception as e:  # noqa: BLE001  (un número informativo no tumba el panel)
         logger.warning("No se pudo leer la telemetría: %s", e)
         return {"disponible": False, "motivo": str(e)}
+
+
+def _apuntar_muestra(cpu: float, memoria: float) -> None:
+    """Guarda una muestra si ha pasado el suelo de tiempo desde la anterior.
+
+    El instante se guarda **aparte y sin redondear**. Guardado redondeado, el de
+    la muestra puede quedar unas décimas por delante del reloj y la resta sale
+    negativa: la muestra siguiente se descarta por «venir del futuro». Es un
+    fallo de dos décimas que solo asoma cuando dos vistazos caen muy juntos, o
+    sea justo en las pruebas y con dos pantallas abiertas.
+    """
+    global _ultima_muestra
+    ahora = time.time()
+    if _ultima_muestra is not None and ahora - _ultima_muestra < SEGUNDOS_ENTRE_MUESTRAS:
+        return
+    _ultima_muestra = ahora
+    _HISTORIAL.append(
+        {"momento": round(ahora, 1), "cpu": round(float(cpu), 1), "memoria": round(float(memoria), 1)}
+    )
+
+
+def olvidar_historial() -> None:
+    """Vacía las muestras. Existe para las pruebas, que si no se contaminan."""
+    global _ultima_muestra
+    _HISTORIAL.clear()
+    _ultima_muestra = None
 
 
 # --------------------------------------------------------------------------- #
@@ -490,7 +537,7 @@ async def presencia(cfg: almacen.Configuracion) -> dict[str, Any]:
     Todo lo de aquí ya estaba en el sistema —en la cola, en el triaje, en el
     calendario— y era el usuario quien tenía que ir a buscarlo a tres sitios.
     """
-    datos: dict[str, Any] = {"haciendo": None, "correo": {}, "proximo_evento": None}
+    datos: dict[str, Any] = {"haciendo": None, "correo": {}, "proximo_evento": None, "eventos": []}
 
     try:
         trabajos, marcados = await asyncio.gather(
@@ -530,6 +577,10 @@ async def presencia(cfg: almacen.Configuracion) -> dict[str, Any]:
             )
             if eventos:
                 datos["proximo_evento"] = eventos[0].a_dict()
+                # Y el resto del día, con tope: la pantalla enseña una lista
+                # corta, y traerse veinte reuniones para pintar cuatro es
+                # ancho de banda del túnel tirado (misma lección que H-36).
+                datos["eventos"] = [e.a_dict() for e in eventos[:EVENTOS_EN_PANTALLA]]
         except Exception as e:  # noqa: BLE001
             logger.warning("No se pudo mirar el calendario: %s", e)
 

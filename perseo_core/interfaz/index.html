@@ -302,6 +302,58 @@
   }
   .filtro[aria-pressed="true"] { color: var(--fondo); background: var(--texto); border-color: var(--texto); }
 
+  /* Puesto de mando (T-7). El encargo fue «rollo NERV, cyberpunk japonés de
+     los noventa», con el límite de que siga siendo esta interfaz: negra,
+     monocroma y con la ola detrás. Así que el aire lo dan la geometría y el
+     movimiento, no el color: esquinas marcadas como una mira, versalitas muy
+     espaciadas y una línea que se mueve. El color sigue siendo de los puntos
+     de estado y de nadie más. */
+  .hud { position: relative; }
+  .hud::before, .hud::after {
+    content: ""; position: absolute; width: 11px; height: 11px;
+    pointer-events: none; opacity: .5;
+  }
+  .hud::before { top: 6px; left: 6px; border-top: 1px solid var(--texto); border-left: 1px solid var(--texto); }
+  .hud::after { right: 6px; bottom: 6px; border-right: 1px solid var(--texto); border-bottom: 1px solid var(--texto); }
+
+  .lineas { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+  .linea-cabeza { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .linea-valor { font-size: 12px; font-variant-numeric: tabular-nums; }
+  .linea svg { width: 100%; height: 34px; display: block; margin-top: 5px; }
+  .linea-trazo { fill: none; stroke: var(--texto); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+  .linea-area { fill: rgba(255,255,255,.07); stroke: none; }
+
+  .cita {
+    display: flex; align-items: baseline; gap: 12px; padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+  }
+  .cita:last-of-type { border-bottom: none; }
+  .cita-hora {
+    font-size: 12px; font-variant-numeric: tabular-nums; letter-spacing: .06em;
+    min-width: 44px;
+  }
+  .cita-titulo {
+    font-size: 12px; color: var(--apagado);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .separado { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--borde); }
+
+  .lectura {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 0 2px 10px; font-size: 10px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--apagado);
+    font-variant-numeric: tabular-nums;
+  }
+  .lectura-sep { opacity: .4; }
+  /* El punto que late: un panel quieto y un panel colgado se ven igual. */
+  .latido {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--texto);
+    animation: latido 2.4s ease-in-out infinite;
+  }
+  @keyframes latido { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+  .linea-mitad { stroke: rgba(255,255,255,.12); stroke-width: 1; stroke-dasharray: 3 5; vector-effect: non-scaling-stroke; }
+  .linea-punta { fill: var(--texto); }
+
   /* Medidores. En el móvil van apilados y a todo el ancho: una rejilla de
      esferas tipo HUD queda muy bien en una pantalla de 27 pulgadas y es
      ilegible en 375 px. La información es la misma; la forma, no. */
@@ -1150,7 +1202,7 @@ function barra(etiqueta, porcentaje, detalle) {
 /** Lo que un asistente debería saber sin que se lo preguntes. Va lo primero
  *  porque es lo único de esta pantalla que cambia lo que haces ahora. */
 function pintarPresencia(p) {
-  const tarjeta = crear("div", "tarjeta");
+  const tarjeta = crear("div", "tarjeta hud");
   tarjeta.appendChild(crear("div", "cabeza", "Ahora mismo"));
 
   const lineas = [];
@@ -1159,31 +1211,102 @@ function pintarPresencia(p) {
     : "Sin nada entre manos");
   if (p.esperando_un_si) lineas.push(`${p.esperando_un_si} esperando un sí`);
 
-  const pendientes = Object.entries(p.correo ?? {});
-  if (pendientes.length) {
-    const total = pendientes.reduce((n, [, c]) => n + c, 0);
-    const accion = p.correo?.requiere_accion ?? 0;
-    lineas.push(`${total} correo${total === 1 ? "" : "s"} sin resolver` +
-      (accion ? ` · ${accion} requieren acción` : ""));
-  } else {
-    lineas.push("Correo al día");
-  }
-
-  if (p.proximo_evento) {
-    const cuando = p.proximo_evento.momento
-      ? new Date(p.proximo_evento.momento).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
-      : "sin hora";
-    lineas.push(`Próximo: ${p.proximo_evento.titulo ?? "(sin título)"} a las ${cuando}`);
-  }
-
+  // El correo y la agenda se cuentan en «El día», justo debajo: repetirlos aquí
+  // era la misma frase dos veces en la misma pantalla.
   for (const linea of lineas) tarjeta.appendChild(crear("div", "detalle", linea));
   return tarjeta;
+}
+
+/** El día: la agenda de las próximas horas y el correo que nadie ha resuelto.
+ *
+ *  Los dos datos ya estaban en el sistema —en el calendario y en el triaje— y
+ *  había que ir a buscarlos a dos sitios distintos. */
+function pintarElDia(p) {
+  const tarjeta = crear("div", "tarjeta hud");
+  tarjeta.appendChild(crear("div", "cabeza", "El día"));
+
+  const eventos = p.eventos?.length ? p.eventos : (p.proximo_evento ? [p.proximo_evento] : []);
+  if (eventos.length) {
+    for (const e of eventos) {
+      const fila = crear("div", "cita");
+      const hora = e.momento
+        ? new Date(e.momento).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
+        : "--:--";
+      fila.appendChild(crear("span", "cita-hora", hora));
+      fila.appendChild(crear("span", "cita-titulo", e.titulo ?? "(sin título)"));
+      tarjeta.appendChild(fila);
+    }
+  } else {
+    tarjeta.appendChild(crear("div", "detalle", "Nada en la agenda de las próximas 24 h."));
+  }
+
+  const pendientes = Object.entries(p.correo ?? {});
+  const total = pendientes.reduce((n, [, c]) => n + c, 0);
+  const accion = p.correo?.requiere_accion ?? 0;
+  tarjeta.appendChild(crear("div", "detalle separado",
+    total
+      ? `${total} correo${total === 1 ? "" : "s"} sin resolver` + (accion ? ` · ${accion} requieren acción` : "")
+      : "Correo al día"));
+  return tarjeta;
+}
+
+/** Una magnitud en el tiempo, dibujada a mano en SVG.
+ *
+ *  Un número dice si la CPU está alta **ahora**; la línea dice si lleva diez
+ *  minutos así, que es la pregunta que uno se hace de verdad. El eje va de 0 a
+ *  100 siempre, así que dos líneas se comparan sin leer un solo número. */
+function linea(etiqueta, valor, puntos) {
+  const ancho = 240, alto = 34;
+  // Con una sola muestra se repite el punto: una recta se entiende, y un hueco
+  // en una pantalla recién abierta parece que la telemetría no va.
+  const serie = puntos.length === 1 ? [puntos[0], puntos[0]] : puntos;
+  const paso = serie.length > 1 ? ancho / (serie.length - 1) : ancho;
+  const y = v => alto - (Math.max(0, Math.min(100, v)) / 100) * alto;
+  const camino = serie.map((v, i) => `${i === 0 ? "M" : "L"}${(i * paso).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+
+  const caja = crear("div", "linea");
+  const cabeza = crear("div", "linea-cabeza");
+  cabeza.appendChild(crear("span", "mayus", etiqueta));
+  cabeza.appendChild(crear("span", "linea-valor", valor));
+  caja.appendChild(cabeza);
+
+  // Sin `innerHTML`: esto es un fichero servido por el núcleo y no hay ninguna
+  // razón para meter cadenas en el árbol cuando el navegador sabe construirlo.
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${ancho} ${alto}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("aria-hidden", "true");
+  const svgNS = "http://www.w3.org/2000/svg";
+  // La mitad de la escala, para tener contra qué leer la línea sin ejes.
+  const mitad = document.createElementNS(svgNS, "line");
+  mitad.setAttribute("class", "linea-mitad");
+  mitad.setAttribute("x1", 0); mitad.setAttribute("x2", ancho);
+  mitad.setAttribute("y1", alto / 2); mitad.setAttribute("y2", alto / 2);
+  const area = document.createElementNS(svgNS, "path");
+  area.setAttribute("class", "linea-area");
+  area.setAttribute("d", `${camino} L${ancho},${alto} L0,${alto} Z`);
+  const trazo = document.createElementNS(svgNS, "path");
+  trazo.setAttribute("class", "linea-trazo");
+  trazo.setAttribute("d", camino);
+  // Dónde está *ahora*: en una línea plana, sin esto no se sabe cuál es el
+  // extremo vivo y cuál el viejo.
+  const punta = document.createElementNS(svgNS, "circle");
+  punta.setAttribute("class", "linea-punta");
+  punta.setAttribute("cx", ancho);
+  punta.setAttribute("cy", y(serie[serie.length - 1]));
+  punta.setAttribute("r", 2);
+  svg.appendChild(mitad);
+  svg.appendChild(area);
+  svg.appendChild(trazo);
+  svg.appendChild(punta);
+  caja.appendChild(svg);
+  return caja;
 }
 
 /** La máquina donde vive el núcleo. Es lo único de esta pantalla que no habla
  *  de Perseo: si un día el núcleo se muda a la Raspberry, describe la Raspberry. */
 function pintarMaquina(m) {
-  const tarjeta = crear("div", "tarjeta");
+  const tarjeta = crear("div", "tarjeta hud");
   const cabeza = crear("div", "cabeza", "Máquina");
   if (m.bateria) {
     cabeza.appendChild(crear("span", "ficha",
@@ -1196,6 +1319,15 @@ function pintarMaquina(m) {
   medidas.appendChild(barra("RAM", m.memoria?.porcentaje ?? 0, m.memoria?.legible));
   medidas.appendChild(barra("Disco", m.disco?.porcentaje ?? 0, m.disco?.legible));
   tarjeta.appendChild(medidas);
+
+  const historial = Array.isArray(m.historial) ? m.historial : [];
+  if (historial.length) {
+    const lineas = crear("div", "lineas");
+    lineas.appendChild(linea("CPU", `${Math.round(m.cpu ?? 0)}%`, historial.map(h => h.cpu)));
+    lineas.appendChild(linea("RAM", `${Math.round(m.memoria?.porcentaje ?? 0)}%`, historial.map(h => h.memoria)));
+    tarjeta.appendChild(lineas);
+  }
+
   if (m.red?.legible) tarjeta.appendChild(crear("div", "motivo", "Red · " + m.red.legible));
   return tarjeta;
 }
@@ -1243,12 +1375,36 @@ async function cargarProyectos() {
   }
 }
 
+/** La línea de lectura de arriba: reloj, tiempo en pie y un punto que late.
+ *
+ *  No dice nada que no esté en las cifras de debajo, y aun así hace falta: es lo
+ *  que convierte una pantalla de datos en un puesto encendido. */
+function pintarLectura(datos) {
+  const caja = crear("div", "lectura");
+  caja.appendChild(crear("span", "latido"));
+  caja.appendChild(crear("span", null, "Perseo // núcleo activo"));
+  caja.appendChild(crear("span", "lectura-sep", "·"));
+  const reloj = crear("span", null, new Date().toLocaleTimeString("es-ES", { hour12: false }));
+  caja.appendChild(reloj);
+  caja.appendChild(crear("span", "lectura-sep", "·"));
+  caja.appendChild(crear("span", null, "en pie " + duracion(datos.encendido_segundos ?? 0)));
+
+  // El reloj se mueve solo mientras esta pantalla esté delante. Se para al
+  // cambiar de pestaña, que es cuando el nodo deja de estar en el documento.
+  const tic = setInterval(() => {
+    if (!caja.isConnected) { clearInterval(tic); return; }
+    reloj.textContent = new Date().toLocaleTimeString("es-ES", { hour12: false });
+  }, 1000);
+  return caja;
+}
+
 function pintarEstado(datos) {
   panel.replaceChildren();
+  panel.appendChild(pintarLectura(datos));
 
   // Arriba, lo que se mira de un vistazo: cuánto lleva encendido y cuánta cola
   // hay abierta. Debajo, el detalle de cada pieza.
-  const resumen = crear("div", "tarjeta");
+  const resumen = crear("div", "tarjeta hud");
   const cifras = crear("div", "cifras");
   const abiertos = ["pendiente", "en_curso", "esperando"]
     .reduce((n, e) => n + (datos.trabajos[e] ?? 0), 0);
@@ -1268,6 +1424,7 @@ function pintarEstado(datos) {
   panel.appendChild(resumen);
 
   panel.appendChild(pintarPresencia(datos.presencia ?? {}));
+  panel.appendChild(pintarElDia(datos.presencia ?? {}));
   if (datos.maquina?.disponible) panel.appendChild(pintarMaquina(datos.maquina));
   panel.appendChild(pintarProyectos());
 
