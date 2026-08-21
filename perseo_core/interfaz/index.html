@@ -145,6 +145,59 @@
     align-self: center; text-align: center;
     font-size: 12px; color: var(--apagado); font-style: italic;
   }
+
+  /* El turno de palabra, encima de cada burbuja. Es lo que convierte una lista
+     de globos en una transcripción: se sabe quién habla sin fijarse en de qué
+     lado está, y la hora dice si esto es de ahora o de anteayer. */
+  .turno {
+    display: flex; align-items: baseline; gap: 8px;
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: .16em;
+    color: var(--apagado); margin-bottom: -6px;
+  }
+  .turno.mio { align-self: flex-end; }
+  .turno.suyo { align-self: flex-start; }
+  .turno .hora { font-variant-numeric: tabular-nums; opacity: .65; }
+
+  /* Perseo habla con marco de mira, como las tarjetas del tablero (T-7). */
+  .burbuja.suyo { position: relative; }
+  .burbuja.suyo::before, .burbuja.suyo::after {
+    content: ""; position: absolute; width: 8px; height: 8px;
+    pointer-events: none; opacity: .45;
+  }
+  .burbuja.suyo::before { top: 5px; left: 5px; border-top: 1px solid var(--texto); border-left: 1px solid var(--texto); }
+  .burbuja.suyo::after { right: 5px; bottom: 5px; border-right: 1px solid var(--texto); border-bottom: 1px solid var(--texto); }
+
+  /* Pensando: tres puntos que laten por turnos. Sin esto, mandar un mensaje y
+     esperar cuatro segundos se ve exactamente igual que una app rota. */
+  .pensando { display: flex; align-items: center; gap: 6px; }
+  .pensando span {
+    width: 5px; height: 5px; border-radius: 50%; background: var(--tenue);
+    animation: pulso 1.2s ease-in-out infinite;
+  }
+  .pensando span:nth-child(2) { animation-delay: .18s; }
+  .pensando span:nth-child(3) { animation-delay: .36s; }
+  @keyframes pulso {
+    0%, 100% { opacity: .25; transform: translateY(0); }
+    50% { opacity: 1; transform: translateY(-2px); }
+  }
+
+  /* La cabecera del chat: quién eres, con qué hablas y desde cuándo. */
+  #chat-lectura {
+    display: flex; align-items: center; gap: 8px; align-self: stretch;
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: .16em;
+    color: var(--apagado); padding-bottom: 4px;
+    border-bottom: 1px solid var(--borde);
+  }
+  #chat-lectura .latido {
+    width: 5px; height: 5px; border-radius: 50%; background: var(--texto);
+    animation: latido 2.4s ease-in-out infinite;
+  }
+  #chat-lectura button {
+    margin-left: auto; background: none; border: none; color: var(--apagado);
+    font: inherit; text-transform: uppercase; letter-spacing: .16em;
+    cursor: pointer; padding: 2px 0;
+  }
+  #chat-lectura button:hover { color: var(--texto); }
   @keyframes subir {
     from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: none; }
@@ -392,6 +445,11 @@
   form {
     display: flex; gap: 10px; padding: 12px 16px;
     border-top: 1px solid var(--borde);
+    /* El teclado del iPhone no encoge la página: la tapa. Sin este hueco —que
+       el JavaScript rellena con lo que mide el teclado— el campo de escribir
+       queda debajo, y la conversación larga se escribe a ciegas. */
+    padding-bottom: calc(12px + var(--teclado, 0px));
+    transition: padding-bottom .18s ease;
   }
   input, form button {
     font: inherit;
@@ -483,7 +541,13 @@
 </nav>
 
 <main>
-  <section id="chat"></section>
+  <section id="chat">
+    <div id="chat-lectura">
+      <span class="latido"></span>
+      <span>Perseo · canal de texto</span>
+      <button id="borrar-chat" type="button" title="Borrar esta conversación">Borrar</button>
+    </div>
+  </section>
   <section id="cola" hidden></section>
   <section id="correo" hidden></section>
   <section id="memoria" hidden>
@@ -642,11 +706,181 @@ for (const nombre of Object.keys(SECCIONES)) {
 // Chat
 // --------------------------------------------------------------------- //
 
-function decir(texto, clase) {
+//: Dónde se guarda la conversación entre visitas, y cuánta.
+const CHAT_GUARDADO = "perseo.chat";
+const MENSAJES_GUARDADOS = 60;
+
+//: Cada cuánto se pregunta por un trabajo encolado, y cuánto se espera antes de
+//: darlo por largo y dejar de mirar. Diez minutos: lo que tarda el agente `dev`
+//: en lo suyo. Pasado eso, el trabajo sigue vivo en la Cola; lo que se acaba es
+//: la vigilancia desde aquí.
+const MS_ENTRE_SONDEOS = 2000;
+const MS_ESPERANDO_TRABAJO = 10 * 60 * 1000;
+
+//: Un mensaje que tarde más que esto es un mensaje que no va a llegar. Sin
+//: plazo, un `fetch` colgado deja la burbuja de «pensando» girando para siempre.
+const MS_TOPE_ENVIO = 45000;
+
+let conversacion = [];
+
+function guardarConversacion() {
+  try {
+    localStorage.setItem(CHAT_GUARDADO, JSON.stringify(conversacion.slice(-MENSAJES_GUARDADOS)));
+  } catch (e) {
+    // Modo privado, cuota llena: perder el historial no puede romper el chat.
+  }
+}
+
+function hora(momento) {
+  return new Date(momento ?? Date.now()).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+}
+
+/** Pinta un mensaje. `recordar` es falso al restaurar, o se guardaría dos veces. */
+function decir(texto, clase, opciones = {}) {
+  const { momento = Date.now(), recordar = true } = opciones;
+  const esBurbuja = clase.startsWith("burbuja");
+
+  if (esBurbuja) {
+    const lado = clase.includes("mio") ? "mio" : "suyo";
+    const turno = crear("div", "turno " + lado);
+    turno.appendChild(crear("span", null, lado === "mio" ? "Señor Persus" : "Perseo"));
+    turno.appendChild(crear("span", "hora", hora(momento)));
+    chat.appendChild(turno);
+  }
+
   const div = crear("div", clase, texto);
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
+
+  if (recordar) {
+    conversacion.push({ texto, clase, momento });
+    guardarConversacion();
+  }
   return div;
+}
+
+/** Restaura lo que se dijo la última vez.
+ *
+ *  Antes, cerrar la pestaña era perder la conversación entera: las burbujas
+ *  vivían en el DOM y en ningún otro sitio. Guardarlo en el navegador y no en el
+ *  núcleo es a propósito — el chat del móvil es una libreta, no un expediente—,
+ *  y por eso hay un botón para borrarlo. */
+function restaurarConversacion() {
+  try {
+    conversacion = JSON.parse(localStorage.getItem(CHAT_GUARDADO) ?? "[]");
+  } catch (e) {
+    conversacion = [];
+  }
+  if (!Array.isArray(conversacion)) conversacion = [];
+
+  for (const m of conversacion) {
+    decir(m.texto, m.clase, { momento: m.momento, recordar: false });
+  }
+  if (conversacion.length) {
+    decir("— arriba, lo de antes —", "nota", { recordar: false });
+  }
+}
+
+/** Los tres puntos mientras Perseo piensa. Devuelve cómo quitarlos. */
+function pensando() {
+  const caja = crear("div", "burbuja suyo pensando");
+  for (let i = 0; i < 3; i++) caja.appendChild(crear("span"));
+  chat.appendChild(caja);
+  chat.scrollTop = chat.scrollHeight;
+  return () => caja.remove();
+}
+
+/** Un `fetch` con plazo. Sin esto, una petición que no vuelve deja la burbuja de
+ *  «pensando» girando hasta que alguien recarga. */
+async function conPlazo(url, opciones, ms) {
+  const corte = new AbortController();
+  const reloj = setTimeout(() => corte.abort(), ms);
+  try {
+    return await fetch(url, { ...opciones, signal: corte.signal });
+  } finally {
+    clearTimeout(reloj);
+  }
+}
+
+/** El resultado de un trabajo, en una línea que se pueda leer en una burbuja.
+ *
+ *  Las mismas reglas que en la cola, y por el mismo motivo (H-36): una nota
+ *  entera son doce mil caracteres para decir que se leyó un fichero, y un
+ *  triaje volcado en JSON es ilegible justo donde se mira con prisa. */
+function resumirResultado(resultado) {
+  if (resultado == null) return "Hecho.";
+  if (typeof resultado === "string") return resultado;
+  if (typeof resultado.contenido === "string") {
+    return `Leída ${resultado.ruta ?? ""} — ${resultado.contenido.length} caracteres`;
+  }
+  if (Array.isArray(resultado.notas)) {
+    const titular = resultado.titular ?? `${resultado.notas.length} nota(s)`;
+    return `${titular} — se leen en Memoria`;
+  }
+  if (Array.isArray(resultado.clasificados)) {
+    return resultado.titular ?? `${resultado.clasificados.length} correos triados`;
+  }
+  if (resultado.titular || resultado.texto) return resultado.titular ?? resultado.texto;
+  // Lo que no se sepa resumir sale como pares, nunca como JSON en crudo: es la
+  // misma decisión que tomó el panel del PC (H-52).
+  const pares = Object.entries(resultado)
+    .filter(([, v]) => v !== null && typeof v !== "object")
+    .map(([k, v]) => `${k}: ${v}`);
+  return pares.length ? pares.join(" · ") : "Hecho.";
+}
+
+//: Los trabajos que el chat está siguiendo por su cuenta. El flujo de eventos
+//: avisa de todo lo que termina, y para estos ya se ha escrito la respuesta
+//: entera: sin esto, cada pregunta dejaba la contestación y, debajo, un
+//: «Trabajo #N terminado» que no añadía nada.
+const siguiendo = new Set();
+
+/** Sigue un trabajo encolado y trae su respuesta **al chat**.
+ *
+ *  Antes esto se quedaba en «Encargado — trabajo #N» y la respuesta aparecía
+ *  solo en la pestaña Cola, así que preguntar algo que daba trabajo y leer la
+ *  contestación eran dos pantallas distintas. Se sigue encolando igual —la cara
+ *  no piensa— pero el resultado vuelve a donde se preguntó. */
+async function seguirTrabajo(id) {
+  const hasta = Date.now() + MS_ESPERANDO_TRABAJO;
+  const quitar = pensando();
+  siguiendo.add(id);
+  try {
+    while (Date.now() < hasta) {
+      await new Promise(r => setTimeout(r, MS_ENTRE_SONDEOS));
+      let t;
+      try {
+        const r = await fetch(`/trabajos/${id}`);
+        if (r.status === 401) { puerta.style.display = "flex"; return; }
+        if (!r.ok) continue;
+        t = await r.json();
+      } catch (e) {
+        continue;  // un corte de red no cancela el trabajo, que vive en el núcleo
+      }
+
+      if (t.estado === "hecho") {
+        decir(resumirResultado(t.resultado), "burbuja suyo");
+        cargarCola();
+        return;
+      }
+      if (t.estado === "fallido" || t.estado === "cancelado" || t.estado === "rechazado") {
+        decir(`El trabajo #${id} acabó ${t.estado}: ${t.error ?? "sin detalle"}`, "nota");
+        cargarCola();
+        return;
+      }
+      if (t.estado === "esperando") {
+        decir(`El trabajo #${id} espera un sí. Se aprueba en la Cola.`, "nota");
+        cargarCola();
+        return;
+      }
+    }
+    decir(`El trabajo #${id} sigue en marcha. Se ve en la Cola.`, "nota");
+  } finally {
+    quitar();
+    // Se deja de seguir aquí y no antes: mientras se siga, el flujo de eventos
+    // calla, y si se soltara al primer aviso volverían los dos mensajes.
+    siguiendo.delete(id);
+  }
 }
 
 $("escribir").addEventListener("submit", async (e) => {
@@ -657,26 +891,58 @@ $("escribir").addEventListener("submit", async (e) => {
   entrada.value = "";
   decir(texto, "burbuja mio");
 
+  const quitar = pensando();
   try {
-    const r = await fetch("/mensaje", {
+    const r = await conPlazo("/mensaje", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texto, origen: "texto" }),
-    });
+    }, MS_TOPE_ENVIO);
     if (r.status === 401) { puerta.style.display = "flex"; return; }
     const datos = await r.json();
     if (datos.destino === "responder") {
       decir(datos.respuesta || "(sin respuesta)", "burbuja suyo");
     } else {
-      // No se contesta con un texto inventado: se dice que hay trabajo y la
-      // cola es donde se sigue. Es la diferencia entre un chat y un panel.
+      // Se encola, como siempre —la cara no piensa—, pero desde aquí se mira
+      // hasta que termine y la respuesta vuelve a esta misma pantalla.
       decir(`Encargado — trabajo #${datos.trabajo.id} (${datos.trabajo.agente})`, "nota");
       cargarCola();
+      seguirTrabajo(datos.trabajo.id);
     }
   } catch (err) {
-    decir("No se pudo enviar: " + err.message, "nota");
+    const motivo = err.name === "AbortError"
+      ? `Perseo no contestó en ${Math.round(MS_TOPE_ENVIO / 1000)}s. Mira la Cola o inténtalo otra vez.`
+      : "No se pudo enviar: " + err.message;
+    decir(motivo, "nota");
+  } finally {
+    quitar();
   }
 });
+
+$("borrar-chat").addEventListener("click", () => {
+  conversacion = [];
+  guardarConversacion();
+  // La cabecera se queda: es parte de la pantalla, no de la conversación.
+  for (const nodo of [...chat.children]) {
+    if (nodo.id !== "chat-lectura") nodo.remove();
+  }
+});
+
+/** El hueco que deja el teclado del móvil.
+ *
+ *  El teclado del iPhone **no encoge la página**: la tapa. Así que el campo de
+ *  escribir se queda debajo y la conversación larga se escribe a ciegas. Lo
+ *  único que sabe cuánto mide el teclado es `visualViewport`, y de ahí sale la
+ *  variable que el CSS usa como relleno. */
+if (window.visualViewport) {
+  const ajustar = () => {
+    const tapado = Math.max(0, window.innerHeight - visualViewport.height - visualViewport.offsetTop);
+    document.documentElement.style.setProperty("--teclado", `${Math.round(tapado)}px`);
+    if (tapado > 0) chat.scrollTop = chat.scrollHeight;
+  };
+  visualViewport.addEventListener("resize", ajustar);
+  visualViewport.addEventListener("scroll", ajustar);
+}
 
 // --------------------------------------------------------------------- //
 // Cola
@@ -1516,6 +1782,9 @@ function conectarEventos() {
       cargarCola();
       const t = evento.datos?.trabajo;
       if (!t) return;
+      // De lo que el chat está siguiendo se calla: ya escribe la respuesta
+      // entera, y debajo un «terminado» a secas sobra.
+      if (siguiendo.has(t.id)) return;
       if (evento.tipo === "trabajo.hecho") {
         decir(`Trabajo #${t.id} terminado.`, "nota");
       } else if (evento.tipo === "trabajo.fallido") {
@@ -1541,6 +1810,7 @@ function conectarEventos() {
 
 function empezar() {
   puerta.style.display = "none";
+  restaurarConversacion();
   cargarCola();
   cargarEstado();
   conectarEventos();
