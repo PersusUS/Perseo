@@ -1,28 +1,44 @@
-"""Gestiona qué procesos de Perseo arrancan con Windows.
+"""Gestiona qué arranca con Windows, y qué lo revive si se cae.
 
 Escribe en HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run, que afecta
 solo al usuario actual y es reversible desde este mismo script.
 
-Son dos servicios independientes:
-  - El detector de aplausos, que despierta la aplicación.
-  - El núcleo (`perseo-core`), que es lo que tiene que estar siempre encendido:
-    sin él no hay cola, ni memoria, ni triaje de correo, y la app se queda sin
-    herramientas.
+**Una sola entrada**, desde el 2026-08-21: `commands/arranque.py`, que hace lo
+mismo que `perseo on`. Antes eran dos —el vigilante y el detector— y la app de
+voz no estaba en ninguna, así que al encender el PC Perseo arrancaba a medias y
+sin ventana. Dos listas de lo que hay que encender acaban discrepando; esta se
+lee de `perseo.py`, que es la que se usa a diario.
 
-Antes el segundo servicio era el indexador del vault (`RAG/automator.py`), que
-se jubiló con el paso a v2: la memoria la lleva ahora el agente `memoria` del
-núcleo, que escribe en el mismo vault sin base vectorial de por medio.
+Y **una tarea programada** que llama a lo mismo cada diez minutos con
+`--revivir`, para levantar el núcleo o el detector si se han caído. Es lo que
+faltaba el 2026-08-18: el núcleo murió a las 16:42, el vigilante se fue detrás y
+Perseo estuvo tres días apagado sin que nada lo dijera. Un vigilante no puede
+vigilar su propia muerte.
+
+Antes de v2 aquí había un tercer servicio, el indexador del vault
+(`RAG/automator.py`), que se jubiló: la memoria la lleva ahora el agente
+`memoria` del núcleo, que escribe en el mismo vault sin base vectorial de por
+medio.
 """
 
 import os
+import subprocess
 import sys
 import winreg
 
 RUTA_CLAVE = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
-#: Nombre en el registro -> qué se arranca. El detector es un script suelto; el
-#: núcleo es un paquete y hay que arrancarlo como módulo, que es distinto.
-SERVICIOS = ("PerseoClapDetector", "PerseoNucleo")
+#: Nombre en el registro -> qué se arranca. Uno solo: `arranque.py`, que enciende
+#: las cinco piezas llamando a lo mismo que llamaría una persona.
+SERVICIOS = ("Perseo",)
+
+#: Lo que había antes y hay que quitar al instalar. Si se quedan, arrancan a la
+#: vez que `arranque.py` y se pelean por el mismo puerto y el mismo micrófono.
+LEGADO = ("PerseoClapDetector", "PerseoNucleo")
+
+#: La tarea programada que revive lo que se caiga, y cada cuánto mira.
+TAREA = "PerseoRevivir"
+MINUTOS_ENTRE_REVISIONES = 10
 
 
 def _raiz_proyecto() -> str:
@@ -51,25 +67,88 @@ def _comando(nombre: str) -> str | None:
     """
     raiz = _raiz_proyecto()
 
-    if nombre == "PerseoClapDetector":
-        ruta = os.path.join(raiz, "commands", "clap_detector.py")
-        if not os.path.isfile(ruta):
-            print(f"[-] No se encuentra el script: {ruta}")
-            return None
-        return f'"{_pythonw()}" "{ruta}"'
-
     if not os.path.isdir(os.path.join(raiz, "perseo_core")):
         print(f"[-] No se encuentra el paquete perseo_core en {raiz}")
         return None
 
-    # En el registro va el vigilante, no el núcleo. `Run` lanza una vez: si el
-    # núcleo se cae a media tarde, sin un padre que lo levante Perseo se apaga
-    # hasta el siguiente reinicio y nadie se entera.
-    vigilante = os.path.join(raiz, "commands", "vigilante.py")
-    if not os.path.isfile(vigilante):
-        print(f"[-] No se encuentra el vigilante: {vigilante}")
+    # En el registro va `arranque.py`, que enciende las cinco piezas: el núcleo
+    # con su vigilante, el detector, la app, Ollama y Obsidian. El vigilante
+    # sigue existiendo y sigue siendo quien revive al núcleo; lo que cambia es
+    # que ya no se le llama desde aquí, sino desde el mismo sitio que llamaría
+    # una persona escribiendo `perseo on`.
+    guion = os.path.join(raiz, "commands", "arranque.py")
+    if not os.path.isfile(guion):
+        print(f"[-] No se encuentra el guion de arranque: {guion}")
         return None
-    return f'"{_pythonw()}" "{vigilante}"'
+    return f'"{_pythonw()}" "{guion}"'
+
+
+# --------------------------------------------------------------------------- #
+# La tarea que revive lo que se caiga
+# --------------------------------------------------------------------------- #
+
+
+def _orden_de_la_tarea() -> str | None:
+    raiz = _raiz_proyecto()
+    guion = os.path.join(raiz, "commands", "arranque.py")
+    if not os.path.isfile(guion):
+        print(f"[-] No se encuentra el guion de arranque: {guion}")
+        return None
+    return f'"{_pythonw()}" "{guion}" --revivir'
+
+
+def añadir_tarea() -> None:
+    """Crea la tarea programada que mira cada diez minutos si falta algo.
+
+    `/F` la reemplaza si ya existía: reinstalar tras mover la carpeta tiene que
+    actualizar la ruta, no fallar diciendo que ya está.
+    """
+    orden = _orden_de_la_tarea()
+    if orden is None:
+        return
+    try:
+        resultado = subprocess.run(
+            [
+                "schtasks", "/Create", "/F",
+                "/TN", TAREA,
+                "/TR", orden,
+                "/SC", "MINUTE",
+                "/MO", str(MINUTOS_ENTRE_REVISIONES),
+            ],
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"[-] No se pudo crear la tarea '{TAREA}': {e}")
+        return
+    if resultado.returncode == 0:
+        print(f"[+] '{TAREA}' revisará cada {MINUTOS_ENTRE_REVISIONES} minutos que Perseo siga en pie.")
+    else:
+        print(f"[-] No se pudo crear la tarea '{TAREA}': {resultado.stderr.strip() or resultado.stdout.strip()}")
+
+
+def quitar_tarea() -> None:
+    try:
+        resultado = subprocess.run(
+            ["schtasks", "/Delete", "/F", "/TN", TAREA], capture_output=True, text=True
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"[-] No se pudo borrar la tarea '{TAREA}': {e}")
+        return
+    if resultado.returncode == 0:
+        print(f"[+] '{TAREA}' ya no revisará nada.")
+    else:
+        print(f"[i] '{TAREA}' no estaba puesta.")
+
+
+def tarea_puesta() -> bool:
+    try:
+        resultado = subprocess.run(
+            ["schtasks", "/Query", "/TN", TAREA], capture_output=True, text=True
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return resultado.returncode == 0
 
 
 def añadir(nombre: str) -> None:
@@ -157,6 +236,27 @@ def estado() -> None:
         if problemas:
             print("             Vuelve a instalarlo: python manage_startup.py install " + nombre)
 
+    for nombre in LEGADO:
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUTA_CLAVE) as clave:
+                valor, _ = winreg.QueryValueEx(clave, nombre)
+        except FileNotFoundError:
+            continue
+        # Si sobrevive una entrada vieja, arranca a la vez que `Perseo` y las dos
+        # se pelean: dos núcleos por el puerto 8787, dos detectores por el mismo
+        # micrófono.
+        print(f"  [sobra]    {nombre}\n             {valor}")
+        print("             Es del arranque de antes. Quítalo: python manage_startup.py install")
+
+    print()
+    if tarea_puesta():
+        print(f"  [activo]   {TAREA}")
+        print(f"             Cada {MINUTOS_ENTRE_REVISIONES} min levanta el núcleo o el detector si se han caído")
+    else:
+        print(f"  [inactivo] {TAREA}")
+        print("             Nadie revive a Perseo si se cae con el PC encendido.")
+        print("             Ponla con: python manage_startup.py install")
+
     # Lo que arranca con Windows no trae las variables de tu terminal. Si no hay
     # `entorno.json`, el núcleo se levanta capado —sin correo, sin agenda, sin
     # vault por Obsidian— y parece que funciona.
@@ -213,10 +313,22 @@ if __name__ == "__main__":
     elif accion == "remove":
         for nombre in objetivos:
             quitar(nombre)
+        quitar_tarea()
     elif accion == "install":
         print("--- Configuración de arranque automático ---")
         for nombre in objetivos:
             añadir(nombre)
+        # Las entradas de antes se van al instalar, no cuando alguien se acuerde:
+        # conviviendo con la nueva, arrancan dos núcleos y dos detectores.
+        for nombre in LEGADO:
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUTA_CLAVE) as clave:
+                    winreg.QueryValueEx(clave, nombre)
+            except FileNotFoundError:
+                continue
+            print(f"[i] '{nombre}' es del arranque de antes y sobra ahora.")
+            quitar(nombre)
+        añadir_tarea()
         print("\nPara comprobarlo:  python manage_startup.py status")
         print("Para desactivarlo: python manage_startup.py remove")
     else:

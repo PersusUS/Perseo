@@ -327,3 +327,111 @@ def test_un_programa_que_no_existe_no_esta_vivo() -> None:
     import perseo
 
     assert not perseo._exe_vivo("esto-no-existe-jamas.exe")
+
+
+# --------------------------------------------------------------------------- #
+# El arranque con Windows: una sola entrada, y quien revive lo que se caiga
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="el registro es de Windows")
+def test_en_el_registro_va_una_sola_entrada() -> None:
+    """Dos listas de lo que hay que encender acaban discrepando. La de verdad es
+    `perseo on`, y el registro llama a eso."""
+    import manage_startup
+
+    assert manage_startup.SERVICIOS == ("Perseo",)
+    comando = manage_startup._comando("Perseo")
+    assert comando is not None and "arranque.py" in comando
+    assert "pythonw" in comando.lower()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="el registro es de Windows")
+def test_las_entradas_de_antes_estan_listadas_para_quitarlas() -> None:
+    """Si sobreviven, arrancan a la vez que la nueva: dos núcleos peleándose por
+    el 8787 y dos detectores por el mismo micrófono."""
+    import manage_startup
+
+    assert manage_startup.LEGADO == ("PerseoClapDetector", "PerseoNucleo")
+    assert not set(manage_startup.LEGADO) & set(manage_startup.SERVICIOS)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="el registro es de Windows")
+def test_la_tarea_que_revive_llama_al_mismo_guion_con_revivir() -> None:
+    import manage_startup
+
+    orden = manage_startup._orden_de_la_tarea()
+    assert orden is not None
+    assert orden.endswith("--revivir")
+    assert "arranque.py" in orden
+
+
+def test_revivir_no_levanta_la_app_ni_las_dependencias() -> None:
+    """Lo que se comprueba es la decisión, no el código: la app, Ollama y
+    Obsidian tienen ventana, y una ventana que reaparece sola cada diez minutos
+    es un programa con el que no se puede convivir. El núcleo y el detector no
+    tienen ventana: si están apagados, es que algo falló."""
+    import inspect
+
+    import arranque
+
+    fuente = inspect.getsource(arranque.revivir)
+    assert "arrancar_nucleo" in fuente
+    assert "arrancar_detector" in fuente
+    assert "arrancar_app" not in fuente
+    assert "arrancar_ollama" not in fuente
+    assert "arrancar_obsidian" not in fuente
+
+
+def test_el_arranque_escribe_en_su_registro(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Este proceso no tiene consola: si no escribe en un fichero, no dice nada.
+    Y el día que el PC arranque sin Perseo, ese fichero es lo único que hay."""
+    import arranque
+
+    monkeypatch.setenv("PERSEO_CORE_DATOS", str(tmp_path))
+    monkeypatch.setattr(arranque, "revivir", lambda: print("levantando lo que falte"))
+
+    assert arranque.main(["--revivir"]) == 0
+    escrito = (tmp_path / "arranque.log").read_text(encoding="utf-8")
+    assert "Revivir" in escrito
+    assert "levantando lo que falte" in escrito
+
+
+def test_un_arranque_que_revienta_deja_la_traza(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Un fallo aquí es un Perseo que no arranca con el PC: sin consola, sin
+    error y sin nadie mirando. Lo único que puede quedar es la traza."""
+    import arranque
+
+    monkeypatch.setenv("PERSEO_CORE_DATOS", str(tmp_path))
+
+    def revienta() -> None:
+        raise RuntimeError("no se pudo con el núcleo")
+
+    monkeypatch.setattr(arranque, "encender", revienta)
+
+    assert arranque.main([]) == 1
+    escrito = (tmp_path / "arranque.log").read_text(encoding="utf-8")
+    assert "RuntimeError" in escrito and "no se pudo con el núcleo" in escrito
+    # Y la salida vuelve a su sitio, o la prueba siguiente escribiría en el log.
+    assert sys.stdout is not None
+
+
+def test_el_vigilante_deja_dicho_si_se_muere_por_una_excepcion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """El 2026-08-18 su última línea fue «se vuelve a arrancar en 5s» y después
+    nada durante tres días: sin consola, una excepción lo mata en silencio."""
+    monkeypatch.setenv("PERSEO_CORE_DATOS", str(tmp_path))
+
+    def revienta() -> int:
+        raise RuntimeError("se acabó el disco")
+
+    monkeypatch.setattr(vigilante, "vigilar", revienta)
+
+    with pytest.raises(RuntimeError):
+        vigilante.vigilar_diciendo_como_muere()
+
+    escrito = (tmp_path / "vigilante.log").read_text(encoding="utf-8")
+    assert "se muere por RuntimeError" in escrito
+    assert "se acabó el disco" in escrito
+    assert "Traceback" in escrito

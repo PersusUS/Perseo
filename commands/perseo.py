@@ -84,12 +84,45 @@ def _pythonw() -> str:
     return candidato if candidato != ejecutable and os.path.isfile(candidato) else ejecutable
 
 
+#: Escapar del *job* de quien nos lanzó. Python no lo expone con nombre.
+CREATE_BREAKAWAY_FROM_JOB = 0x01000000
+
+
 def _sin_consola(argumentos: list[str]) -> None:
-    """Lanza algo y se desentiende: ni consola, ni esperar, ni morir con esta."""
-    banderas = 0
-    if os.name == "nt":
-        banderas = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
-    subprocess.Popen(argumentos, cwd=str(RAIZ), creationflags=banderas, close_fds=True)
+    """Lanza algo y se desentiende: ni consola, ni esperar, ni morir con esta.
+
+    **`DETACHED_PROCESS` no basta en Windows**, y esto costó tres días de Perseo
+    apagado (H-53). Las terminales modernas y los agentes meten lo que ejecutan
+    en un *job object* con `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`: cuando esa
+    sesión termina, **Windows mata a todos los descendientes**, estén detached o
+    no, sin avisar y sin código que lo explique. Medido en esta máquina el
+    2026-08-21: la terminal corría dentro de un job con esa bandera puesta.
+
+    Se pide `CREATE_BREAKAWAY_FROM_JOB`, que es lo que existe para salirse. **No
+    siempre sirve**, y aquí se comprobó que no basta: los hijos acaban en un job
+    igualmente, así que un Perseo lanzado desde una terminal puede seguir
+    muriéndose con ella. Se pide de todas formas porque es gratis y en una
+    terminal normal sí funciona; lo que de verdad garantiza que Perseo vuelva es
+    la tarea `PerseoRevivir` (`manage_startup.py`), que mira cada diez minutos
+    desde fuera de cualquier sesión.
+
+    Si el job no admite el intento, `Popen` falla con un `OSError` y se lanza
+    como antes: arrancar y quizá morir con la terminal es mejor que no arrancar.
+    """
+    if os.name != "nt":
+        subprocess.Popen(argumentos, cwd=str(RAIZ), close_fds=True)
+        return
+
+    banderas = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+    try:
+        subprocess.Popen(
+            argumentos,
+            cwd=str(RAIZ),
+            creationflags=banderas | CREATE_BREAKAWAY_FROM_JOB,
+            close_fds=True,
+        )
+    except OSError:
+        subprocess.Popen(argumentos, cwd=str(RAIZ), creationflags=banderas, close_fds=True)
 
 
 def _corriendo(fragmento: str) -> bool:

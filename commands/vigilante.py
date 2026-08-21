@@ -174,5 +174,28 @@ def vigilar() -> int:
         time.sleep(espera)
 
 
+def vigilar_diciendo_como_muere() -> int:
+    """`vigilar()`, pero dejando escrito si se muere por una excepción.
+
+    Este proceso no tiene consola: una excepción no prevista lo mataba en el más
+    absoluto silencio, y lo que quedaba en `vigilante.log` era su última línea
+    normal. Fue exactamente lo que se vio el 2026-08-18: «El núcleo murió…, se
+    vuelve a arrancar en 5s», y después nada durante tres días.
+
+    No se reintenta nada aquí a propósito: si el vigilante no puede vigilar, lo
+    que toca es que se note. De volver a levantarlo se encarga la tarea
+    programada `PerseoRevivir` (`manage_startup.py`), que mira desde fuera.
+    """
+    registro = _directorio_datos() / "vigilante.log"
+    try:
+        return vigilar()
+    except BaseException as e:  # noqa: BLE001 — se re-lanza abajo
+        import traceback
+
+        _apuntar(registro, f"El vigilante se muere por {type(e).__name__}: {e}")
+        _apuntar(registro, traceback.format_exc())
+        raise
+
+
 if __name__ == "__main__":  # pragma: no cover
-    raise SystemExit(vigilar())
+    raise SystemExit(vigilar_diciendo_como_muere())
