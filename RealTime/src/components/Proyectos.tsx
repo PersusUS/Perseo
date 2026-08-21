@@ -84,7 +84,7 @@ export const Proyectos: React.FC<{ abierto: boolean; onCerrar: () => void }> = (
   // El arrastre se lleva en una `ref` y no en estado: cambia en cada movimiento
   // del ratón, y repintar la tira sesenta veces por segundo la haría ir a
   // tirones justo mientras se desliza.
-  const arrastre = useRef({ activo: false, desdeX: 0, desdeScroll: 0, movido: 0 });
+  const arrastre = useRef({ activo: false, desdeX: 0, desdeScroll: 0, movido: 0, cogido: false });
 
   // La lista sale de un fichero que casi nunca cambia: se pide la primera vez
   // que se abre y se guarda. Volver a pedirla en cada despliegue sería un viaje
@@ -148,8 +148,13 @@ export const Proyectos: React.FC<{ abierto: boolean; onCerrar: () => void }> = (
   const empezarArrastre = (e: React.PointerEvent) => {
     const nodo = tira.current;
     if (!nodo) return;
-    arrastre.current = { activo: true, desdeX: e.clientX, desdeScroll: nodo.scrollLeft, movido: 0 };
-    nodo.setPointerCapture(e.pointerId);
+    arrastre.current = {
+      activo: true,
+      desdeX: e.clientX,
+      desdeScroll: nodo.scrollLeft,
+      movido: 0,
+      cogido: false,
+    };
   };
 
   const mover = (e: React.PointerEvent) => {
@@ -157,13 +162,28 @@ export const Proyectos: React.FC<{ abierto: boolean; onCerrar: () => void }> = (
     if (!nodo || !arrastre.current.activo) return;
     const recorrido = e.clientX - arrastre.current.desdeX;
     arrastre.current.movido = Math.max(arrastre.current.movido, Math.abs(recorrido));
+
+    // El puntero se captura **solo cuando ya se está arrastrando de verdad**, no
+    // al apoyarlo. Capturarlo desde el principio parece lo natural y rompe lo
+    // único que tiene que funcionar: con la captura puesta, el `click` se
+    // entrega al elemento que capturó —la tira— y no a la tarjeta, así que
+    // pulsar un proyecto no hacía absolutamente nada. Medido el 2026-08-21: la
+    // lista se pedía al núcleo, pero no llegaba ni un solo POST de abrir.
+    if (arrastre.current.movido >= PIXELES_DE_ARRASTRE && !arrastre.current.cogido) {
+      nodo.setPointerCapture(e.pointerId);
+      arrastre.current.cogido = true;
+    }
+
     nodo.scrollLeft = arrastre.current.desdeScroll - recorrido;
   };
 
   const soltar = (e: React.PointerEvent) => {
     const nodo = tira.current;
     arrastre.current.activo = false;
-    if (nodo?.hasPointerCapture(e.pointerId)) nodo.releasePointerCapture(e.pointerId);
+    if (arrastre.current.cogido && nodo?.hasPointerCapture(e.pointerId)) {
+      nodo.releasePointerCapture(e.pointerId);
+    }
+    arrastre.current.cogido = false;
   };
 
   // Un ratón que se ha movido estaba deslizando, no eligiendo. Sin esto, soltar
