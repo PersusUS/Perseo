@@ -302,28 +302,6 @@
   }
   .filtro[aria-pressed="true"] { color: var(--fondo); background: var(--texto); border-color: var(--texto); }
 
-  /* La pestaña de Voz: el mismo gesto que la app de escritorio —un botón
-     redondo y las ondas de Hokusai— para que sea el mismo Perseo. */
-  #voz-escenario {
-    position: relative; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 14px; padding: 40px 0 26px;
-  }
-  #voz-boton {
-    position: relative; z-index: 2;
-    width: 108px; height: 108px; border-radius: 50%;
-    border: 1px solid var(--borde); background: var(--superficie); color: var(--texto);
-    font: inherit; font-size: 13px; text-transform: uppercase; letter-spacing: .18em;
-    cursor: pointer;
-  }
-  #voz-boton:hover { border-color: var(--texto); }
-  #voz-ondas { position: absolute; top: 40px; height: 108px; width: 108px; }
-  #voz-aviso { text-align: center; max-width: 34ch; }
-  #voz-transcripcion {
-    display: flex; flex-direction: column; gap: 8px;
-    max-height: 46vh; overflow-y: auto;
-  }
-  #voz-transcripcion .detalle { color: var(--apagado); }
-
   /* Medidores. En el móvil van apilados y a todo el ancho: una rejilla de
      esferas tipo HUD queda muy bien en una pantalla de 27 pulgadas y es
      ilegible en 375 px. La información es la misma; la forma, no. */
@@ -449,7 +427,6 @@
   <button id="pestana-cola" aria-selected="false">Cola <span class="cuenta" id="contador"></span></button>
   <button id="pestana-correo" aria-selected="false">Correo</button>
   <button id="pestana-memoria" aria-selected="false">Memoria</button>
-  <button id="pestana-voz" aria-selected="false">Voz</button>
   <button id="pestana-estado" aria-selected="false">Estado <span class="cuenta" id="alertas"></span></button>
 </nav>
 
@@ -472,16 +449,6 @@
       <button type="submit">Anotar</button>
     </form>
     <div id="notas"></div>
-  </section>
-  <section id="voz" hidden>
-    <div id="voz-escenario">
-      <div id="voz-ondas" hidden>
-        <div class="onda"></div><div class="onda b"></div><div class="onda c"></div>
-      </div>
-      <button id="voz-boton" aria-label="Hablar con Perseo">Hablar</button>
-      <div id="voz-aviso" class="motivo"></div>
-    </div>
-    <div id="voz-transcripcion"></div>
   </section>
   <section id="estado" hidden></section>
 </main>
@@ -593,7 +560,7 @@ $("entrar").addEventListener("submit", async (e) => {
 // Pestañas
 // --------------------------------------------------------------------- //
 
-const SECCIONES = { chat, cola, correo, memoria: $("memoria"), voz: $("voz"), estado: panel };
+const SECCIONES = { chat, cola, correo, memoria: $("memoria"), estado: panel };
 
 function mostrar(cual) {
   pestana = cual;
@@ -1359,241 +1326,6 @@ async function cargarEstado() {
     panel.replaceChildren(crear("div", "nota", "No se pudo leer el estado: " + err.message));
   }
 }
-
-// --------------------------------------------------------------------- //
-// Voz en vivo
-// --------------------------------------------------------------------- //
-//
-// Hablar con Perseo desde el móvil, contra el mismo modelo que la app de
-// escritorio y sin pasar por el núcleo: el audio va directo a Gemini. Hacer de
-// intermediario costaría reenviar dos flujos de sonido en tiempo real, y con
-// eso la latencia deja de ser la de una conversación.
-//
-// Tres cosas que hay que saber antes de tocar esto:
-//
-//   1. **El micrófono exige contexto seguro.** `https://` o el bucle local; por
-//      `http://` del tailnet el navegador ni pregunta. Es la razón de que el
-//      núcleo sepa servir HTTPS (`PERSEO_TLS_CERT`).
-//   2. **Aquí no hay herramientas.** La app de escritorio le da al modelo el
-//      control del PC; esto no, a propósito: lo que se quiere desde el sofá es
-//      hablar, y un micrófono remoto que además puede abrir programas es otra
-//      cosa con otros riesgos.
-//   3. **`ScriptProcessorNode` está obsoleto y se usa igual.** La alternativa
-//      —`AudioWorklet`— necesita un fichero aparte, y esta interfaz es un solo
-//      fichero que sirve el núcleo. Cuando eso cambie, esto también.
-
-const VOZ_ENTRADA = 16000;   // lo que el modelo espera recibir
-const VOZ_SALIDA = 24000;    // lo que el modelo devuelve
-
-let voz = null;
-
-class VozEnVivo {
-  constructor() {
-    this.ws = null;
-    this.micro = null;
-    this.entrada = null;
-    this.salida = null;
-    this.fuente = null;
-    this.procesador = null;
-    this.siguiente = 0;
-    this.hablando = false;
-  }
-
-  async encender() {
-    if (!window.isSecureContext) {
-      throw new Error(
-        "El micrófono necesita HTTPS. Por el tailnet hace falta certificado; " +
-        "en este PC funciona en http://127.0.0.1:8787."
-      );
-    }
-
-    // La sesión va por cookie, y una cookie es de **un origen**. Entrar por
-    // `https://…:8788` cuando la de siempre era `http://…:8787` es entrar en
-    // otro sitio para el navegador: no lleva sesión y hay que pegar el token
-    // otra vez. Sin este aviso, el síntoma era un fallo raro tres pasos después.
-    const respuesta = await fetch("/clave-voz");
-    if (respuesta.status === 401) {
-      puerta.style.display = "flex";
-      throw new Error("Esta dirección no tiene sesión todavía: pega el token y vuelve a darle.");
-    }
-    if (!respuesta.ok) {
-      throw new Error("El núcleo no da la clave de voz: mira que GEMINI_API_KEY esté puesta.");
-    }
-    const { clave, modelo, version } = await respuesta.json();
-
-    // El micro primero: si no hay permiso, mejor enterarse antes de abrir la
-    // sesión con el modelo, que gasta cuota.
-    this.micro = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-    });
-
-    this.entrada = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: VOZ_ENTRADA });
-    this.salida = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: VOZ_SALIDA });
-    await this.entrada.resume();
-    await this.salida.resume();
-
-    const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.` +
-      `${version}.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(clave)}`;
-    this.ws = new WebSocket(url);
-    this.ws.onmessage = (e) => this.recibir(e);
-    this.ws.onerror = () => this.avisar("Se cortó la conexión con el modelo.");
-    this.ws.onclose = () => this.apagar(true);
-
-    await new Promise((listo, falla) => {
-      this.ws.onopen = listo;
-      setTimeout(() => falla(new Error("El modelo no contestó a tiempo.")), 10000);
-    });
-
-    this.ws.send(JSON.stringify({
-      setup: {
-        model: `models/${modelo}`,
-        generationConfig: { responseModalities: ["AUDIO"] },
-        inputAudioTranscription: {},
-        outputAudioTranscription: {},
-        systemInstruction: {
-          parts: [{
-            text: "Eres Perseo, el asistente personal de Jesús Pérez Bazarot, a quien " +
-              "llamas «señor Persus». Hablas en español de España, con frases cortas: " +
-              "esto es una conversación por el móvil, no un informe. Estás en el móvil, " +
-              "así que no puedes ver su pantalla ni controlar su ordenador; si te pide " +
-              "algo de eso, dilo claramente en vez de fingir que lo haces.",
-          }],
-        },
-      },
-    }));
-
-    this.escuchar();
-  }
-
-  /** Manda el micro al modelo en trozos de PCM de 16 bits. */
-  escuchar() {
-    this.fuente = this.entrada.createMediaStreamSource(this.micro);
-    this.procesador = this.entrada.createScriptProcessor(4096, 1, 1);
-    this.procesador.onaudioprocess = (e) => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-      const muestras = e.inputBuffer.getChannelData(0);
-      const pcm = new Int16Array(muestras.length);
-      for (let i = 0; i < muestras.length; i++) {
-        const s = Math.max(-1, Math.min(1, muestras[i]));
-        pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-      }
-      this.ws.send(JSON.stringify({
-        realtimeInput: {
-          audio: { mimeType: `audio/pcm;rate=${this.entrada.sampleRate}`, data: aBase64(pcm.buffer) },
-        },
-      }));
-    };
-    this.fuente.connect(this.procesador);
-    // Sin conectar a un destino, Safari no llama al procesador. Se enchufa a un
-    // nodo mudo para no oírse a uno mismo por el altavoz.
-    const mudo = this.entrada.createGain();
-    mudo.gain.value = 0;
-    this.procesador.connect(mudo);
-    mudo.connect(this.entrada.destination);
-  }
-
-  async recibir(evento) {
-    const crudo = evento.data instanceof Blob ? await evento.data.text() : evento.data;
-    let mensaje;
-    try { mensaje = JSON.parse(crudo); } catch { return; }
-
-    const contenido = mensaje.serverContent;
-    if (!contenido) return;
-
-    if (contenido.inputTranscription?.text) this.transcribir("tú", contenido.inputTranscription.text);
-    if (contenido.outputTranscription?.text) this.transcribir("perseo", contenido.outputTranscription.text);
-
-    for (const parte of contenido.modelTurn?.parts ?? []) {
-      if (parte.inlineData?.data) this.reproducir(parte.inlineData.data);
-    }
-    // Interrumpir: si el modelo se calla porque has hablado, lo que quedaba en
-    // la cola de sonido sobra — y si suena igual, se pisan.
-    if (contenido.interrupted) this.siguiente = this.salida.currentTime;
-  }
-
-  reproducir(base64) {
-    const bytes = deBase64(base64);
-    const pcm = new Int16Array(bytes.buffer);
-    const trozo = this.salida.createBuffer(1, pcm.length, VOZ_SALIDA);
-    const canal = trozo.getChannelData(0);
-    for (let i = 0; i < pcm.length; i++) canal[i] = pcm[i] / 32768;
-
-    const nodo = this.salida.createBufferSource();
-    nodo.buffer = trozo;
-    nodo.connect(this.salida.destination);
-    // En cola, no encima: los trozos llegan más rápido de lo que se oyen.
-    const cuando = Math.max(this.salida.currentTime, this.siguiente);
-    nodo.start(cuando);
-    this.siguiente = cuando + trozo.duration;
-  }
-
-  transcribir(quien, texto) {
-    const donde = $("voz-transcripcion");
-    const ultimo = donde.lastElementChild;
-    if (ultimo && ultimo.dataset.quien === quien) {
-      ultimo.textContent += texto;
-    } else {
-      const linea = crear("div", "detalle", texto);
-      linea.dataset.quien = quien;
-      if (quien === "perseo") linea.style.color = "var(--texto)";
-      donde.appendChild(linea);
-    }
-    donde.scrollTop = donde.scrollHeight;
-  }
-
-  avisar(texto) { $("voz-aviso").textContent = texto; }
-
-  apagar(porSuCuenta = false) {
-    try { this.procesador?.disconnect(); } catch {}
-    try { this.fuente?.disconnect(); } catch {}
-    for (const pista of this.micro?.getTracks() ?? []) pista.stop();
-    try { this.entrada?.close(); } catch {}
-    try { this.salida?.close(); } catch {}
-    if (!porSuCuenta) { try { this.ws?.close(); } catch {} }
-    this.ws = null;
-    voz = null;
-    $("voz-boton").textContent = "Hablar";
-    $("voz-ondas").hidden = true;
-    if (porSuCuenta) this.avisar("Sesión terminada.");
-  }
-}
-
-function aBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  let binario = "";
-  // A cachos: `String.fromCharCode(...bytes)` con un buffer grande revienta la
-  // pila del intérprete, y aquí llegan trozos de 8 kB cada 250 ms.
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binario += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(binario);
-}
-
-function deBase64(base64) {
-  const binario = atob(base64);
-  const bytes = new Uint8Array(binario.length);
-  for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
-  return bytes;
-}
-
-$("voz-boton").addEventListener("click", async () => {
-  if (voz) { voz.apagar(); return; }
-
-  const boton = $("voz-boton");
-  boton.textContent = "Conectando…";
-  $("voz-aviso").textContent = "";
-  const sesion = new VozEnVivo();
-  try {
-    await sesion.encender();
-    voz = sesion;
-    boton.textContent = "Parar";
-    $("voz-ondas").hidden = false;
-  } catch (e) {
-    sesion.apagar();
-    $("voz-aviso").textContent = e.message ?? String(e);
-    boton.textContent = "Hablar";
-  }
-});
 
 // --------------------------------------------------------------------- //
 // Flujo de eventos

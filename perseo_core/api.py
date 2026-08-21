@@ -463,37 +463,13 @@ async def _marcar_correo(peticion: web.Request) -> web.Response:
     return web.json_response(marcado)
 
 
-#: Lo que usa la app de escritorio para hablar. El móvil se conecta al mismo
-#: sitio: dos modelos distintos serían dos Perseos con la misma voz.
-MODELO_VOZ = "gemini-2.5-flash-native-audio-latest"
-VERSION_VOZ = "v1alpha"
-
-
-async def _clave_voz(peticion: web.Request) -> web.Response:
-    """La clave de Gemini, para que el móvil hable con el modelo directamente.
-
-    Sí, esto entrega una clave por la red, y conviene tener escrito por qué es
-    aceptable **aquí** y no en general:
-
-      * va detrás del token, igual que la cola y el vault;
-      * el núcleo solo escucha en el bucle local y en el tailnet, así que "la
-        red" son tus dispositivos;
-      * la alternativa —hacer de proxy del audio— pondría al núcleo a reenviar
-        dos flujos de sonido en tiempo real, y con eso la latencia deja de ser
-        la de una conversación.
-
-    Si algún día el núcleo se abre a algo que no sea el tailnet, esta ruta es la
-    primera que hay que quitar.
-    """
-    cfg = peticion.app[CLAVE_CFG]
-    if not cfg.gemini_clave:
-        raise web.HTTPServiceUnavailable(
-            text=json.dumps({"error": "No hay clave de Gemini configurada"}),
-            content_type="application/json",
-        )
-    return web.json_response(
-        {"clave": cfg.gemini_clave, "modelo": MODELO_VOZ, "version": VERSION_VOZ}
-    )
+# La ruta `/clave-voz` vivía aquí y se fue con la pestaña Voz del móvil
+# (T-9, 2026-08-21). Entregaba la clave de Gemini por la red para que el
+# navegador del teléfono hablara directamente con el modelo, y estaba escrito
+# que sería «la primera ruta que hay que quitar» el día que el núcleo se abriera
+# a algo que no fuese el tailnet. Se ha quitado antes: ya no la usa nadie, y una
+# clave que no se sirve no se puede filtrar. El modelo de voz lo elige la app de
+# escritorio, que lee su clave del disco por Rust.
 
 
 async def _listar_proyectos(peticion: web.Request) -> web.Response:
@@ -591,7 +567,6 @@ def crear_app(cfg: almacen.Configuracion, bus: Bus, router: Router) -> web.Appli
             web.post("/trabajos/{id}/{decision:aprobar|rechazar}", _responder_confirmacion),
             web.get("/correos", _listar_correos),
             web.post("/correos/{id}/estado", _marcar_correo),
-            web.get("/clave-voz", _clave_voz),
             web.get("/proyectos", _listar_proyectos),
             web.post("/proyectos/{id}/abrir", _abrir_proyecto),
             web.get("/confianza", _ver_confianza),
