@@ -15,10 +15,33 @@ es la que de verdad sostiene todo:
      proyectos de la lista, jamás qué ejecutar.
   2. **Nunca se invoca un shell.** Listas de argumentos, que el sistema no
      vuelve a parsear.
-  3. **Tres formas de abrir y ninguna más**: una carpeta en el explorador, una
-     URL http/https en el navegador, o un programa de la lista blanca del agente
-     `pc` con la carpeta del proyecto como argumento. Un `orden` libre no
-     existe, y no es un descuido: sería una shell remota con otro nombre.
+  3. **Cuatro formas de abrir y ninguna más**: una carpeta en el explorador, una
+     URL http/https en el navegador, un programa de la lista blanca del agente
+     `pc` con la carpeta del proyecto como argumento, o **el arranque que el
+     propio proyecto declare** (`modo: "arranque"`).
+
+ENMIENDA DEL 2026-08-21, PEDIDA POR EL SEÑOR PERSUS
+---------------------------------------------------
+Aquí ponía que un `orden` libre no existía y que no era un descuido, porque
+sería una shell remota con otro nombre. Sigue siendo verdad **de una orden que
+llegue por la petición**, y eso no ha cambiado ni va a cambiar. Lo que se añade
+es otra cosa: una orden que ya está **escrita en el fichero del disco**, junto al
+resto del proyecto, por la misma persona que podría abrir una terminal y
+escribirla a mano.
+
+La diferencia no es de matiz. Quien escribe `proyectos.json` está delante de la
+máquina; quien llega por HTTP manda un `id` y nada más. Si alguien puede escribir
+ese fichero, ya tiene la máquina — la shell remota se la daría el sistema
+operativo, no este módulo.
+
+Lo que **no** se relaja al añadirlo:
+
+  * `arranque` es una **lista de argumentos**, nunca una línea para un shell:
+    `["npm", "run", "dev"]`, no `"npm run dev"`. Sin `shell=True` en ninguna
+    parte, el sistema no vuelve a parsear nada.
+  * El programa tiene que **existir** al validar la lista, o la entrada se
+    descarta con un aviso como cualquier otra mal escrita.
+  * La `carpeta` desde la que se arranca tiene que ser una carpeta de verdad.
 
 Sin fichero no hay proyectos, y eso es un estado válido: el panel enseña cómo
 crearlo y no se rompe nada.
@@ -28,6 +51,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
 import subprocess
 import webbrowser
 from dataclasses import asdict, dataclass
@@ -40,8 +65,9 @@ logger = logging.getLogger(__name__)
 
 #: Cómo se abre un proyecto. `programa` se resuelve contra la lista blanca del
 #: agente `pc`, que es la misma lista que ya decide qué puede abrir Perseo por
-#: voz: dos listas distintas acabarían discrepando.
-MODOS = ("carpeta", "url", "programa")
+#: voz: dos listas distintas acabarían discrepando. `arranque` es el añadido del
+#: 2026-08-21: lo que el proyecto declare, en lista de argumentos y sin shell.
+MODOS = ("carpeta", "url", "programa", "arranque")
 
 NOMBRE_FICHERO = "proyectos.json"
 
@@ -55,8 +81,11 @@ class Proyecto:
     modo: str
     destino: str
     #: Para `modo == "programa"`: qué carpeta se le pasa como argumento.
+    #: Para `modo == "arranque"`: desde qué carpeta se arranca.
     carpeta: str = ""
     descripcion: str = ""
+    #: Solo para `modo == "arranque"`: la orden, ya troceada en argumentos.
+    arranque: tuple[str, ...] = ()
 
     def a_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -74,11 +103,16 @@ def _valido(crudo: dict[str, Any]) -> Proyecto | None:
     modo = str(crudo.get("modo", "")).strip().lower()
     destino = str(crudo.get("destino", "")).strip()
 
-    if not id_proyecto or not destino:
-        logger.warning("Proyecto sin id o sin destino en %s; se ignora.", NOMBRE_FICHERO)
+    if not id_proyecto:
+        logger.warning("Proyecto sin id en %s; se ignora.", NOMBRE_FICHERO)
         return None
     if modo not in MODOS:
         logger.warning("Proyecto %r con modo %r desconocido; se ignora.", id_proyecto, modo)
+        return None
+    # `arranque` es el único modo que no tiene destino: lo que se abre es la
+    # orden que trae, y pedirle además un destino sería pedir un dato de adorno.
+    if modo != "arranque" and not destino:
+        logger.warning("Proyecto %r sin destino; se ignora.", id_proyecto)
         return None
     if modo == "url" and not pc._es_url(destino):
         logger.warning("Proyecto %r: %r no es una URL http/https.", id_proyecto, destino)
@@ -89,6 +123,12 @@ def _valido(crudo: dict[str, Any]) -> Proyecto | None:
         )
         return None
 
+    arranque: tuple[str, ...] = ()
+    if modo == "arranque":
+        arranque = _arranque_valido(id_proyecto, crudo.get("arranque"))
+        if not arranque:
+            return None
+
     return Proyecto(
         id=id_proyecto,
         nombre=nombre,
@@ -96,7 +136,54 @@ def _valido(crudo: dict[str, Any]) -> Proyecto | None:
         destino=destino,
         carpeta=str(crudo.get("carpeta", "")).strip(),
         descripcion=str(crudo.get("descripcion", "")).strip(),
+        arranque=arranque,
     )
+
+
+def _arranque_valido(id_proyecto: str, crudo: Any) -> tuple[str, ...]:
+    """La orden de arranque, si está bien escrita. Vacía si no.
+
+    Se exige **lista**, y no una cadena, a propósito: `"npm run dev"` en una sola
+    pieza solo se puede ejecutar pasándoselo a un shell, y ahí es donde viven las
+    comillas, los `&&` y el resto de la familia. Troceada, `subprocess` la pasa
+    tal cual y el sistema no vuelve a leer nada.
+    """
+    if not isinstance(crudo, (list, tuple)) or not crudo:
+        logger.warning(
+            "Proyecto %r: 'arranque' tiene que ser una lista de argumentos, "
+            "como [\"npm\", \"run\", \"dev\"].",
+            id_proyecto,
+        )
+        return ()
+
+    argumentos = [str(pieza).strip() for pieza in crudo]
+    if not all(argumentos):
+        logger.warning("Proyecto %r: 'arranque' tiene un argumento vacío.", id_proyecto)
+        return ()
+
+    if _resolver_programa(argumentos[0]) is None:
+        # Igual que una carpeta que ya no existe: se descarta la entrada y se
+        # dice, en vez de dejarla en la lista para que falle al pulsarla.
+        logger.warning(
+            "Proyecto %r: no se encuentra el programa %r del arranque.",
+            id_proyecto,
+            argumentos[0],
+        )
+        return ()
+
+    return tuple(argumentos)
+
+
+def _resolver_programa(programa: str) -> str | None:
+    """Dónde está el ejecutable, o `None` si no está.
+
+    Vale una ruta absoluta o un nombre que esté en el PATH. `shutil.which` es lo
+    que resuelve también los `.cmd` y `.bat` de Windows, que es como se instalan
+    `npm` y compañía: sin esto, `npm` no se encontraría nunca en esta máquina.
+    """
+    if os.path.isabs(programa):
+        return programa if os.path.isfile(programa) else None
+    return shutil.which(programa)
 
 
 def listar(directorio_datos: Path) -> list[Proyecto]:
@@ -144,6 +231,9 @@ def abrir(directorio_datos: Path, id_proyecto: str) -> str:
             subprocess.Popen(["explorer.exe", str(carpeta)])
             return f"Éxito: abierta la carpeta de {proyecto.nombre}."
 
+        if proyecto.modo == "arranque":
+            return _arrancar(proyecto)
+
         tipo, objetivo = pc.APLICACIONES_PERMITIDAS[proyecto.destino.lower()]
         if tipo != "exe":
             return f"Error: '{proyecto.destino}' no se puede abrir con una carpeta dentro."
@@ -159,3 +249,36 @@ def abrir(directorio_datos: Path, id_proyecto: str) -> str:
     except OSError as e:
         logger.error("No se pudo abrir el proyecto %s: %s", id_proyecto, e)
         return f"Error: no se pudo abrir '{proyecto.nombre}': {e}"
+
+
+def _arrancar(proyecto: Proyecto) -> str:
+    """Lanza el arranque declarado por el proyecto y se desentiende.
+
+    No se espera a que termine ni se lee su salida: lo que se arranca aquí es un
+    servidor de desarrollo o un editor, cosas que duran horas. Lo que se contesta
+    es que se ha lanzado, que es lo único que se puede saber en ese momento.
+    """
+    carpeta = Path(proyecto.carpeta) if proyecto.carpeta else None
+    if carpeta is not None and not carpeta.is_dir():
+        return f"Error: la carpeta de '{proyecto.nombre}' ya no existe: {carpeta}"
+
+    programa = _resolver_programa(proyecto.arranque[0])
+    if programa is None:
+        return f"Error: ya no se encuentra '{proyecto.arranque[0]}' en esta máquina."
+
+    argumentos = [programa, *proyecto.arranque[1:]]
+
+    # Sin ventana negra: esto lo lanza el núcleo, que no tiene consola, y una
+    # consola huérfana se queda ahí hasta que alguien la cierra.
+    banderas = 0
+    if os.name == "nt":
+        banderas = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+
+    subprocess.Popen(
+        argumentos,
+        cwd=str(carpeta) if carpeta is not None else None,
+        creationflags=banderas,
+        close_fds=True,
+    )
+    orden = " ".join(proyecto.arranque)
+    return f"Éxito: arrancado {proyecto.nombre} con «{orden}»."

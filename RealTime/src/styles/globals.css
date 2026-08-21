@@ -752,3 +752,104 @@ html, body, #root {
 }
 .pnl-burbuja.mia { align-self: flex-end; background: var(--fg); color: var(--bg); font-weight: 400; }
 .pnl-burbuja.suya { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); }
+
+
+/* ── La tira de proyectos (T-5, 2026-08-21) ─────────────────────────────────
+   Vive encima de la barra de controles y debajo de la cara: lo que no se está
+   usando no ocupa sitio, y a Perseo no se le tapa nunca. La capa de fondo no
+   pinta nada —ni un velo— porque detrás hay una llamada en curso que se sigue
+   mirando; solo recoge el clic que cierra. */
+.proyectos-capa {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 116px;
+}
+
+.proyectos-tira-marco {
+  width: min(980px, 92%);
+  /* Los bordes se desvanecen en vez de cortarse: es lo que dice que la tira
+     sigue habiendo más allá, sin pintar una flecha ni una barra. */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+  animation: fade-up 0.28s ease;
+}
+
+.proyectos-tira {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 6px 24px 10px;
+  scroll-behavior: smooth;
+  cursor: grab;
+  /* Sin barra a la vista: se arrastra, se gira la rueda o se usan las flechas. */
+  scrollbar-width: none;
+}
+
+.proyectos-tira::-webkit-scrollbar { display: none; }
+.proyectos-tira:active { cursor: grabbing; }
+.proyectos-tira:focus-visible { outline: none; }
+
+.proyecto-ficha {
+  flex: 0 0 auto;
+  width: 190px;
+  min-height: 104px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+  /* Que arrastrar la tira no seleccione el texto de las tarjetas por el camino. */
+  user-select: none;
+}
+
+.proyecto-ficha:hover {
+  background: var(--surface-hover);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-3px);
+}
+
+.proyecto-ficha.arrancando { border-color: rgba(255, 255, 255, 0.45); }
+.proyecto-ficha.hecho { border-color: rgba(255, 255, 255, 0.6); }
+.proyecto-ficha.con-fallo { border-color: rgba(255, 255, 255, 0.6); border-style: dashed; }
+
+.proyecto-icono { display: flex; opacity: 0.75; }
+.proyecto-icono svg { width: 20px; height: 20px; }
+
+.proyecto-nombre {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  /* Un nombre largo no puede ensanchar la tarjeta ni partir la tira. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.proyecto-detalle {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fg-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.proyectos-vacio {
+  padding: 18px 14px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}

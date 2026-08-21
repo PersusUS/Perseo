@@ -254,34 +254,6 @@ const Maquina: React.FC<{ m: any }> = ({ m }) => (
   </div>
 );
 
-/** Los otros proyectos. La lista sale de un fichero del disco: desde aquí se
- *  manda cuál abrir, nunca qué ejecutar. */
-const Proyectos: React.FC<{
-  lista: any[];
-  fichero: string;
-  onAbrir: (id: string) => void;
-}> = ({ lista, fichero, onAbrir }) => (
-  <div className="pnl-tarjeta">
-    <div className="pnl-cabeza">Proyectos</div>
-    {lista.length ? (
-      <div className="pnl-fichas" style={{ marginTop: 9 }}>
-        {lista.map(p => (
-          <button
-            key={p.id}
-            className="pnl-filtro"
-            title={p.descripcion || p.destino}
-            onClick={() => onAbrir(p.id)}
-          >
-            {p.nombre}
-          </button>
-        ))}
-      </div>
-    ) : (
-      <div className="pnl-motivo">Ninguno declarado. Se añaden en {fichero}</div>
-    )}
-  </div>
-);
-
 /** Una nota del vault. El contenido se pide solo al desplegarla: una búsqueda
  *  devuelve diez, y traerlas enteras para leer una es tirar el trabajo. */
 const NotaVault: React.FC<{ n: any }> = ({ n }) => {
@@ -398,8 +370,6 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
   const [textoNota, setTextoNota] = useState('');
   const [notas, setNotas] = useState<any[] | null>(null);
   const [marcados, setMarcados] = useState<Record<string, string>>({});
-  const [proyectos, setProyectos] = useState<any[]>([]);
-  const [ficheroProyectos, setFicheroProyectos] = useState('');
   const [avisoMemoria, setAvisoMemoria] = useState('');
   const trabajando = useRef(false);
 
@@ -435,21 +405,10 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
     }
   }, []);
 
-  const abrirProyecto = async (id: string) => {
-    try {
-      await invoke('panel_abrir_proyecto', { id });
-    } catch (e: any) {
-      setFallo(String(e));
-    }
-  };
-
-  useEffect(() => {
-    // La lista de proyectos sale de un fichero que casi nunca cambia: se pide
-    // al abrir el panel y no en cada refresco.
-    invoke<{ proyectos: any[]; fichero: string }>('panel_proyectos')
-      .then(d => { setProyectos(d.proyectos ?? []); setFicheroProyectos(d.fichero ?? ''); })
-      .catch(() => setProyectos([]));
-  }, []);
+  // Los proyectos vivían aquí, en una tarjeta de la pestaña Estado, y desde el
+  // 2026-08-21 viven en la pantalla de la llamada (T-4 y T-5): un lanzador
+  // deslizable en `components/Proyectos.tsx`. El panel es para mirar lo que
+  // pasa; lanzar cosas se hace donde se está mirando.
 
   useEffect(() => {
     cargarTrabajos();
@@ -767,7 +726,6 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
 
             <Presencia p={estado.presencia ?? {}} />
             {estado.maquina?.disponible && <Maquina m={estado.maquina} />}
-            <Proyectos lista={proyectos} fichero={ficheroProyectos} onAbrir={abrirProyecto} />
 
             <div className="pnl-tarjeta pnl-piezas">
               {estado.piezas.map(p => (

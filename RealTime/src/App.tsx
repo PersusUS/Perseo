@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { PerseoFace } from './components/PerseoFace';
 import { Settings } from './components/Settings';
 import { Panel } from './components/Panel';
+import { Proyectos } from './components/Proyectos';
 import { geminiClient } from './lib/gemini-live';
 import { audioManager } from './lib/audio-manager';
 import { audioPlayer } from './lib/audio-player';
@@ -51,6 +52,12 @@ const IconPanel = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
 );
 
+// Cohete: la tira de proyectos, en la propia pantalla de la llamada. Ver
+// components/Proyectos.tsx.
+const IconProyectos = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 13c-1.5 1.5-2 5-2 5s3.5-.5 5-2"></path><path d="M12 15 9 12c0-5 3-9 9-10 1 6-3 9-6 13Z"></path><path d="m9 12-3-1c1-2 3-3 5-3"></path><path d="m12 15 1 3c2 0 3-2 3-4"></path></svg>
+);
+
 // ── Types ──
 // `abierto` marca un mensaje que aún está recibiendo fragmentos de transcripción.
 type TranscriptMsg = { id: string; text: string; type: 'ai' | 'user' | 'system'; abierto?: boolean };
@@ -77,6 +84,7 @@ function App() {
   // El panel es una vista de esta misma ventana, no otra ventana: ver
   // src-tauri/src/panel.rs para por qué no puede ser la interfaz del núcleo.
   const [showPanel, setShowPanel] = useState(false);
+  const [showProyectos, setShowProyectos] = useState(false);
   // Lo que Perseo ha pedido hacer y está parado esperando un sí. Ver H-51: la
   // pregunta vivía solo en el panel, que en mitad de una llamada nadie mira.
   const [pendientes, setPendientes] = useState<{ id: number; pregunta: string }[]>([]);
@@ -419,6 +427,10 @@ function App() {
         ))}
       </div>
 
+      {/* La tira de proyectos. Se despliega sobre la barra de controles y no
+          toca la llamada: abrir un proyecto no corta la sesión de voz. */}
+      <Proyectos abierto={showProyectos} onCerrar={() => setShowProyectos(false)} />
+
       {/* Controls */}
       <div className="controls-bar">
         {isActive && (
@@ -434,6 +446,14 @@ function App() {
             </button>
           </>
         )}
+
+        <button
+          className={`ctrl-btn ${showProyectos ? 'active' : ''}`}
+          onClick={() => setShowProyectos(v => !v)}
+          title="Proyectos"
+        >
+          <IconProyectos />
+        </button>
 
         {!isActive ? (
           <button className="ctrl-btn call-btn" onClick={handleCall} title="Llamar">
