@@ -1,6 +1,12 @@
 sounddevice
 numpy
 scipy
+# La palabra clave, motor por defecto: se transcribe con Google y se busca
+# «Perseo» en el texto. Es lo unico que reconoce la palabra de verdad; el modelo
+# local de abajo responde a «hey jarvis» hasta que exista perseo.onnx.
+SpeechRecognition
+
+# El otro motor de la palabra clave, en local y sin red (PERSEO_PALABRA_MOTOR=local).
 openwakeword>=0.6.0
 onnxruntime
 pygame

@@ -8,7 +8,7 @@ import threading
 import pygame
 
 import presencia
-from palabra_clave import DetectorPalabra
+from palabra_clave import crear_detector
 
 # Inicializamos el mixer de Pygame silenciosamente
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
@@ -31,14 +31,17 @@ COOLDOWN = 15.0       # Aumentado el cooldown a 15 segundos para bloquear gatill
 # 44.1 kHz es lo más compatible en Windows, y THRESHOLD está calibrado a esta
 # frecuencia: la norma que decide si un ruido es un aplauso depende del tamaño de
 # bloque, y el tamaño de bloque depende del samplerate. Cambiar este número
-# descalibra el detector de aplausos aunque no lo parezca. openWakeWord necesita
-# 16 kHz, pero eso se resuelve remuestreando en palabra_clave.py, no aquí.
+# descalibra el detector de aplausos aunque no lo parezca. El motor local necesita
+# 16 kHz, pero eso se resuelve remuestreando en palabra_clave.py, no aquí; a Google
+# se le manda tal cual, que acepta 44.100.
 SAMPLERATE = 44100
 VOICE_SECONDS = 3.0  # Cuánto se graba tras el doble aplauso para buscar la palabra
 
-# El modelo tarda cerca de un segundo en cargar, y ese segundo no puede caer
-# entre el aplauso y la respuesta: se construye una vez y se precarga al arrancar.
-detector_palabra = DetectorPalabra()
+# El detector se construye una vez y se precarga al arrancar: con el motor local
+# el modelo tarda cerca de un segundo en cargar, y ese segundo no puede caer entre
+# el aplauso y la respuesta. Cuál de los dos motores sale de PERSEO_PALABRA_MOTOR;
+# el de por defecto es Google, que es el único que reconoce «Perseo».
+detector_palabra = crear_detector()
 
 # Variables de estado
 lap_count = 0
@@ -241,7 +244,7 @@ def audio_callback(indata, frames, time_info, status):
 def process_voice_buffer():
     global voice_buffer, last_trigger_time
 
-    print("    [~] Escuchando la palabra clave (openWakeWord, en local)...")
+    print(f"    [~] Escuchando la palabra clave ({detector_palabra.descripcion()})...")
 
     try:
         arranque = time.time()
@@ -253,15 +256,19 @@ def process_voice_buffer():
             last_trigger_time = time.time()
             trigger_action()
         else:
+            # Lo que se entendió, si el motor sabe decirlo: "no se dijo la palabra"
+            # no ayuda a nadie, y "oí «apaga la luz»" explica la vez que no salta.
+            oido = getattr(detector_palabra, "ultimo_texto", "")
+            detalle = f'se oyó «{oido}»' if oido else f"{puntuacion:.2f} por debajo de {detector_palabra.puntuacion_minima:.2f}"
             print(f"    [x] Secuencia anulada: no se dijo la palabra clave "
-                  f"({puntuacion:.2f} por debajo de {detector_palabra.puntuacion_minima:.2f}, "
-                  f"{tardanza:.0f} ms). Volviendo a escuchar aplausos...")
+                  f"({detalle}, {tardanza:.0f} ms). Volviendo a escuchar aplausos...")
 
     except Exception as error:
-        # Aquí caben un modelo que no carga, un .onnx corrupto o un fallo del
-        # remuestreo. Cualquiera de los tres deja el detector sin palabra clave,
-        # así que se dice en voz alta en vez de tragárselo: un fallo silencioso
-        # aquí se ve desde fuera como "Perseo ha dejado de responder".
+        # Aquí caben la red caída con el motor de Google, un modelo que no carga
+        # con el local, y un fallo del remuestreo con cualquiera de los dos. Los
+        # tres dejan al detector sin palabra clave, así que se dice en voz alta en
+        # vez de tragárselo: un fallo silencioso aquí se ve desde fuera como
+        # "Perseo ha dejado de responder".
         print(f"    [!] No se pudo comprobar la palabra clave: {error}")
 
     print("----------------------------------------")
@@ -278,12 +285,12 @@ def start_listening():
     try:
         arranque = time.time()
         detector_palabra.cargar()
-        print(f"- Palabra clave en local: {detector_palabra.descripcion()} "
+        print(f"- Palabra clave: {detector_palabra.descripcion()} "
               f"({(time.time() - arranque) * 1000:.0f} ms)")
     except Exception as e:
         # No se sale: los aplausos siguen funcionando y el fallo se vuelve a
         # intentar en cada activación, que es donde se explica con detalle.
-        print(f"[-] No se pudo cargar el modelo de la palabra clave: {e}")
+        print(f"[-] No se pudo preparar la palabra clave: {e}")
         print("    El detector sigue en pie, pero no reconocerá la palabra.")
 
     print("- Esperando doble aplauso...")

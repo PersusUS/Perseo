@@ -6,14 +6,18 @@ la voz la pone Windows: SAPI sintetiza la frase a un WAV de 44.100 Hz —la mism
 frecuencia a la que graba el detector— y ese WAV recorre exactamente el camino
 del audio de verdad, remuestreo incluido.
 
-No hace falta red, ni micrófono, ni tocar nada del estado real: todo se escribe
-en un directorio temporal que se borra al terminar.
+Se comprueban **los dos motores**:
+
+* **Google**, que es el de por defecto y el único que reconoce «Perseo». Este sí
+  necesita red: si no hay, se dice y se sigue.
+* **openWakeWord**, en local. Con el modelo de repuesto ('hey jarvis') la frase
+  de prueba es la suya y se dice en inglés; con `perseo.onnx`, «Perseo» en
+  español. Ver commands/modelos/README.md.
+
+No hace falta micrófono ni tocar nada del estado real: todo se escribe en un
+directorio temporal que se borra al terminar.
 
     python commands/verificar_palabra_clave.py
-
-Si está cargado el modelo de repuesto ('hey jarvis'), la frase de prueba es la
-suya y se dice en inglés. Con el modelo propio de Perseo, se prueba con "Perseo"
-en español. Ver commands/modelos/README.md.
 """
 
 import os
@@ -31,7 +35,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from palabra_clave import (  # noqa: E402
     FRECUENCIA_MODELO,
     MODELO_PUENTE,
+    VARIANTES,
+    DetectorGoogle,
     DetectorPalabra,
+    dijo_la_palabra,
     remuestrear,
 )
 
@@ -126,8 +133,80 @@ def probar_remuestreo():
     )
 
 
+def probar_texto():
+    """Qué transcripción despierta a Perseo. Ni red ni audio: solo la decisión."""
+    print("\n-- La palabra dentro del texto --\n")
+
+    for texto in ("Perseo", "perseo", "Perséo", "oye Perseo, enciende la luz"):
+        comprobar(dijo_la_palabra(texto), f"«{texto}» despierta a Perseo")
+
+    for texto in ("apaga la luz del salón", "percusión", ""):
+        etiqueta = texto or "(nada)"
+        comprobar(not dijo_la_palabra(texto), f"«{etiqueta}» no lo despierta")
+
+    comprobar(
+        "perseo" in VARIANTES,
+        "El nombre de verdad está entre las variantes",
+        ", ".join(VARIANTES),
+    )
+
+
+def probar_google(directorio):
+    """El motor de por defecto, contra la API de verdad. Necesita red."""
+    print("\n-- Decisión de Google Speech (el motor de por defecto) --\n")
+
+    detector = DetectorGoogle()
+    try:
+        detector.cargar()
+    except Exception as e:
+        comprobar(False, "La librería de reconocimiento está", str(e))
+        return
+    comprobar(True, "La librería de reconocimiento está", detector.descripcion())
+
+    ruta = os.path.join(directorio, "google.wav")
+    if not sintetizar("Perseo", "Microsoft Helena Desktop", ruta):
+        comprobar(False, "Decir «Perseo» sí lo despierta", "SAPI no generó el audio")
+        return
+
+    muestras, frecuencia = leer_wav(ruta)
+    arranque = time.time()
+    try:
+        dijo, _ = detector.escuchar(muestras, frecuencia)
+    except Exception as e:
+        # Sin red no hay palabra clave, y es un estado que hay que poder
+        # distinguir de un fallo del código: se dice y no se cuenta como rojo.
+        print(f"[i] Sin red o Google no contesta ({e}). El motor de Google no se pudo probar.")
+        print("    Con `PERSEO_PALABRA_MOTOR=local` la palabra clave funciona sin red,")
+        print("    pero responde a «hey jarvis» hasta que exista perseo.onnx.")
+        return
+    tardanza = (time.time() - arranque) * 1000
+    comprobar(dijo, "Decir «Perseo» sí lo despierta", f"se oyó «{detector.ultimo_texto}», {tardanza:.0f} ms")
+
+    ruta_otra = os.path.join(directorio, "google_otra.wav")
+    if sintetizar("apaga la luz del salón", "Microsoft Helena Desktop", ruta_otra):
+        muestras, frecuencia = leer_wav(ruta_otra)
+        try:
+            dijo, _ = detector.escuchar(muestras, frecuencia)
+        except Exception as e:
+            print(f"[i] Sin red para la segunda frase ({e}).")
+            return
+        comprobar(
+            not dijo,
+            "Decir otra cosa no lo despierta",
+            f"se oyó «{detector.ultimo_texto}»",
+        )
+
+    silencio = np.zeros(int(FRECUENCIA_MICROFONO * 3), dtype=np.float32)
+    try:
+        dijo, _ = detector.escuchar(silencio, FRECUENCIA_MICROFONO)
+    except Exception as e:
+        print(f"[i] Sin red para el silencio ({e}).")
+        return
+    comprobar(not dijo, "El silencio no despierta a Perseo")
+
+
 def probar_deteccion(directorio):
-    print("\n-- Decisión de openWakeWord --\n")
+    print("\n-- Decisión de openWakeWord (el motor local, PERSEO_PALABRA_MOTOR=local) --\n")
 
     detector = DetectorPalabra()
     arranque = time.time()
@@ -158,13 +237,20 @@ def probar_deteccion(directorio):
     ruta_frase = os.path.join(directorio, "clave.wav")
     if sintetizar(frase, voz, ruta_frase):
         muestras, frecuencia = leer_wav(ruta_frase)
-        arranque = time.time()
         dijo, puntuacion = detector.escuchar(muestras, frecuencia)
-        tardanza = (time.time() - arranque) * 1000
         comprobar(dijo, f"Decir «{frase}» sí lo despierta", f"{puntuacion:.4f}")
-        # La decisión sustituye a una petición a Google que tardaba entre uno y
-        # tres segundos. Si esto no baja de medio segundo, no hemos ganado nada.
-        comprobar(tardanza < 500, "Y la decisión es más rápida que la red", f"{tardanza:.0f} ms")
+
+        # La segunda vez, no la primera: la primera paga la puesta en marcha del
+        # extractor y no se parece a lo que se vive aplaudiendo dos veces.
+        arranque = time.time()
+        detector.escuchar(muestras, frecuencia)
+        tardanza = (time.time() - arranque) * 1000
+        # El listón ya no es "más rápido que la red": Google contesta en medio
+        # segundo largo, así que la velocidad dejó de ser el motivo para elegir
+        # el motor local. Los motivos son que funciona sin red y que no sale del
+        # portátil. Lo que sí se comprueba es que no cueste segundos, porque eso
+        # sí se nota entre el aplauso y la respuesta.
+        comprobar(tardanza < 1000, "Y la decisión no cuesta segundos", f"{tardanza:.0f} ms")
     else:
         comprobar(False, f"Decir «{frase}» sí lo despierta", "SAPI no generó el audio")
 
@@ -194,12 +280,14 @@ def probar_deteccion(directorio):
 
 def main():
     print("=" * 60)
-    print(" Verificación de la palabra clave (openWakeWord, sin micrófono)")
+    print(" Verificación de la palabra clave (los dos motores, sin micrófono)")
     print("=" * 60)
 
     directorio = tempfile.mkdtemp(prefix="perseo_palabra_")
     try:
+        probar_texto()
         probar_remuestreo()
+        probar_google(directorio)
         probar_deteccion(directorio)
     finally:
         shutil.rmtree(directorio, ignore_errors=True)
