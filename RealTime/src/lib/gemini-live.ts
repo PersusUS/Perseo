@@ -9,6 +9,19 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { defaultConfig } from './config';
 import { audioPlayer } from './audio-player';
+import {
+  ACCIONES_DE_RATON,
+  ACCIONES_PC,
+  GeometriaPantalla,
+  traducirParametroDeRaton,
+} from './coordenadas';
+import {
+  avisoDeEspera,
+  CierreConexion,
+  MS_SESION_ESTABLE,
+  MS_TOPE_CONEXION,
+  planificarReintento,
+} from './reconexion';
 
 /**
  * Modelo de la Fase C. Se baja del 3.1 a propósito: el 3.1 **no soporta audio
@@ -45,15 +58,6 @@ const PLANIFICACION: Record<string, FunctionResponseScheduling> = {
   controlar_pc: FunctionResponseScheduling.WHEN_IDLE,
 };
 
-/**
- * Tope de la espera entre reintentos. Antes había un tope de **intentos** (tres,
- * siete segundos en total) y al agotarlos la app se quedaba en `error` para
- * siempre: un wifi que se cae diez segundos dejaba a Perseo mudo hasta que
- * alguien lo tocaba a mano. Para algo que vive en la bandeja del sistema eso no
- * vale — se reintenta siempre, cada vez más despacio, hasta este techo.
- */
-const ESPERA_MAXIMA_RECONEXION = 30_000;
-
 export class GeminiLiveClient {
   private ai: GoogleGenAI | null = null;
   private session: any = null;
@@ -62,11 +66,29 @@ export class GeminiLiveClient {
   public onTranscript: (rol: 'ai' | 'user', delta: string, final: boolean) => void = () => {};
   public onConnectionStateChange: (state: string) => void = () => {};
   public onError: (msg: string) => void = () => {};
+  /** Un trabajo que paró a pedir un sí. Durante una llamada la pregunta vivía
+   *  solo en el panel y en Telegram, así que la acción no pasaba y el modelo se
+   *  quedaba diciendo «no parece que haya funcionado». Ver H-51. */
+  public onAprobacionPendiente: (id: number, pregunta: string) => void = () => {};
   public getConversationHistory: () => string = () => "";
+  /**
+   * Intentos seguidos **sin una sesión estable**. No se reinicia al abrir el
+   * socket —eso era el bucle de H-49— sino cuando una llamada aguanta
+   * `MS_SESION_ESTABLE` viva.
+   */
   private retryCount = 0;
   private reconnectTimeout: number | null = null;
+  /** Cuenta atrás hasta declarar buena la sesión y perdonar los intentos. */
+  private temporizadorEstable: number | null = null;
+  /** Cuenta atrás de la propia conexión: sin esto, un `connect()` que no
+   *  contesta deja la app en «Conectando…» y sin nadie que reintente. */
+  private temporizadorConexion: number | null = null;
   /** Con qué clave se construyó `ai`, para rehacerlo si cambia en ⚙. */
   private claveDelCliente = '';
+  /** Cuánto mide la imagen que ve el modelo y cuánto la pantalla de verdad.
+   *  Se pregunta una vez: cambiar de resolución a mitad de llamada es raro, y
+   *  preguntarlo en cada clic añadiría un viaje a Rust por clic. */
+  private geometria: GeometriaPantalla | null = null;
 
   private isConnecting = false;
   private isManualDisconnect = false;
@@ -110,12 +132,21 @@ export class GeminiLiveClient {
     }
 
     if (this.isConnecting) {
-      console.warn('[Gemini] Ya hay un intento de conexión en curso, ignorando...');
+      // Volver aquí sin más dejaba la app muerta: si quien llamaba era el
+      // temporizador de reconexión, nadie volvía a intentarlo y la cabecera se
+      // quedaba en «Conectando…» para siempre. Se reprograma en vez de
+      // abandonar; el `clearTimeout` de dentro impide que se apilen.
+      console.warn('[Gemini] Ya hay un intento de conexión en curso; se reprograma.');
+      this.programarIntento(5_000);
       return;
     }
 
     this.isConnecting = true;
     this.onConnectionStateChange('connecting');
+
+    // Un `live.connect()` que ni resuelve ni falla deja `isConnecting` puesto
+    // para siempre, y con él la app en «Conectando…». Se le pone plazo.
+    this.armarTopeDeConexion();
 
     // Se comprueba el núcleo en paralelo a la conexión: si está apagado o el
     // token ya no vale, interesa saberlo ahora y no a mitad de una frase, que es
@@ -231,11 +262,18 @@ export class GeminiLiveClient {
                   properties: {
                     accion: {
                       type: Type.STRING,
-                      description: "La acción a realizar. Valores permitidos: 'abrir_app', 'escribir_teclado', 'atajo_teclado', 'volumen', 'mover_raton', 'click_raton', 'buscar_youtube'"
+                      // Con la lista solo escrita en la descripción, el modelo
+                      // mandó `accion: "controlar_pc"` —el nombre de la propia
+                      // herramienta— en una llamada del 2026-08-17: el núcleo lo
+                      // trató como acción desconocida, o sea irreversible, y el
+                      // trabajo se quedó esperando un sí que nadie vio. Con
+                      // `enum` el servidor ya no deja inventarse valores.
+                      enum: ACCIONES_PC,
+                      description: "La acción a realizar."
                     },
                     parametro: {
                       type: Type.STRING,
-                      description: "El ejecutable, URL, texto exacto a teclear, atajo, volumen, coordenadas X,Y, clic o el término exacto de búsqueda para Youtube (ej. 'Mozart Requiem'). Para 'click_raton' hacen falta las coordenadas ('300,450' o 'derecho 300,450'): no ves la pantalla, así que no puedes saber dónde está lo que quieres clicar, y un clic sin coordenadas cae donde el usuario tenga el ratón. Si no sabes las coordenadas, dilo y pide que te las indiquen en vez de clicar."
+                      description: "El ejecutable, URL, texto exacto a teclear, atajo, volumen, coordenadas X,Y, clic o el término exacto de búsqueda para Youtube (ej. 'Mozart Requiem'). Para 'click_raton' y 'mover_raton' hacen falta coordenadas ('300,450' o 'derecho 300,450'), y van **sobre la imagen de la pantalla que estás viendo**, en el sistema normalizado de 0 a 1000 que usas para señalar: 0,0 es la esquina superior izquierda y 1000,1000 la inferior derecha. Se traducen solas a píxeles. Si el señor Persus NO está compartiendo la pantalla no puedes saber dónde está nada: dilo y pídele que la comparta, en vez de inventar un punto. Un clic sin coordenadas cae donde el usuario tenga el ratón, así que se rechaza."
                     }
                   },
                   required: ["accion", "parametro"]
@@ -261,18 +299,27 @@ export class GeminiLiveClient {
           onopen: () => {
             console.log('[Gemini] WebSocket connection established');
             this.isConnecting = false;
+            this.limpiarTopeDeConexion();
+            // Abrir no es sobrevivir. El contador de intentos se perdona solo
+            // cuando la llamada aguanta de verdad; si el servidor la echa antes,
+            // la espera siguiente sube en vez de quedarse en un segundo.
+            this.armarSesionEstable();
             this.onConnectionStateChange('connected');
           },
           onmessage: (message: any) => this.handleMessage(message),
           onerror: (error: any) => {
             console.error('[Gemini] WebSocket Error:', error);
             this.isConnecting = false;
+            this.limpiarTopeDeConexion();
+            this.limpiarSesionEstable();
             this.onError(`Se perdió la conexión con el servidor: ${error.message || 'Error desconocido'}`);
             this.onConnectionStateChange('error');
           },
           onclose: (event: any) => {
             console.log('[Gemini] WebSocket Closed:', event);
             this.isConnecting = false;
+            this.limpiarTopeDeConexion();
+            this.limpiarSesionEstable();
 
             // Un testigo de sesión caducado no da error: el servidor cierra con
             // 1007 «Invalid session handle» y nada más. Como el testigo se
@@ -300,42 +347,104 @@ export class GeminiLiveClient {
               // Sin memoria de la sesión anterior, pero conectando: se reintenta
               // ya, no dentro de la espera larga que tocaría por los fallos.
               this.retryCount = 0;
+            } else if (this.testigoSesion && this.retryCount >= 1) {
+              // El servidor no siempre dice que el testigo es el problema: puede
+              // aceptar la sesión y cerrarla acto seguido. Dos intentos seguidos
+              // que ni llegan a estables con el mismo testigo puesto bastan para
+              // sospechar de él, y una llamada sin memoria vale infinitamente
+              // más que una llamada que no conecta.
+              console.warn('[Gemini] Dos sesiones cortas seguidas con testigo; se descarta.');
+              this.testigoSesion = null;
+              localStorage.removeItem(CLAVE_TESTIGO);
             }
 
             if (!this.isManualDisconnect) {
-                this.handleReconnect();
+                this.handleReconnect({ codigo: event?.code, motivo });
             }
           }
         }
       });
-      this.retryCount = 0;
     } catch (e: any) {
       console.error('[Gemini] Connection failed:', e);
       this.isConnecting = false;
+      this.limpiarTopeDeConexion();
       this.onError(`Error al conectar con Gemini: ${e.message || 'Fallo de red'}`);
-      this.handleReconnect();
+      this.handleReconnect({ motivo: String(e?.message ?? e) });
     }
   }
 
-  private handleReconnect() {
+  /**
+   * Da por buena la sesión cuando lleva viva `MS_SESION_ESTABLE`.
+   *
+   * Aquí estaba el fallo de H-49: el contador se ponía a cero en cuanto el
+   * socket abría, así que una sesión que el servidor cerraba un segundo después
+   * dejaba la espera del reintento en `2^0` = 1 s, indefinidamente. Un intento
+   * por segundo contra la API, que es justo lo que provoca el `1011` del que
+   * intentaba recuperarse.
+   */
+  private armarSesionEstable() {
+    this.limpiarSesionEstable();
+    this.temporizadorEstable = window.setTimeout(() => {
+      this.retryCount = 0;
+      this.temporizadorEstable = null;
+    }, MS_SESION_ESTABLE);
+  }
+
+  private limpiarSesionEstable() {
+    if (this.temporizadorEstable) {
+      clearTimeout(this.temporizadorEstable);
+      this.temporizadorEstable = null;
+    }
+  }
+
+  private armarTopeDeConexion() {
+    this.limpiarTopeDeConexion();
+    this.temporizadorConexion = window.setTimeout(() => {
+      this.temporizadorConexion = null;
+      if (!this.isConnecting) return;
+      console.warn('[Gemini] La conexión no contestó a tiempo; se reintenta.');
+      this.isConnecting = false;
+      try {
+        if (this.session && typeof this.session.close === 'function') this.session.close();
+      } catch (e) {}
+      this.onError('Gemini no contestó al conectar.');
+      if (!this.isManualDisconnect) this.handleReconnect({ motivo: 'sin respuesta al conectar' });
+    }, MS_TOPE_CONEXION);
+  }
+
+  private limpiarTopeDeConexion() {
+    if (this.temporizadorConexion) {
+      clearTimeout(this.temporizadorConexion);
+      this.temporizadorConexion = null;
+    }
+  }
+
+  private handleReconnect(cierre: CierreConexion = {}) {
     this.session = null;
     this.onConnectionStateChange('disconnected');
 
     // Sin tope de intentos: el techo está en la espera, no en el número. Una
     // caída de red se arregla sola cuando vuelve, tarde lo que tarde, y sin
-    // esto Perseo se quedaba mudo hasta que alguien abría la ventana.
-    const timeoutMs = Math.min(
-      Math.pow(2, this.retryCount) * 1000,
-      ESPERA_MAXIMA_RECONEXION
-    );
-    console.log(`[Gemini] Reintento ${this.retryCount + 1} en ${timeoutMs} ms...`);
+    // esto Perseo se quedaba mudo hasta que alguien abría la ventana. Lo que sí
+    // cambia según el motivo es cuánto se espera: ante un límite del servidor,
+    // reintentar rápido es alimentar el problema.
+    const plan = planificarReintento(this.retryCount, cierre);
+    console.log(`[Gemini] Reintento ${this.retryCount + 1} (${plan.causa}) en ${plan.esperaMs} ms...`);
+    if (!this.isManualDisconnect) this.onError(avisoDeEspera(plan));
     this.onConnectionStateChange('connecting');
 
+    this.retryCount++;
+    this.programarIntento(plan.esperaMs);
+  }
+
+  /** Un solo intento pendiente a la vez: dos temporizadores vivos son dos
+   *  sesiones abriéndose a destiempo. */
+  private programarIntento(esperaMs: number) {
     if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
     this.reconnectTimeout = window.setTimeout(() => {
-      this.retryCount++;
+      this.reconnectTimeout = null;
       this.connect();
-    }, timeoutMs);
+    }, esperaMs);
   }
 
   private async handleMessage(message: any) {
@@ -407,6 +516,49 @@ export class GeminiLiveClient {
   }
 
   /**
+   * Saca a la pantalla de la llamada un trabajo que se quedó esperando un sí.
+   *
+   * El núcleo contesta «Queda pendiente de que lo confirmes: … (trabajo #57)» y
+   * eso hasta ahora solo lo leía el modelo. La pregunta de verdad estaba en el
+   * panel, que durante una llamada no se está mirando, así que un
+   * `atajo_teclado` se quedaba parado para siempre y parecía que la herramienta
+   * no funcionaba. Ver H-51.
+   */
+  private avisarSiEsperaUnSi(resultado: string) {
+    const pendiente = resultado.match(/pendiente de que lo confirmes:\s*(.*?)\s*\(trabajo #(\d+)\)/i);
+    if (!pendiente) return;
+    this.onAprobacionPendiente(Number(pendiente[2]), pendiente[1]);
+  }
+
+  /**
+   * Pasa a píxeles de pantalla lo que el modelo señaló sobre la imagen.
+   *
+   * El modelo apunta con las coordenadas normalizadas de 0 a 1000 sobre el JPEG
+   * que recibe; `pc.py` clica en píxeles. Sin esta traducción, «clica el primer
+   * resultado» caía a un tercio de donde debía. Ver H-50 y `coordenadas.ts`.
+   *
+   * Si la geometría no se puede leer, se manda lo que dijo el modelo: un clic
+   * mal puesto es malo, pero peor es que la herramienta deje de funcionar por
+   * una consulta que en el 99 % de los casos da igual.
+   */
+  private async traducirSiSeñala(name: string, args: any): Promise<any> {
+    if (name !== 'controlar_pc' || !ACCIONES_DE_RATON.has(String(args?.accion ?? ''))) {
+      return args;
+    }
+    try {
+      if (!this.geometria) {
+        this.geometria = await invoke<GeometriaPantalla>('geometria_pantalla');
+      }
+      const parametro = traducirParametroDeRaton(String(args?.parametro ?? ''), this.geometria);
+      console.log(`[Gemini] Coordenadas ${args?.parametro} → ${parametro}`);
+      return { ...args, parametro };
+    } catch (e) {
+      console.warn('[Gemini] No se pudo leer la geometría de la pantalla:', e);
+      return args;
+    }
+  }
+
+  /**
    * Ejecuta una herramienta y devuelve su resultado en cuanto lo tiene.
    *
    * Va aparte de `handleMessage` porque no se espera: mientras el núcleo
@@ -418,15 +570,17 @@ export class GeminiLiveClient {
 
     let response: Record<string, unknown>;
     try {
+        const argumentos = await this.traducirSiSeñala(name, args);
         // El tope de espera vive en Rust (30 s), y cuando salta el trabajo sigue
         // vivo en la cola: no se pierde, solo deja de esperarse. Aquí había un
         // Promise.race de 10 s que abandonaba la promesa mientras el otro lado
         // seguía trabajando para un consumidor que ya no existía. Ver H-11 y H-12.
         const result = await invoke("ejecutar_herramienta", {
             toolName: name,
-            argumentos: JSON.stringify(args)
+            argumentos: JSON.stringify(argumentos)
         }) as string;
         console.log(`[Gemini] Resultado de ${name}:`, result);
+        this.avisarSiEsperaUnSi(result);
         response = { result };
     } catch (e: any) {
         console.error(`[Gemini] Error ejecutando ${name}:`, e);
@@ -510,6 +664,12 @@ export class GeminiLiveClient {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
+    this.limpiarSesionEstable();
+    this.limpiarTopeDeConexion();
+    // Colgar a mano cierra el episodio: la llamada siguiente la pide una
+    // persona, así que no arrastra la espera larga que hubiera acumulado el
+    // bucle automático.
+    this.retryCount = 0;
 
     if (this.session) {
        try {

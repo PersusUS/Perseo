@@ -32,6 +32,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::capture_screen_base64,
+            commands::geometria_pantalla,
             commands::obtener_api_key,
             commands::guardar_api_key,
             commands::obtener_ajuste,

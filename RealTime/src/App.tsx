@@ -77,6 +77,9 @@ function App() {
   // El panel es una vista de esta misma ventana, no otra ventana: ver
   // src-tauri/src/panel.rs para por qué no puede ser la interfaz del núcleo.
   const [showPanel, setShowPanel] = useState(false);
+  // Lo que Perseo ha pedido hacer y está parado esperando un sí. Ver H-51: la
+  // pregunta vivía solo en el panel, que en mitad de una llamada nadie mira.
+  const [pendientes, setPendientes] = useState<{ id: number; pregunta: string }[]>([]);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -137,6 +140,10 @@ function App() {
     };
 
     geminiClient.onError = (msg) => addTranscript('system', msg);
+
+    geminiClient.onAprobacionPendiente = (id, pregunta) => {
+      setPendientes(prev => (prev.some(p => p.id === id) ? prev : [...prev, { id, pregunta }]));
+    };
     audioManager.onStreamReady = () => addTranscript('system', 'Micrófono activo.');
     audioManager.onError = (err) => addTranscript('system', err);
     cameraManager.onStreamReady = (stream) => setCameraStream(stream);
@@ -284,6 +291,9 @@ function App() {
     audioManager.stop();
     audioPlayer.clearQueue();
     setIsSpeaking(false);
+    // Colgar cierra también las preguntas sin contestar: siguen vivas en la
+    // cola, y ahí es donde tiene sentido mirarlas cuando ya no hay llamada.
+    setPendientes([]);
 
     // Colgar sí cierra la conversación de verdad: aquí es donde se guarda y se
     // limpia, no en cada 'disconnected'. Ver H-06 y H-07.
@@ -296,6 +306,19 @@ function App() {
   const toggleMute = () => {
     if (isMuted) { audioManager.start(); setIsMuted(false); }
     else { audioManager.stop(); setIsMuted(true); }
+  };
+
+  /** Contesta a un trabajo parado sin salir de la llamada. El sí lo sigue dando
+   *  una persona, que es lo que pide la política; lo único que cambia es que la
+   *  pregunta aparece donde estás mirando. */
+  const responderPendiente = async (id: number, decision: 'aprobar' | 'rechazar') => {
+    setPendientes(prev => prev.filter(p => p.id !== id));
+    try {
+      await invoke('panel_responder', { id, decision });
+      addTranscript('system', decision === 'aprobar' ? `Aprobado el #${id}.` : `Rechazado el #${id}.`);
+    } catch (e) {
+      addTranscript('system', `No se pudo responder al #${id}: ${e}`);
+    }
   };
 
   const toggleCamera = () => {
@@ -369,6 +392,25 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* Lo que Perseo ha pedido hacer y espera un sí. Sale aquí y no solo en el
+          panel: en mitad de una llamada el panel no se está mirando, así que la
+          acción se quedaba parada y parecía que la herramienta no iba (H-51). */}
+      {!!pendientes.length && (
+        <div className="pendientes">
+          {pendientes.map(p => (
+            <div key={p.id} className="pendiente">
+              <div className="pendiente-texto">{p.pregunta}</div>
+              <div className="pendiente-acciones">
+                <button className="aprobar" onClick={() => responderPendiente(p.id, 'aprobar')}>
+                  Aprobar
+                </button>
+                <button onClick={() => responderPendiente(p.id, 'rechazar')}>Rechazar</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Transcript */}
       <div className="transcript-overlay" ref={transcriptRef}>

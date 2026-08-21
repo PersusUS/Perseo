@@ -16,17 +16,60 @@ const MARCADOR_AUTOLLAMADA: &str = ".perseo-autollamada";
 /// Marcador que solo pide sacar la ventana del escondite, sin entrar en llamada.
 const MARCADOR_MOSTRAR: &str = ".perseo-mostrar";
 
+/// Tamano al que se reduce la captura antes de mandarla al modelo. El modelo ve
+/// **esta** imagen, no la pantalla: sus coordenadas hay que traducirlas.
+const ANCHO_CAPTURA: u32 = 1280;
+const ALTO_CAPTURA: u32 = 720;
+
+/// La pantalla principal, que es la unica donde el raton sabe clicar.
+///
+/// Antes se cogia `monitors.first()`, que en un equipo con dos pantallas puede
+/// ser cualquiera de las dos: el modelo veia una pantalla y el clic caia en la
+/// otra. `pyautogui` mide en la principal (ver `_dentro_de_la_pantalla` en
+/// `perseo_core/pc.py`), asi que se comparte esa y no otra.
+fn pantalla_principal() -> Result<Monitor, String> {
+    let monitores = Monitor::all().map_err(|e| e.to_string())?;
+    monitores
+        .iter()
+        .find(|m| m.is_primary())
+        .or_else(|| monitores.first())
+        .cloned()
+        .ok_or_else(|| "No hay ninguna pantalla".to_string())
+}
+
+/// Cuanto mide la imagen que ve el modelo y cuanto mide la pantalla de verdad.
+///
+/// Existe por H-50: el modelo senala sobre la imagen y `pc.py` clica en pixeles
+/// de pantalla, y nadie traducia entre las dos cosas.
+#[derive(serde::Serialize)]
+pub struct GeometriaPantalla {
+    pub ancho_imagen: u32,
+    pub alto_imagen: u32,
+    pub ancho_pantalla: u32,
+    pub alto_pantalla: u32,
+}
+
+#[tauri::command]
+pub fn geometria_pantalla() -> Result<GeometriaPantalla, String> {
+    let monitor = pantalla_principal()?;
+    Ok(GeometriaPantalla {
+        ancho_imagen: ANCHO_CAPTURA,
+        alto_imagen: ALTO_CAPTURA,
+        ancho_pantalla: monitor.width(),
+        alto_pantalla: monitor.height(),
+    })
+}
+
 #[tauri::command]
 pub async fn capture_screen_base64(quality: u8) -> Result<String, String> {
-    let monitors = Monitor::all().map_err(|e| e.to_string())?;
-    let monitor = monitors.first().ok_or("No monitor found")?;
+    let monitor = pantalla_principal()?;
     let image = monitor.capture_image().map_err(|e| e.to_string())?;
-    
+
     // Resize to reduce bandwidth (1280x720 is plenty for Gemini)
     let resized = image::imageops::resize(
-        &image, 1280, 720, image::imageops::FilterType::Triangle
+        &image, ANCHO_CAPTURA, ALTO_CAPTURA, image::imageops::FilterType::Triangle
     );
-    
+
     let mut jpeg_bytes = Vec::new();
     let mut cursor = Cursor::new(&mut jpeg_bytes);
     JpegEncoder::new_with_quality(&mut cursor, quality)
