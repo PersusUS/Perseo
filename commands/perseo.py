@@ -1,29 +1,35 @@
-"""`perseo` — encender Perseo entero desde una terminal.
+"""`perseo` — encender y apagar Perseo entero desde una terminal.
 
-Perseo son tres procesos y hasta ahora había que saberse los tres:
+Perseo son cinco cosas y hasta ahora había que saberse las cinco:
 
     pythonw commands/vigilante.py        el núcleo, con quien lo revive
     pythonw commands/clap_detector.py    el detector de aplausos
     RealTime\\...\\perseo.exe              la app de voz
+    ollama app.exe                       sin él no hay triaje
+    Obsidian.exe                         sin él la memoria falla con el plugin
 
 Arrancan solos al iniciar sesión en Windows (`manage_startup.py install`), así
 que este comando es para el resto de los casos: después de matar algo, después de
 un `git pull`, o cuando quieres mirar si está todo en pie sin acordarte de las
-tres rutas.
+cinco rutas.
 
-    perseo            enciende lo que falte y abre la app
+    perseo on         enciende lo que falte y abre la app
+    perseo off        apaga Perseo entero, el detector incluido
     perseo estado     dice qué hay vivo, sin tocar nada
     perseo nucleo     solo el núcleo
-    perseo parar      cierra la app y el núcleo (el vigilante incluido)
+    perseo parar      apaga, pero **deja el detector**: se despierta aplaudiendo
+
+`perseo` a secas sigue siendo `perseo on`, que es como se ha escrito siempre en
+esta bitácora.
 
 **Nada de esto arranca lo que ya está corriendo.** Se comprueba antes: dos
 núcleos peleándose por el puerto 8787 es un `OSError 10048` que no se parece en
 nada al problema real, y dos detectores escuchando el mismo micrófono responden
 a la vez.
 
-Dos dependencias que este comando **no** levanta, y que conviene tener abiertas:
-Ollama —sin él no hay triaje— y Obsidian, sin el cual la memoria falla si el
-vault va por el plugin. `perseo estado` las mira y lo dice.
+Ollama y Obsidian **se encienden pero no se apagan**. Son programas del señor
+Persus, no piezas de Perseo: cerrarle Obsidian con lo que estuviera escribiendo
+dentro, porque ha apagado el asistente, sería un mal negocio. `off` lo dice.
 """
 
 from __future__ import annotations
@@ -34,6 +40,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import webbrowser
 from pathlib import Path
 
 AQUI = Path(__file__).resolve().parent
@@ -50,6 +57,21 @@ import presencia  # noqa: E402
 APPS = (
     RAIZ / "RealTime" / "src-tauri" / "target" / "release" / "perseo.exe",
     RAIZ / "RealTime" / "src-tauri" / "target" / "debug" / "perseo.exe",
+)
+
+#: Dónde se instala Ollama. `ollama app.exe` es la bandeja, que a su vez levanta
+#: el servidor; `ollama.exe serve` es el servidor a pelo, y es el respaldo para
+#: una instalación donde no esté la ventana. Lo que hace falta es que conteste el
+#: 11434: la bandeja es un medio, no el fin.
+OLLAMA_BANDEJA = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama app.exe"
+OLLAMA_SERVIDOR = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe"
+
+#: Dónde se instala Obsidian. Si no está en ninguna, queda el URI `obsidian:`,
+#: que es lo que ya usa la lista blanca del agente `pc`.
+OBSIDIANES = (
+    Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Obsidian" / "Obsidian.exe",
+    Path(os.environ.get("LOCALAPPDATA", "")) / "Obsidian" / "Obsidian.exe",
+    Path(os.environ.get("PROGRAMFILES", "")) / "Obsidian" / "Obsidian.exe",
 )
 
 
@@ -130,6 +152,37 @@ def _app() -> Path | None:
     return None
 
 
+def _exe_vivo(nombre: str) -> bool:
+    """Si hay algún proceso con ese nombre de ejecutable.
+
+    Es el hermano de `_corriendo`, que solo sabe de procesos de Python: Obsidian
+    no deja PID en ningún sitio y su plugin puede estar apagado, así que la
+    pregunta «¿está abierto?» no se puede hacer por HTTP.
+    """
+    if os.name != "nt":
+        return False
+    try:
+        salida = subprocess.run(
+            ["tasklist", "/FI", f"IMAGENAME eq {nombre}", "/NH"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        # Mismo criterio que `_corriendo`: si no se sabe, se contesta que no.
+        # Abrir dos veces algo que ya está abierto se nota; darlo por vivo
+        # cuando está muerto deja a Perseo capado sin que nadie lo sepa.
+        return False
+    return nombre.lower() in salida.lower()
+
+
+def _primera_que_exista(rutas: tuple[Path, ...]) -> Path | None:
+    for ruta in rutas:
+        if ruta.is_file():
+            return ruta
+    return None
+
+
 # --------------------------------------------------------------------------- #
 # Lo que hace cada orden
 # --------------------------------------------------------------------------- #
@@ -165,6 +218,65 @@ def arrancar_detector() -> bool:
     return True
 
 
+def arrancar_ollama() -> bool:
+    """Levanta Ollama y espera a que conteste. Devuelve si hizo algo.
+
+    Se espera al 11434 y no a que aparezca la ventana: el triaje llama por HTTP,
+    y una bandeja abierta con el servidor todavía cargando falla igual que si no
+    estuviera. Son unos segundos en frío.
+    """
+    if _ollama():
+        print("  [ya estaba]  Ollama responde en el 11434")
+        return False
+
+    binario = OLLAMA_BANDEJA if OLLAMA_BANDEJA.is_file() else None
+    argumentos: list[str] | None = None
+    if binario is not None:
+        argumentos = [str(binario)]
+    elif OLLAMA_SERVIDOR.is_file():
+        argumentos = [str(OLLAMA_SERVIDOR), "serve"]
+
+    if argumentos is None:
+        print("  [falta]      Ollama no está instalado donde se le busca:")
+        print(f"               {OLLAMA_BANDEJA.parent}")
+        return False
+
+    print("  [arrancando] Ollama")
+    _sin_consola(argumentos)
+
+    for _ in range(30):
+        time.sleep(0.5)
+        if _ollama():
+            print("  [listo]      Ollama responde")
+            return True
+    print("  [ojo]        Ollama no contesta todavía en el 11434; sin él no hay triaje")
+    return True
+
+
+def arrancar_obsidian() -> bool:
+    """Abre Obsidian, con el vault que se quedara abierto. Devuelve si hizo algo.
+
+    Se mira **el proceso**, no el plugin: `_obsidian()` pregunta al Local REST
+    API, que puede estar apagado en un Obsidian perfectamente abierto. Preguntar
+    por ahí abriría una segunda ventana cada vez que el plugin estuviera caído.
+    """
+    if _exe_vivo("Obsidian.exe"):
+        print("  [ya estaba]  Obsidian")
+        return False
+
+    binario = _primera_que_exista(OBSIDIANES)
+    if binario is not None:
+        print("  [arrancando] Obsidian")
+        _sin_consola([str(binario)])
+        return True
+
+    # Sin ruta conocida queda el URI, que es lo que ya usa la lista blanca del
+    # agente `pc`. Abre el mismo programa por el registro de Windows.
+    print("  [arrancando] Obsidian (por el enlace obsidian:)")
+    webbrowser.open("obsidian://")
+    return True
+
+
 #: Fichero que Rust vigila para sacar la ventana del escondite. Es distinto del
 #: de la palabra clave (`.perseo-autollamada`), que además entra en llamada.
 MARCADOR_MOSTRAR = RAIZ / ".perseo-mostrar"
@@ -197,10 +309,21 @@ def arrancar_app() -> bool:
 def estado() -> None:
     manage_startup.estado()
     print()
-    print("Lo que no arranca solo:")
+    print("Las dependencias, que `perseo on` enciende:")
+    # De Obsidian se dicen las dos cosas: si el programa está abierto y si su
+    # plugin contesta. Un Obsidian abierto con el plugin apagado deja la memoria
+    # igual de rota que un Obsidian cerrado, y son dos arreglos distintos.
+    obsidian_abierto = _exe_vivo("Obsidian.exe")
+    obsidian_plugin = _obsidian()
     for nombre, vivo, sin_el in (
         ("Ollama", _ollama(), "sin él no hay triaje de correo"),
-        ("Obsidian", _obsidian(), "sin él la memoria falla si el vault va por el plugin"),
+        (
+            "Obsidian",
+            obsidian_abierto,
+            "sin él la memoria falla si el vault va por el plugin"
+            if obsidian_plugin or not obsidian_abierto
+            else "abierto, pero su Local REST API no contesta: mira el plugin",
+        ),
     ):
         marca = "[activo]  " if vivo else "[PARADO]  "
         print(f"  {marca}   {nombre} — {sin_el}")
@@ -212,11 +335,12 @@ def estado() -> None:
     print(f"  {app}   App de voz")
 
 
-def parar() -> None:
+def parar(avisar_del_detector: bool = True) -> None:
     """Cierra la app y el núcleo. **Al vigilante primero**, o resucita el núcleo.
 
     No toca el detector de aplausos: es lo que despierta a Perseo, y pararlo sin
     querer deja el sistema mudo de una forma que no se nota hasta que aplaudes.
+    Quien sí lo mata es `apagar`, y por eso puede callar ese aviso.
     """
     if os.name != "nt":
         print("Esto solo sabe parar procesos en Windows.")
@@ -244,23 +368,73 @@ def parar() -> None:
         capture_output=True,
     )
     print("  [parado]     La app de voz")
-    print("\n  El detector de aplausos sigue en pie: es lo que despierta a Perseo.")
+    if avisar_del_detector:
+        print("\n  El detector de aplausos sigue en pie: es lo que despierta a Perseo.")
+
+
+def parar_detector() -> None:
+    """Mata el detector de aplausos. Lo que separa `off` de `parar`."""
+    if os.name != "nt":
+        print("Esto solo sabe parar procesos en Windows.")
+        return
+    subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "Get-CimInstance Win32_Process -Filter \"Name like '%python%'\" "
+            "| Where-Object { $_.CommandLine -like '*clap_detector.py*' } "
+            "| ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
+        ],
+        capture_output=True,
+    )
+    print("  [parado]     El detector de aplausos")
+
+
+def apagar() -> None:
+    """`perseo off`: Perseo entero, el detector incluido.
+
+    Es lo que `parar` no hace, y la diferencia importa: con el detector vivo,
+    Perseo sigue escuchando el micrófono y dos palmadas lo encienden otra vez.
+    Eso está bien para reiniciar el núcleo y mal para apagarlo de verdad.
+
+    Ollama y Obsidian se quedan abiertos: son programas del señor Persus, no
+    piezas de Perseo.
+    """
+    print("Apagando Perseo:\n")
+    parar(avisar_del_detector=False)
+    parar_detector()
+    print("\n  Ollama y Obsidian siguen abiertos: no son de Perseo.")
+    print("  Para volver: perseo on")
 
 
 def todo() -> None:
+    """`perseo on`: las cinco piezas, y las dependencias antes que nada.
+
+    Ollama y Obsidian van primero **a propósito**: el núcleo arranca igual sin
+    ellos, pero el primer triaje de correo y la primera nota que se guarde caen
+    en el hueco. Ollama, además, tarda en contestar, así que lo que se gana es
+    ese arranque mientras suben el núcleo y la app.
+    """
     print("Encendiendo Perseo:\n")
+    arrancar_ollama()
+    arrancar_obsidian()
     arrancar_nucleo()
     arrancar_detector()
     arrancar_app()
-
-    faltan = [n for n, vivo in (("Ollama", _ollama()), ("Obsidian", _obsidian())) if not vivo]
-    if faltan:
-        print(f"\n  Ojo: {' y '.join(faltan)} sin arrancar. `perseo estado` cuenta por qué importa.")
     print("\n  Panel y cola: botón de cuadrícula en la app, o http://127.0.0.1:8787")
 
 
+#: Las órdenes, con sus sinónimos. `on` y `off` son las que pidió el señor
+#: Persus el 2026-08-21; `perseo` a secas se queda como `on` porque es lo que
+#: dice la bitácora entera, y `parar` porque apagar dejando el detector vivo
+#: sigue siendo útil para reiniciar el núcleo sin quedarse sordo.
 ORDENES = {
     "": todo,
+    "on": todo,
+    "encender": todo,
+    "off": apagar,
+    "apagar": apagar,
     "estado": estado,
     "nucleo": lambda: arrancar_nucleo(),
     "núcleo": lambda: arrancar_nucleo(),

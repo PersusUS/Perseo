@@ -276,3 +276,54 @@ def test_un_entorno_con_bom_se_lee_igual(datos: Path) -> None:
         json.dumps({"PERSEO_CORREO": "gmail"}), encoding="utf-8-sig"
     )
     assert almacen.ajustes_guardados(datos) == {"PERSEO_CORREO": "gmail"}
+
+
+# --------------------------------------------------------------------------- #
+# `perseo on` y `perseo off`
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="perseo.py importa el registro de Windows")
+def test_on_y_off_existen_con_sus_sinonimos() -> None:
+    """Las dos órdenes que pidió el señor Persus el 2026-08-21, y que `perseo` a
+    secas siga siendo encender: lo dice así la bitácora entera."""
+    import perseo
+
+    assert perseo.ORDENES["on"] is perseo.todo
+    assert perseo.ORDENES[""] is perseo.todo
+    assert perseo.ORDENES["encender"] is perseo.todo
+    assert perseo.ORDENES["off"] is perseo.apagar
+    assert perseo.ORDENES["apagar"] is perseo.apagar
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="perseo.py importa el registro de Windows")
+def test_parar_no_es_apagar() -> None:
+    """`parar` deja el detector vivo a propósito y `off` no. Si un día se
+    igualaran, apagar Perseo dejaría de apagarlo o `parar` dejaría el sistema
+    sordo — y las dos cosas se descubren aplaudiendo, que es tarde."""
+    import perseo
+
+    assert perseo.ORDENES["parar"] is not perseo.ORDENES["off"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="perseo.py importa el registro de Windows")
+def test_se_coge_la_primera_ruta_que_exista(tmp_path: Path) -> None:
+    """Obsidian se instala en tres sitios según la versión y quién lo instalara."""
+    import perseo
+
+    hay = tmp_path / "Obsidian.exe"
+    hay.write_text("", encoding="utf-8")
+    no_hay = tmp_path / "no" / "Obsidian.exe"
+
+    assert perseo._primera_que_exista((no_hay, hay)) == hay
+    assert perseo._primera_que_exista((no_hay,)) is None
+    assert perseo._primera_que_exista(()) is None
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="pregunta a tasklist, que es de Windows")
+def test_un_programa_que_no_existe_no_esta_vivo() -> None:
+    """Y sobre todo: no lanza. `_exe_vivo` se llama en `estado`, que tiene que
+    contestar siempre aunque tasklist tenga un mal día."""
+    import perseo
+
+    assert not perseo._exe_vivo("esto-no-existe-jamas.exe")
