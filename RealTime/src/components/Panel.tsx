@@ -106,6 +106,31 @@ function resumirPeticion(t: Trabajo): string {
   return t.peticion?.texto ?? t.peticion?.accion ?? JSON.stringify(t.peticion ?? {});
 }
 
+/** Qué pasó con un trabajo, en una línea y en castellano.
+ *
+ *  El último recurso era `JSON.stringify(resultado)`, y se veía: guardar una
+ *  conversación dejaba `{"accion":"conversacion","mensajes":4,"ruta":…,
+ *  "titular":null}` en la cola. Un panel que enseña JSON es un panel que se deja
+ *  de leer. */
+function resumirResultado(resultado: any): string {
+  if (resultado == null) return '';
+  if (typeof resultado === 'string') return resultado;
+  if (resultado.titular) return String(resultado.titular);
+  if (resultado.texto) return String(resultado.texto);
+  if (resultado.ruta) {
+    const cuantos = typeof resultado.mensajes === 'number'
+      ? `${resultado.mensajes} mensaje${resultado.mensajes === 1 ? '' : 's'} · `
+      : '';
+    return `${cuantos}guardado en ${resultado.ruta}`;
+  }
+  // Lo que no se sepa resumir se enseña como pares, no como JSON: sigue siendo
+  // feo, pero se lee.
+  return Object.entries(resultado)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+    .join(' · ');
+}
+
 /** Encola un trabajo y espera su resultado sondeando. */
 async function encolarYEsperar(agente: string, peticion: any, segundos = 20): Promise<any> {
   const trabajo = await invoke<Trabajo>('panel_encolar', { agente, peticion });
@@ -322,7 +347,7 @@ const TarjetaTrabajo: React.FC<{ t: Trabajo; onResponder: (id: number, d: string
             // Markdown para decir que se leyó un fichero. Ver H-36.
             `Leída ${t.resultado.ruta ?? ''} — ${t.resultado.contenido.length} caracteres`
           ) : (
-            t.resultado?.titular ?? t.resultado?.texto ?? JSON.stringify(t.resultado)
+            resumirResultado(t.resultado)
           )}
         </div>
       )}

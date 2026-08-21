@@ -219,6 +219,49 @@ html, body, #root {
 .transcript-line.ai { color: var(--fg); font-weight: 400; }
 .transcript-line.system { color: var(--fg-dim); font-style: italic; font-size: 12px; }
 
+/* Lo que Perseo ha pedido hacer y espera un sí, encima de la transcripción y
+   debajo de los controles. Va aquí y no solo en el panel: durante una llamada
+   nadie mira el panel, y la acción se quedaba parada sin que se notara (H-51). */
+.pendientes {
+  position: absolute;
+  bottom: 230px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(550px, 85%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 4;
+}
+
+.pendiente {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  animation: fade-up 0.3s ease;
+}
+
+.pendiente-texto { font-size: 13px; color: var(--fg); line-height: 1.5; }
+
+.pendiente-acciones { display: flex; gap: 8px; margin-top: 10px; }
+
+.pendiente-acciones button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  border-radius: 999px;
+  padding: 4px 14px;
+  font: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  cursor: pointer;
+}
+
+.pendiente-acciones button:hover { color: var(--fg); border-color: var(--fg); }
+.pendiente-acciones button.aprobar { border-color: #4ade80; color: #4ade80; }
+
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -506,9 +549,17 @@ html, body, #root {
   flex-direction: column;
 }
 
+/* El panel nació en el móvil, donde todo ocupa el ancho de la pantalla. En la
+   ventana del PC eso deja una etiqueta a la izquierda y su número a metro y
+   medio, con letra de 11 px: se lee peor cuanto más grande es la ventana. El
+   contenido se centra y se le pone un ancho de lectura; el fondo sigue siendo
+   la ventana entera. */
+.pnl-ancho { width: min(880px, 100%); margin: 0 auto; }
+
 .pnl-cabecera {
   display: flex; align-items: center; gap: 12px;
-  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  padding: 14px max(18px, calc((100% - 880px) / 2));
+  border-bottom: 1px solid var(--border);
 }
 .pnl-cabecera h2 {
   font-size: 14px; font-weight: 300;
@@ -516,7 +567,14 @@ html, body, #root {
 }
 .pnl-cabecera button { margin-left: auto; }
 
-.pnl-pestanas { display: flex; border-bottom: 1px solid var(--border); }
+.pnl-pestanas {
+  display: flex; border-bottom: 1px solid var(--border);
+  /* Cinco pestañas repartidas en 1920 px dejaban las palabras a 300 px unas de
+     otras y el subrayado del seleccionado medía media pantalla. Se estrechan con
+     el relleno y no con el ancho, para que la línea de abajo siga cruzando la
+     ventana entera. */
+  padding-inline: max(0px, calc((100% - 880px) / 2));
+}
 .pnl-pestanas button {
   flex: 1; background: none; border: none; border-bottom: 1px solid transparent;
   color: var(--fg-dim); padding: 11px 4px; font: inherit; font-size: 10px;
@@ -528,7 +586,11 @@ html, body, #root {
 .pnl-cuerpo-scroll {
   flex: 1; overflow-y: auto; padding: 16px;
   display: flex; flex-direction: column; gap: 12px;
+  /* Que la barra de scroll no baile: sin esto, entrar en una pestaña con
+     scroll desplaza el contenido de las que no lo tienen. */
+  scrollbar-gutter: stable;
 }
+.pnl-cuerpo-scroll > * { width: min(880px, 100%); margin-inline: auto; }
 
 .pnl-tarjeta {
   background: var(--surface); border: 1px solid var(--border);
@@ -569,6 +631,9 @@ html, body, #root {
   overflow: hidden; margin-top: 5px;
 }
 .pnl-relleno { height: 100%; background: var(--fg); border-radius: 999px; transition: width .6s ease; }
+/* El detalle («16 hilos», «11,3 GB de 15,7 GB») quedaba pegado a la barra: dos
+   líneas de texto separadas por cuatro píxeles de raíl parecían una sola. */
+.pnl-medida .pnl-motivo { margin-top: 5px; }
 .pnl-relleno.aviso { background: #fbbf24; }
 .pnl-relleno.malo { background: #f87171; }
 
