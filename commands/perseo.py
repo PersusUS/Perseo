@@ -8,10 +8,12 @@ Perseo son cinco cosas y hasta ahora había que saberse las cinco:
     ollama app.exe                       sin él no hay triaje
     Obsidian.exe                         sin él la memoria falla con el plugin
 
-Arrancan solos al iniciar sesión en Windows (`manage_startup.py install`), así
-que este comando es para el resto de los casos: después de matar algo, después de
-un `git pull`, o cuando quieres mirar si está todo en pie sin acordarte de las
-cinco rutas.
+**Nada arranca al encender el PC** (decisión del 2026-08-22): Perseo se abre
+con `perseo on` o despertado por el detector de aplausos. Lo único externo es
+la tarea `PerseoRevivir` (`manage_startup.py`), que cada diez minutos levanta
+el núcleo y el detector si se han caído, sin abrir ventanas. Este comando es
+para el resto de los casos: después de matar algo, después de un `git pull`, o
+cuando quieres mirar si está todo en pie sin acordarte de las cinco rutas.
 
     perseo on         enciende lo que falte y abre la app
     perseo off        apaga Perseo entero, el detector incluido

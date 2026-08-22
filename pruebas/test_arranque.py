@@ -335,15 +335,17 @@ def test_un_programa_que_no_existe_no_esta_vivo() -> None:
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="el registro es de Windows")
-def test_en_el_registro_va_una_sola_entrada() -> None:
-    """Dos listas de lo que hay que encender acaban discrepando. La de verdad es
-    `perseo on`, y el registro llama a eso."""
+def test_en_el_registro_no_va_nada() -> None:
+    """Lo decidió el señor Persus el 2026-08-22 y lo confirmó al día siguiente
+    con el detector delante: Perseo se abre con `perseo on` o despertado por dos
+    palmadas, y por más nada. Una entrada en `Run` abriría ventanas al encender
+    el PC, que es justo lo que no quiere. Lo único externo es la tarea
+    `PerseoRevivir`, que no abre nada — y esa se comprueba en su propia prueba.
+    """
     import manage_startup
 
-    assert manage_startup.SERVICIOS == ("Perseo",)
-    comando = manage_startup._comando("Perseo")
-    assert comando is not None and "arranque.py" in comando
-    assert "pythonw" in comando.lower()
+    assert manage_startup.SERVICIOS == ()
+    assert "Perseo" not in manage_startup.LEGADO
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="el registro es de Windows")

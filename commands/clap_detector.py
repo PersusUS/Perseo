@@ -70,68 +70,48 @@ def is_app_running():
         print(f"[-] No se pudo comprobar si Perseo esta abierto: {e}")
         return False
 
-def run_perseo_and_cleanup(realtime_path):
-    print(f"[*] Levantando Perseo en: {realtime_path}")
-    
-    # Arrancamos npm run tauri dev
-    process = subprocess.Popen(["npm", "run", "tauri", "dev"], cwd=realtime_path, shell=True)
-    
-    # 1. Esperamos a que Perseo deje su marca de presencia (hasta 120 segundos)
-    app_started = False
-    for _ in range(60):
+def levantar_app():
+    """Abre la app de voz por la misma puerta que `perseo on`.
+
+    Antes esto lanzaba `npm run tauri dev`, que es modo desarrollo: minutos de
+    compilación en frío, y el bucle que esperaba la ventana mataba el árbol a
+    los dos minutos — la app jamás llegó a abrirse y el síntoma era «aplaudí y
+    no pasó nada» (H-56). La app de verdad es el binario construido y sellado,
+    el mismo que abre `perseo on`; ahí viven el despegue del job (H-53), el
+    aviso si la construcción está vieja y el mensaje si no está construida.
+    """
+    import perseo
+
+    perseo.arrancar_app()
+
+
+def parar_musica_cuando_abra_la_app(tope_segundos: float = 90.0):
+    """La intro suena mientras Perseo despierta, y calla cuando ya está despierto.
+
+    Antes esta parada vivía dentro del bucle que vigilaba `npm run tauri dev`;
+    al pasar el arranque a la app construida (H-56) se quedó fuera y la canción
+    seguía entera por encima de la llamada. Se pregunta por la marca de
+    presencia —lo mismo que mira el splash— y con tope, para que un arranque
+    fallido no deje la música sonando sola en el salón.
+    """
+    empezó = time.time()
+    while time.time() - empezó < tope_segundos:
         try:
             if presencia.app_viva():
-                app_started = True
-                print("[*] Interfaz gráfica de Perseo detectada.")
-                
-                # PARAR LA MÚSICA cuando aparezca la app gráfica (inicia la llamada)
-                try:
-                    if pygame.mixer.music.get_busy():
-                        pygame.mixer.music.fadeout(1000)
-                except Exception as e:
-                    print(f"[-] No se pudo parar la música de apertura: {e}")
-
-                print("[*] Analizando cierre...")
+                print("[*] Interfaz gráfica de Perseo detectada; callando la intro.")
                 break
-        except Exception as e:
-            # Un fallo suelto no es motivo para rendirse: quedan
-            # más vueltas del bucle. Se avisa por si falla en todas.
-            print(f"[-] No se pudo comprobar si la app ya arrancó: {e}")
-        time.sleep(2)
-        if process.poll() is not None:
-            break
-            
-    # 2. Si la app gráfica inició, nos quedamos en bucle infinito revisando cuando se cierre
-    if app_started:
-        while True:
-            try:
-                if not presencia.app_viva():
-                    print("\n[*] La ventana de Perseo se ha cerrado. Procediendo con el exterminio residual...")
-                    break
-            except Exception as e:
-                # Aquí sí se sale del bucle: si no podemos vigilar el cierre, es
-                # mejor limpiar ahora que quedarse mirando para siempre.
-                print(f"[-] Se pierde de vista la ventana de Perseo: {e}")
-                break
-            time.sleep(2)
+        except Exception:
+            # Un fallo suelto al preguntar no cancela la espera: quedan vueltas.
+            pass
+        time.sleep(0.5)
     else:
-        print("[!] No se detectó la ventana gráfica de Perseo en un límite de 2 minutos.")
-        
-    # 3. Limpieza: Matar el proceso principal root y todo subproceso residual
-    try:
-        # Matamos todo el árbol desde el CMD que lanzó NPM
-        subprocess.call(f"taskkill /F /T /PID {process.pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception as e:
-        print(f"[-] No se pudo matar el árbol de procesos de npm: {e}")
+        print("[!] La app no dejó marca de presencia; se calla la intro igualmente.")
 
     try:
-        # Matamos forzosamente cualquier cosa ocupando el Puerto 1420 (Vite zombie)
-        os.system('FOR /F "tokens=5" %a in (\'netstat -aon ^| findstr :1420\') do taskkill /F /PID %a >nul 2>&1')
-        print("[*] Entorno totalmente saneado. Listo para el próximo encendido.")
+        if pygame.mixer.music.get_busy():
+            pygame.mixer.music.fadeout(1000)
     except Exception as e:
-        # Un Vite zombi en el 1420 hace que el arranque siguiente falle sin decir
-        # por qué. Que se sepa aquí ahorra media hora la próxima vez.
-        print(f"[-] No se pudo liberar el puerto 1420: {e}")
+        print(f"[-] No se pudo parar la música de apertura: {e}")
 
 def trigger_action():
     print("\n[!] ¡Activando Comando de Emergencia! Encendiendo...")
@@ -148,7 +128,6 @@ def trigger_action():
     # Antes se salía antes de escribirlo, así que con la app abierta la palabra
     # clave no hacía absolutamente nada.
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    realtime_path = os.path.join(base_dir, "RealTime")
     marcador = os.path.join(base_dir, ".perseo-autollamada")
     try:
         with open(marcador, 'w', encoding='utf-8') as f:
@@ -172,16 +151,12 @@ def trigger_action():
     except Exception as e:
         print(f"[x] Error al mostrar carga: {e}")
 
-    # 2. Abrir RealTime de Perseo y monitorizar cierre
-    # Calculamos la ruta absoluta de la carpeta "RealTime" basándonos en la ubicación de este script
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    realtime_path = os.path.join(base_dir, "RealTime")
-    
+    # 2. Abrir la app de voz construida. Vuelve enseguida: el arranque es un
+    #    Popen despegado, no una espera.
     try:
-        # Lanzamos el comando en un hilo separado para que el detector de aplausos siga funcionando 100% independiente
-        threading.Thread(target=run_perseo_and_cleanup, args=(realtime_path,), daemon=True).start()
+        levantar_app()
     except Exception as e:
-        print(f"[x] Error al iniciar hilo de Perseo: {e}")
+        print(f"[x] Error al iniciar Perseo: {e}")
 
     # 3. Reproducir Opening localmente con PyGame
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -197,6 +172,10 @@ def trigger_action():
             print(f"[-] No se pudo reproducir la canción, asegúrate de tener un mp3 compatible: {e}")
     else:
         print("[i] (No se encontró el archivo opening.mp3 en la carpeta commands)")
+
+    # 4. La intro calla cuando la app deje su marca de presencia — o al cabo
+    #    del tope, para no quedársela si el arranque falla.
+    threading.Thread(target=parar_musica_cuando_abra_la_app, daemon=True).start()
 
 def audio_callback(indata, frames, time_info, status):
     global lap_count, last_clap_time, last_trigger_time, awaiting_voice, voice_buffer, voice_frames_needed

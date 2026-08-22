@@ -1,19 +1,19 @@
 """Gestiona qué arranca con Windows, y qué lo revive si se cae.
 
-Escribe en HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run, que afecta
-solo al usuario actual y es reversible desde este mismo script.
+**Desde el 2026-08-22 el registro no arranca nada de Perseo.** Lo decidió el
+señor Persus: Perseo se abre con `perseo on` o despertado por el detector de
+aplausos, y por más nada — una entrada en `Run` que abriera ventanas al
+encender el PC es justo lo que no quiere. Este script queda para dos cosas:
 
-**Una sola entrada**, desde el 2026-08-21: `commands/arranque.py`, que hace lo
-mismo que `perseo on`. Antes eran dos —el vigilante y el detector— y la app de
-voz no estaba en ninguna, así que al encender el PC Perseo arrancaba a medias y
-sin ventana. Dos listas de lo que hay que encender acaban discrepando; esta se
-lee de `perseo.py`, que es la que se usa a diario.
-
-Y **una tarea programada** que llama a lo mismo cada diez minutos con
-`--revivir`, para levantar el núcleo o el detector si se han caído. Es lo que
-faltaba el 2026-08-18: el núcleo murió a las 16:42, el vigilante se fue detrás y
-Perseo estuvo tres días apagado sin que nada lo dijera. Un vigilante no puede
-vigilar su propia muerte.
+* **Limpiar entradas viejas** (`LEGADO`) si sobreviven en una máquina antigua:
+  convivirían con nada y aun así arrancarían un segundo detector que se pelea
+  por el micrófono.
+* **Poner y quitar la tarea programada** `PerseoRevivir`, que cada diez minutos
+  llama a `commands/arranque.py --revivir` para levantar el núcleo o el detector
+  si se han caído. Es lo único que mira desde fuera de cualquier sesión, y es lo
+  que de verdad evita otro H-53: el 2026-08-18 el núcleo murió a las 16:42, el
+  vigilante se fue detrás y Perseo estuvo tres días apagado sin que nada lo
+  dijera. Un vigilante no puede vigilar su propia muerte.
 
 Antes de v2 aquí había un tercer servicio, el indexador del vault
 (`RAG/automator.py`), que se jubiló: la memoria la lleva ahora el agente
@@ -28,12 +28,15 @@ import winreg
 
 RUTA_CLAVE = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
-#: Nombre en el registro -> qué se arranca. Uno solo: `arranque.py`, que enciende
-#: las cinco piezas llamando a lo mismo que llamaría una persona.
-SERVICIOS = ("Perseo",)
+#: Nada. Lo que había aquí era una entrada `Run` → `arranque.py`, y antes aún
+#: dos más (vigilante y detector por separado). El 2026-08-22 se decidió que el
+#: PC encendido no abre Perseo: la lista queda vacía para que `install` no
+#: vuelva a escribirla por error. Si algún día cambia la decisión, aquí va el
+#: nombre de la entrada y `_comando()` sigue abajo como referencia.
+SERVICIOS = ()
 
-#: Lo que había antes y hay que quitar al instalar. Si se quedan, arrancan a la
-#: vez que `arranque.py` y se pelean por el mismo puerto y el mismo micrófono.
+#: Lo que hubo algún día y hay que quitar si se encuentra. Si se quedan,
+#: arrancan solos al iniciar sesión y se pelean por el mismo micrófono.
 LEGADO = ("PerseoClapDetector", "PerseoNucleo")
 
 #: La tarea programada que revive lo que se caiga, y cada cuánto mira.
@@ -56,14 +59,14 @@ def _pythonw() -> str:
 
 
 def _comando(nombre: str) -> str | None:
-    r"""La línea que se escribe en el registro, o `None` si falta algo.
+    r"""La línea que se escribiría en el registro, si algún día se vuelve ahí.
 
-    El núcleo no se arranca desde aquí, sino a través de `vigilante.py`, que sí
-    es un fichero suelto. De paso se evita el otro problema: `perseo_core` es un
-    paquete y sus módulos se importan entre sí, así que `pythonw
-    perseo_core\__main__.py` falla con un ImportError que no dice nada del
-    problema real. El vigilante lo lanza como módulo y con el directorio de
-    trabajo puesto. Sin shell, que es la regla de toda la casa.
+    **Hoy no la llama nadie**: `SERVICIOS` está vacío porque el registro no
+    arranca Perseo (2026-08-22). Se conserva escrita para que volver a tenerla
+    no sea reescribirla: el núcleo no se lanza directo sino a través de
+    `vigilante.py` — `pythonw perseo_core\__main__.py` falla con un ImportError
+    que no dice nada del problema real, y el vigilante lo lanza como módulo y
+    con el directorio de trabajo puesto. Sin shell, que es la regla de la casa.
     """
     raiz = _raiz_proyecto()
 
@@ -71,11 +74,6 @@ def _comando(nombre: str) -> str | None:
         print(f"[-] No se encuentra el paquete perseo_core en {raiz}")
         return None
 
-    # En el registro va `arranque.py`, que enciende las cinco piezas: el núcleo
-    # con su vigilante, el detector, la app, Ollama y Obsidian. El vigilante
-    # sigue existiendo y sigue siendo quien revive al núcleo; lo que cambia es
-    # que ya no se le llama desde aquí, sino desde el mismo sitio que llamaría
-    # una persona escribiendo `perseo on`.
     guion = os.path.join(raiz, "commands", "arranque.py")
     if not os.path.isfile(guion):
         print(f"[-] No se encuentra el guion de arranque: {guion}")
@@ -220,21 +218,25 @@ def nucleo_responde(url: str | None = None, espera: float = 3.0) -> bool:
 
 def estado() -> None:
     print("Estado del arranque automático:\n")
-    for nombre in SERVICIOS:
-        try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUTA_CLAVE) as clave:
-                valor, _ = winreg.QueryValueEx(clave, nombre)
-        except FileNotFoundError:
-            print(f"  [inactivo] {nombre}")
-            continue
+    if SERVICIOS:
+        for nombre in SERVICIOS:
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUTA_CLAVE) as clave:
+                    valor, _ = winreg.QueryValueEx(clave, nombre)
+            except FileNotFoundError:
+                print(f"  [inactivo] {nombre}")
+                continue
 
-        problemas = revisar(valor)
-        etiqueta = "[roto]  " if problemas else "[activo]"
-        print(f"  {etiqueta}   {nombre}\n             {valor}")
-        for problema in problemas:
-            print(f"             ^ {problema}")
-        if problemas:
-            print("             Vuelve a instalarlo: python manage_startup.py install " + nombre)
+            problemas = revisar(valor)
+            etiqueta = "[roto]  " if problemas else "[activo]"
+            print(f"  {etiqueta}   {nombre}\n             {valor}")
+            for problema in problemas:
+                print(f"             ^ {problema}")
+            if problemas:
+                print("             Vuelve a instalarlo: python manage_startup.py install " + nombre)
+    else:
+        print("  [decisión] El registro no abre Perseo al encender el PC (2026-08-22):")
+        print("             se enciende con `perseo on` o con dos palmadas.")
 
     for nombre in LEGADO:
         try:
@@ -287,11 +289,9 @@ def estado() -> None:
 def _uso() -> None:
     print(__doc__)
     print("Uso:")
-    print("  python manage_startup.py install [servicio]   activa el arranque")
-    print("  python manage_startup.py remove  [servicio]   lo desactiva")
-    print("  python manage_startup.py status               muestra el estado")
-    print()
-    print(f"  servicios: {', '.join(SERVICIOS)} (por defecto, todos)")
+    print("  python manage_startup.py install   limpia entradas viejas y pone la tarea que revive")
+    print("  python manage_startup.py remove    quita la tarea")
+    print("  python manage_startup.py status    muestra el estado")
 
 
 if __name__ == "__main__":
