@@ -34,6 +34,7 @@ Ver bitacora/06_HANDOFF.md §5 y §10, y bitacora/07_PWA.md.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from collections import deque
@@ -587,6 +588,28 @@ async def presencia(cfg: almacen.Configuracion) -> dict[str, Any]:
     return datos
 
 
+#: Dónde deja `perseo actualizar` la marca de la última construcción. Es el
+#: mismo valor que queda incrustado en el binario de la app de escritorio, y por
+#: eso vale para lo que se inventó: ver de un vistazo si las dos pantallas
+#: enseñan lo mismo o una se quedó en una versión vieja.
+NOMBRE_VERSION = "version.json"
+
+
+def version_construida(cfg: almacen.Configuracion) -> dict[str, Any]:
+    """La marca de la última construcción, o vacío si nunca se construyó.
+
+    No es un dato crítico: si el fichero no está o está roto, se contesta con un
+    diccionario vacío y las pantallas dicen «sin sellar». Reventar el estado
+    entero por esto sería cambiar un aviso por una pantalla en blanco.
+    """
+    fichero = Path(cfg.directorio_datos) / NOMBRE_VERSION
+    try:
+        datos = json.loads(fichero.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return datos if isinstance(datos, dict) else {}
+
+
 async def reunir(cfg: almacen.Configuracion, router: Router) -> dict[str, Any]:
     """Todo lo que pinta la pestaña de Estado, en una sola respuesta."""
     async with aiohttp.ClientSession() as http:
@@ -636,6 +659,7 @@ async def reunir(cfg: almacen.Configuracion, router: Router) -> dict[str, Any]:
         "presencia": contexto,
         "piezas": [asdict(p) for p in piezas],
         "trabajos": recuento,
+        "version": version_construida(cfg),
         "agentes": sorted(REGISTRO),
         "disparadores": [
             {

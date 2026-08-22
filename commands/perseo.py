@@ -18,6 +18,7 @@ cinco rutas.
     perseo estado     dice qué hay vivo, sin tocar nada
     perseo nucleo     solo el núcleo
     perseo parar      apaga, pero **deja el detector**: se despierta aplaudiendo
+    perseo actualizar construye la app después de tocar la interfaz, y la sella
 
 `perseo` a secas sigue siendo `perseo on`, que es como se ha escrito siempre en
 esta bitácora.
@@ -34,6 +35,8 @@ dentro, porque ha apagado el asistente, sería un mal negocio. `off` lo dice.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -41,6 +44,7 @@ import time
 import urllib.error
 import urllib.request
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 
 AQUI = Path(__file__).resolve().parent
@@ -334,9 +338,219 @@ def arrancar_app() -> bool:
         print("               cd RealTime && npm install && npm run tauri build")
         return False
 
+    if app_caducada(binario):
+        # El binario lleva el `dist` dentro: si es más viejo que las fuentes, lo
+        # que se va a abrir NO es lo último que se tocó. Se abre igual —vale más
+        # una versión vieja que nada— pero se dice, y se dice fuerte.
+        print("  [OJO]        Esta app es más vieja que la interfaz que hay en el código.")
+        print("               Vas a abrir la construcción anterior. Para verla al día:")
+        print("               perseo actualizar")
+
     print(f"  [arrancando] La app de voz ({binario.parent.name})")
     _sin_consola([str(binario)])
     return True
+
+
+# ── Construir la app: lo que evita abrir una versión vieja ───────────────────
+#
+# La app de escritorio **no lee `RealTime/src`**: abre un binario que lleva el
+# `dist` dentro, incrustado cuando se construyó. Así que tocar la interfaz y
+# lanzar `perseo on` abre exactamente lo mismo de antes, sin un solo error que
+# lo explique. Ha pasado varias veces y siempre se descubre mirando la pantalla
+# y discutiendo si el cambio se hizo o no.
+#
+# De aquí salen las tres cosas que lo cierran:
+#   1. `perseo actualizar`, que construye y sella.
+#   2. Un aviso en `perseo on` y en `perseo estado` cuando el binario es más
+#      viejo que las fuentes.
+#   3. Una marca de construcción que se ve en las dos interfaces —la de la app y
+#      la del móvil—, para que «qué versión estoy viendo» se conteste mirando.
+
+#: Lo que, al cambiar, obliga a volver a construir. El móvil no está aquí a
+#: propósito: `perseo_core/interfaz/index.html` lo sirve el núcleo tal cual está
+#: en el disco, y por eso el móvil siempre va al día y la app no.
+FUENTES_APP = (
+    RAIZ / "RealTime" / "src",
+    RAIZ / "RealTime" / "public",
+    RAIZ / "RealTime" / "index.html",
+    RAIZ / "RealTime" / "vite.config.ts",
+    RAIZ / "RealTime" / "package.json",
+    RAIZ / "RealTime" / "src-tauri" / "src",
+    RAIZ / "RealTime" / "src-tauri" / "Cargo.toml",
+    RAIZ / "RealTime" / "src-tauri" / "tauri.conf.json",
+)
+
+
+def _directorio_datos() -> Path:
+    """El mismo directorio que usa el núcleo, con la misma variable de entorno.
+
+    Se repite aquí en vez de importar `perseo_core` porque este comando tiene
+    que funcionar sin las dependencias del núcleo instaladas.
+    """
+    return Path(os.environ.get("PERSEO_CORE_DATOS", RAIZ / "perseo_core" / "datos"))
+
+
+def _ficheros_de_fuentes() -> list[Path]:
+    """Todos los ficheros que entran en la construcción, en orden estable."""
+    encontrados: list[Path] = []
+    for ruta in FUENTES_APP:
+        if ruta.is_file():
+            encontrados.append(ruta)
+        elif ruta.is_dir():
+            encontrados.extend(h for h in ruta.rglob("*") if h.is_file())
+    return sorted(encontrados)
+
+
+def huella_de_fuentes() -> str:
+    """Un resumen del **contenido** de la interfaz, no de sus fechas.
+
+    Se compara con el que guardó la última construcción, y así «¿está la app al
+    día?» se contesta sin depender de relojes. Por fechas no valía: la
+    construcción tarda dos minutos y medio, así que un binario recién hecho
+    parece más nuevo que un fichero tocado *mientras* se construía —que es justo
+    el caso que hay que cazar—, y un `git checkout` reescribe fechas sin cambiar
+    una línea.
+    """
+    resumen = hashlib.sha1()
+    for fichero in _ficheros_de_fuentes():
+        resumen.update(str(fichero.relative_to(RAIZ)).replace("\\", "/").encode("utf-8"))
+        resumen.update(fichero.read_bytes())
+    return resumen.hexdigest()[:12]
+
+
+def _sello_guardado() -> dict:
+    """Lo que dejó la última construcción, o vacío si no hay ninguna."""
+    try:
+        datos = json.loads((_directorio_datos() / "version.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return datos if isinstance(datos, dict) else {}
+
+
+def app_caducada(binario: Path | None = None) -> bool:
+    """¿Hay cambios en la interfaz que ese binario todavía no lleva dentro?
+
+    Sin sello no se puede saber —es una construcción de antes de que esto
+    existiera— y se contesta que no: un aviso que sale siempre se deja de leer.
+    """
+    binario = binario or _app()
+    if binario is None:
+        return False
+    guardada = _sello_guardado().get("huella")
+    if not guardada:
+        return False
+    return guardada != huella_de_fuentes()
+
+
+def _marca_de_construccion() -> str:
+    """`AAAAMMDD-HHMM` y, si se puede, la revisión de git.
+
+    La fecha va primero porque es lo que se compara de un vistazo con «lo he
+    tocado hace un minuto»; el `sha` está para poder volver al código exacto.
+    """
+    sello = time.strftime("%Y%m%d-%H%M")
+    try:
+        revision = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(RAIZ),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if revision.returncode == 0 and revision.stdout.strip():
+            return f"{sello}+{revision.stdout.strip()}"
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return sello
+
+
+def _sellar(marca: str, huella: str) -> Path:
+    """Deja la marca donde el núcleo pueda servírsela al móvil.
+
+    Es el mismo valor que Vite acaba de incrustar en el binario, y ahí está la
+    gracia: la app enseña el suyo, el móvil enseña este, y si no coinciden es
+    que una de las dos pantallas se quedó en una versión vieja.
+    """
+    directorio = _directorio_datos()
+    directorio.mkdir(parents=True, exist_ok=True)
+    fichero = directorio / "version.json"
+    fichero.write_text(
+        json.dumps(
+            {
+                "marca": marca,
+                "construido": datetime.now().astimezone().replace(microsecond=0).isoformat(),
+                # La huella es de cuando **empezó** la construcción: si algo se
+                # tocó mientras compilaba, el binario no lo lleva y esto lo dice.
+                "huella": huella,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return fichero
+
+
+def actualizar() -> None:
+    """`perseo actualizar`: construir la app y sellar las dos interfaces.
+
+    Tarda un par de minutos y hace falta cada vez que se toca `RealTime`. Cierra
+    la app primero porque Windows no deja sobrescribir un `.exe` en marcha: sin
+    eso, la construcción falla al enlazar y el fallo no dice de qué va.
+    """
+    print("Actualizando Perseo:\n")
+
+    marca = _marca_de_construccion()
+    # Se toma antes de construir, no después: lo que va a quedar dentro del
+    # binario es el código que hay ahora mismo.
+    huella = huella_de_fuentes()
+    estaba_abierta = presencia.app_viva()
+    if estaba_abierta:
+        # Con la app abierta el enlazador no puede escribir el .exe, así que se
+        # cierra y se vuelve a abrir al final. La llamada en curso se pierde, y
+        # es el precio de construir.
+        subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "Stop-Process -Name perseo -Force -ErrorAction SilentlyContinue",
+            ],
+            capture_output=True,
+        )
+        print("  [cerrada]    La app de voz, para poder sobrescribirla")
+
+    print(f"  [marca]      {marca}")
+    print("  [construye]  npm run tauri build — esto tarda un par de minutos\n")
+
+    entorno = {**os.environ, "PERSEO_BUILD": marca}
+    npm = "npm.cmd" if os.name == "nt" else "npm"
+    try:
+        construccion = subprocess.run(
+            [npm, "run", "tauri", "build", "--", "--no-bundle"],
+            cwd=str(RAIZ / "RealTime"),
+            env=entorno,
+        )
+    except OSError as error:
+        print(f"\n  [ERROR]      No se pudo lanzar npm: {error}")
+        print("               ¿Está Node instalado y en el PATH?")
+        return
+
+    if construccion.returncode != 0:
+        print("\n  [ERROR]      La construcción falló; se deja el binario anterior.")
+        print("               Lee el error de arriba: casi siempre es TypeScript.")
+        if estaba_abierta:
+            arrancar_app()
+        return
+
+    fichero = _sellar(marca, huella)
+    print(f"\n  [sellado]    {fichero}")
+    print("  [listo]      La app y el móvil enseñan ya la misma marca.")
+
+    if estaba_abierta:
+        arrancar_app()
+    else:
+        print("               Ábrela con: perseo on")
 
 
 def estado() -> None:
@@ -366,6 +580,13 @@ def estado() -> None:
     app = "[activo]  " if presencia.app_viva() else "[PARADO]  "
     print(f"  {detector}   Detector de aplausos")
     print(f"  {app}   App de voz")
+
+    binario = _app()
+    if binario is None:
+        print("  [FALTA]      La app no está construida: perseo actualizar")
+    elif app_caducada(binario):
+        print("  [VIEJA]      La app construida no lleva los últimos cambios de la")
+        print("               interfaz. Para ponerla al día: perseo actualizar")
 
 
 def parar(avisar_del_detector: bool = True) -> None:
@@ -472,6 +693,8 @@ ORDENES = {
     "nucleo": lambda: arrancar_nucleo(),
     "núcleo": lambda: arrancar_nucleo(),
     "parar": parar,
+    "actualizar": actualizar,
+    "construir": actualizar,
 }
 
 
