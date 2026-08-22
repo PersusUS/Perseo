@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from typing import Any
 
 import aiohttp
@@ -46,14 +47,125 @@ ESPERA_SONDEO = 25
 #: la API cuando lo que se ha caído es el wifi.
 ESPERA_TRAS_FALLO = 5
 
-#: Eventos que se anuncian, y cómo se titulan. Los que no están aquí —como
-#: `trabajo.encolado`— no se mandan: llenar el móvil de avisos de tránsito es la
-#: forma más rápida de que se silencie el canal.
-TITULARES = {
-    "trabajo.hecho": "Trabajo #{id} terminado",
-    "trabajo.fallido": "Trabajo #{id} falló",
-    "trabajo.rechazado": "Trabajo #{id} rechazado",
-}
+# -- qué se manda, y qué no ------------------------------------------------- #
+#
+# Replanteado el 2026-08-22, porque lo que llegaba al móvil no servía para nada:
+# «Trabajo #7 terminado» no dice qué se hizo, ni de qué agente, ni si hay que
+# hacer algo. Un aviso que no cambia lo que vas a hacer es ruido, y el ruido
+# acaba en un canal silenciado — que es peor que no tener canal.
+#
+# Las reglas, en el orden en que se aplican:
+#
+#   1. **Lo que espera un sí, siempre.** Es lo único que está parado esperándote.
+#   2. **Lo que falla, siempre.** Un fallo cambia lo que vas a hacer, y encima
+#      llega con la primera línea del error, que suele bastar para saber si es
+#      la red o es el código.
+#   3. **Lo que termina, solo si el agente escribió un titular.** «3 correos, 1
+#      requiere acción» dice algo; «Trabajo #7 terminado» no. Si el agente no
+#      supo resumirlo, no merecía molestar.
+#   4. **Lo que lanzaste tú, nunca.** Si has encolado algo desde el panel o
+#      desde la llamada, estás mirando la pantalla: ahí lo verás terminar. Solo
+#      se avisa de lo que hicieron los disparadores por su cuenta.
+#   5. **Lo cancelado y lo rechazado, nunca.** Lo cancelaste tú.
+#
+# Y en todos: **titular por Telegram, detalle por Tailscale** (regla de arriba).
+# El pie dice de quién y cuándo, que es lo que hacía falta para no tener que
+# abrir la web solo para saber si aquello era el correo o la agenda.
+
+#: Tope de lo que se enseña de una petición o de un error. Telegram corta a
+#: 4096, pero el problema no es ese: un aviso de tres pantallas no se lee.
+LARGO_MAXIMO = 160
+
+
+def _recortar(texto: str, tope: int = LARGO_MAXIMO) -> str:
+    limpio = " ".join(str(texto).split())
+    return limpio if len(limpio) <= tope else limpio[: tope - 1].rstrip() + "…"
+
+
+def resumir_peticion(trabajo: dict[str, Any]) -> str:
+    """Qué se le pidió, en una línea y en castellano.
+
+    Mismas reglas que el panel (`Panel.tsx::resumirPeticion`): un trabajo de
+    correo trae el lote entero dentro, y volcarlo manda el JSON de veinte
+    correos por Telegram.
+    """
+    peticion = trabajo.get("peticion")
+    if not isinstance(peticion, dict):
+        return _recortar(peticion) if peticion else "sin petición"
+
+    mensajes = peticion.get("mensajes")
+    if isinstance(mensajes, list):
+        return f"{len(mensajes)} correo{'' if len(mensajes) == 1 else 's'} del buzón"
+
+    for clave in ("texto", "consulta", "titulo", "accion", "orden"):
+        valor = peticion.get(clave)
+        if valor:
+            return _recortar(valor)
+
+    return _recortar(", ".join(sorted(peticion)) or "sin petición")
+
+
+def _pie(trabajo: dict[str, Any]) -> str:
+    """De quién es esto y cuándo pasó."""
+    partes = [str(trabajo.get("agente") or "perseo"), f"#{trabajo.get('id')}"]
+    partes.append(datetime.now().strftime("%H:%M"))
+    return " · ".join(partes)
+
+
+def redactar(evento: Evento, url_base: str) -> tuple[str, list[list[dict[str, Any]]] | None] | None:
+    """El mensaje que sale al móvil, o `None` si este evento no merece molestar.
+
+    Es una función pura a propósito: decidir qué se manda es lo que más se va a
+    discutir de este módulo, y así se puede probar sin levantar un Telegram.
+    """
+    trabajo = evento.datos.get("trabajo") or {}
+    if trabajo.get("id") is None:
+        return None
+
+    ver = [{"text": "Ver en Perseo", "url": f"{url_base}/"}]
+
+    if evento.tipo == "trabajo.espera_confirmacion":
+        confirmacion = trabajo.get("confirmacion") or {}
+        resumen = confirmacion.get("resumen") or resumir_peticion(trabajo)
+        # El `detalle` se queda deliberadamente fuera: para eso está el enlace,
+        # que va por el tailnet.
+        return (
+            f"Perseo espera un sí\n\n{_recortar(resumen)}\n\n{_pie(trabajo)}",
+            [
+                [
+                    {"text": "Aprobar", "callback_data": f"aprobar:{trabajo['id']}"},
+                    {"text": "Rechazar", "callback_data": f"rechazar:{trabajo['id']}"},
+                ],
+                ver,
+            ],
+        )
+
+    if evento.tipo == "trabajo.fallido":
+        error = _recortar(str(trabajo.get("error") or "").splitlines()[0] if trabajo.get("error") else "sin detalle")
+        return (
+            f"Falló: {resumir_peticion(trabajo)}\n\n{error}\n\n{_pie(trabajo)}",
+            [ver],
+        )
+
+    if evento.tipo != "trabajo.hecho":
+        # Cancelado y rechazado: los decidiste tú hace dos segundos.
+        return None
+
+    # Lo que encolas desde el panel o desde la llamada lo estás mirando: avisar
+    # al móvil de eso es contarte lo que ya ves.
+    if trabajo.get("origen") != "disparador":
+        return None
+
+    resultado = trabajo.get("resultado")
+    titular = ""
+    if isinstance(resultado, dict):
+        titular = str(resultado.get("titular") or "").strip()
+    if not titular:
+        # Un disparador que no sabe resumir lo que ha hecho no tiene nada que
+        # decir por aquí. El trabajo sigue en la cola, que es donde se mira.
+        return None
+
+    return (f"{_recortar(titular, 300)}\n\n{_pie(trabajo)}", [ver])
 
 
 class Telegram:
@@ -142,47 +254,12 @@ class Telegram:
                 await self._anunciar(evento)
 
     async def _anunciar(self, evento: Evento) -> None:
-        trabajo = evento.datos.get("trabajo") or {}
-        id_trabajo = trabajo.get("id")
-        if id_trabajo is None:
+        """Manda lo que `redactar` diga, y calla cuando dice que no hay nada."""
+        mensaje = redactar(evento, self._cfg.url_base)
+        if mensaje is None:
             return
-
-        if evento.tipo == "trabajo.espera_confirmacion":
-            confirmacion = trabajo.get("confirmacion") or {}
-            resumen = confirmacion.get("resumen") or "¿Confirmas?"
-            # El `detalle` se queda deliberadamente fuera: para eso está el
-            # enlace, que va por el tailnet.
-            await self._enviar(
-                f"Perseo necesita un sí\n\n{resumen}\n\nTrabajo #{id_trabajo}",
-                botones=[
-                    [
-                        {"text": "Aprobar", "callback_data": f"aprobar:{id_trabajo}"},
-                        {"text": "Rechazar", "callback_data": f"rechazar:{id_trabajo}"},
-                    ],
-                    [{"text": "Ver detalle", "url": f"{self._cfg.url_base}/"}],
-                ],
-            )
-            return
-
-        # Un agente puede escribir su propio titular. Es lo que necesita la Fase
-        # D: "3 correos, 1 requiere acción" dice algo, y "Trabajo #7 terminado"
-        # no. La regla del canal la sigue poniendo este módulo —lo que llegue
-        # aquí se manda tal cual—, así que el titular lo compone el agente
-        # sabiendo que sale por un tercero, y el detalle se queda en la cola.
-        # Un titular vacío significa "no merece molestar": no se manda nada.
-        resultado = trabajo.get("resultado")
-        if evento.tipo == "trabajo.hecho" and isinstance(resultado, dict) and "titular" in resultado:
-            titular = str(resultado.get("titular") or "").strip()
-            if titular:
-                await self._enviar(
-                    f"{titular}\n\nTrabajo #{id_trabajo}",
-                    botones=[[{"text": "Ver detalle", "url": f"{self._cfg.url_base}/"}]],
-                )
-            return
-
-        plantilla = TITULARES.get(evento.tipo)
-        if plantilla:
-            await self._enviar(plantilla.format(id=id_trabajo))
+        texto, botones = mensaje
+        await self._enviar(texto, botones=botones)
 
     # -- del móvil al núcleo ------------------------------------------------ #
 

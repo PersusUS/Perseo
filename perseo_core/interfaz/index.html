@@ -35,6 +35,10 @@
     --aviso: #fbbf24;
     --malo: #f87171;
     --tipo: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    /* Las etiquetas y las cifras van en monoespaciada, igual que en la app: es
+       lo que hace que una lista de números no baile al refrescarse. Estaba
+       escrita a mano en cuatro reglas distintas. */
+    --mono: ui-monospace, SFMono-Regular, Menlo, "Cascadia Mono", Consolas, monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
@@ -134,13 +138,18 @@
   .burbuja {
     max-width: 85%;
     padding: 10px 14px;
-    border-radius: 16px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     animation: subir .25s ease;
   }
-  .mio { align-self: flex-end; background: var(--texto); color: var(--fondo); font-weight: 400; }
-  .suyo { align-self: flex-start; background: var(--superficie); border: 1px solid var(--borde); }
+  .mio {
+    align-self: flex-end; background: var(--texto); color: var(--fondo); font-weight: 400;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+  }
+  .suyo {
+    align-self: flex-start; background: var(--superficie); border: 1px solid var(--borde);
+    clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px);
+  }
   .nota {
     align-self: center; text-align: center;
     font-size: 12px; color: var(--apagado); font-style: italic;
@@ -210,13 +219,13 @@
   .tarjeta {
     background: var(--superficie);
     border: 1px solid var(--borde);
-    border-radius: 14px;
     padding: 12px 14px;
   }
   .tarjeta .cabeza {
     display: flex; align-items: center; gap: 8px;
-    font-size: 11px; color: var(--tenue);
-    text-transform: uppercase; letter-spacing: .1em;
+    font-family: var(--mono);
+    font-size: 10px; color: var(--apagado);
+    text-transform: uppercase; letter-spacing: .18em;
   }
   .tarjeta .cuerpo { margin-top: 7px; overflow-wrap: anywhere; }
   .tarjeta .resultado {
@@ -224,9 +233,9 @@
     white-space: pre-wrap; overflow-wrap: anywhere;
   }
   .etiqueta {
-    padding: 1px 8px; border-radius: 999px;
-    border: 1px solid currentColor; font-size: 10px;
-    letter-spacing: .1em;
+    padding: 1px 8px;
+    border: 1px solid currentColor; font-family: var(--mono); font-size: 10px;
+    letter-spacing: .12em; text-transform: uppercase;
   }
   .pendiente, .esperando { color: var(--aviso); }
   .en_curso  { color: var(--texto); }
@@ -246,13 +255,13 @@
   .correo .acciones { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
   .correo .acciones button {
     background: none; border: 1px solid var(--borde); color: var(--apagado);
-    border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 11px;
-    cursor: pointer;
+    padding: 3px 10px; font: inherit; font-family: var(--mono); font-size: 10px;
+    letter-spacing: .12em; text-transform: uppercase; cursor: pointer;
   }
   .correo .acciones button:hover { color: var(--texto); border-color: var(--texto); }
   .correo .acciones button.hecho { border-color: var(--ok); color: var(--ok); }
   .clase {
-    padding: 1px 7px; border-radius: 999px; font-size: 10px;
+    padding: 1px 7px; font-family: var(--mono); font-size: 10px;
     border: 1px solid currentColor; color: var(--tenue);
     text-transform: uppercase; letter-spacing: .08em;
   }
@@ -264,15 +273,14 @@
     padding: 9px 12px;
     border-left: 2px solid var(--aviso);
     background: rgba(251, 191, 36, .07);
-    border-radius: 0 10px 10px 0;
   }
   .pregunta .detalle { margin-top: 4px; font-size: 13px; color: var(--tenue); }
 
   .acciones { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
   button.pildora {
     background: none; border: 1px solid var(--borde); color: var(--texto);
-    border-radius: 999px; padding: 6px 15px; font: inherit; font-size: 12px;
-    text-transform: uppercase; letter-spacing: .1em;
+    padding: 6px 15px; font: inherit; font-family: var(--mono); font-size: 11px;
+    text-transform: uppercase; letter-spacing: .16em;
     cursor: pointer; transition: background .2s, border-color .2s;
   }
   button.pildora:hover { background: var(--superficie-alta); }
@@ -298,7 +306,7 @@
   .pieza .detalle { color: var(--tenue); font-size: 13px; overflow-wrap: anywhere; }
   .pieza .arreglo {
     margin-top: 5px; font-size: 12px; color: var(--apagado);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--mono);
     overflow-wrap: anywhere;
   }
 
@@ -321,7 +329,7 @@
   #anotar-memoria { flex-direction: column; }
   #anotar-memoria[hidden] { display: none; }
   textarea {
-    font: inherit; border-radius: 12px; border: 1px solid var(--borde);
+    font: inherit; border: 1px solid var(--borde);
     background: var(--superficie); color: var(--texto); padding: 11px 14px;
     resize: vertical; min-height: 90px;
   }
@@ -334,7 +342,7 @@
   }
   .nota-vault .ruta {
     font-size: 11px; color: var(--apagado); margin-top: 2px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--mono);
     overflow-wrap: anywhere;
   }
   .nota-vault .extracto { font-size: 13px; color: var(--tenue); margin-top: 6px; }
@@ -350,8 +358,8 @@
   .filtros { display: flex; flex-wrap: wrap; gap: 6px; }
   .filtro {
     background: none; border: 1px solid var(--borde); color: var(--apagado);
-    border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 11px;
-    text-transform: uppercase; letter-spacing: .08em; cursor: pointer;
+    padding: 4px 11px; font: inherit; font-family: var(--mono); font-size: 10px;
+    text-transform: uppercase; letter-spacing: .14em; cursor: pointer;
   }
   .filtro[aria-pressed="true"] { color: var(--fondo); background: var(--texto); border-color: var(--texto); }
 
@@ -428,8 +436,9 @@
 
   .fichas { display: flex; flex-wrap: wrap; gap: 8px; }
   .ficha {
-    border: 1px solid var(--borde); border-radius: 999px;
-    padding: 4px 12px; font-size: 12px; color: var(--tenue);
+    border: 1px solid var(--borde);
+    padding: 4px 12px; font-family: var(--mono); font-size: 11px;
+    letter-spacing: .08em; color: var(--tenue);
   }
   .ficha.apagada { color: var(--apagado); border-style: dashed; }
 
@@ -1654,6 +1663,15 @@ function pintarLectura(datos) {
   caja.appendChild(reloj);
   caja.appendChild(crear("span", "lectura-sep", "·"));
   caja.appendChild(crear("span", null, "en pie " + duracion(datos.encendido_segundos ?? 0)));
+
+  // La marca de la última construcción. Esta pantalla se sirve del disco y va
+  // siempre al día; la del PC lleva su interfaz dentro de un binario y puede
+  // quedarse atrás. Enseñar aquí la misma marca es lo que convierte «creo que
+  // no se ha actualizado» en una comparación de dos líneas de texto.
+  if (datos.version?.marca) {
+    caja.appendChild(crear("span", "lectura-sep", "·"));
+    caja.appendChild(crear("span", null, "versión " + datos.version.marca));
+  }
 
   // El reloj se mueve solo mientras esta pantalla esté delante. Se para al
   // cambiar de pestaña, que es cuando el nodo deja de estar en el documento.
