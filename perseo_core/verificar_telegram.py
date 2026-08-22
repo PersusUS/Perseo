@@ -191,7 +191,7 @@ def main() -> None:
     # 1. Un trabajo que pide confirmacion llega al chat con sus botones.
     secreto = "37 ficheros, entre ellos las facturas de marzo"
     id_uno = encolar_simulacro(nucleo, "borrar la carpeta de descargas", secreto)
-    aviso = falso.esperar_envio("Perseo necesita un sí")
+    aviso = falso.esperar_envio("Perseo espera un sí")
     comprobar("El aviso de confirmacion llega al chat", aviso is not None)
     if aviso is None:
         nucleo.limpiar()
@@ -259,7 +259,17 @@ def main() -> None:
         any(not (e.get("reply_markup") or {}).get("inline_keyboard") for e in falso.ediciones),
         f"{len(falso.ediciones)} edicion(es)",
     )
-    comprobar("Y el titular de terminado llega al chat", falso.esperar_envio("terminado") is not None)
+    # Y lo que NO se manda, que desde el 2026-08-22 es tan parte del canal como
+    # lo que sí: este trabajo lo encoló uno mismo por HTTP —origen `texto`—, así
+    # que al terminar no se avisa al móvil. Si estás encolando trabajos, estás
+    # mirando la pantalla; el aviso sería contarte lo que ya ves. Lo que sí se
+    # anuncia es lo que hicieron los disparadores solos, y solo si el agente
+    # supo resumirlo: eso lo fijan las pruebas de `redactar`
+    # (pruebas/test_telegram_redaccion.py).
+    comprobar(
+        "Un trabajo que encolaste tú no se anuncia al terminar",
+        falso.esperar_envio("terminado", segundos=3) is None,
+    )
 
     # 4. Volver a pulsar no lo ejecuta otra vez.
     antes = len(falso.respuestas)
