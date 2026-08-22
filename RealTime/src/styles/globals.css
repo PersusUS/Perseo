@@ -5,8 +5,9 @@
    El reparto es por pantalla, no por tipo de regla:
 
      base.css      la fuente, los colores y el reinicio — de las tres
-     llamada.css   la cara, lo que se dice, los controles, los ajustes y la
-                   tira de proyectos: todo lo que se ve durante una llamada
+     llamada.css   la cara, lo que se dice, lo que Perseo ve (cámara y
+                   pantalla), los controles, los ajustes y la tira de
+                   proyectos: todo lo que se ve durante una llamada
      panel.css     cola, correo, memoria y estado (clases `pnl-`)
      aspectos.css  la escenografía de los tres aspectos del modo live (T-11)
 

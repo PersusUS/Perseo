@@ -244,7 +244,81 @@
 }
 
 /* ═══════════════════════════════════════
-   BOTTOM CONTROLS
+   LO QUE PERSEO VE — cámara y pantalla
+   ═══════════════════════════════════════
+   La cámara es la preview local; la pantalla, el JPEG que le llega al modelo.
+   Son lecturas, así que van al borde en caja recta con las esquinas marcadas y
+   etiqueta en monoespaciada — la misma voz que los instrumentos del panel.
+   Hasta hoy no tenían ni una regla: caían en el flujo central a tamaño natural,
+   empujaban la cara y se pisaban la escenografía (H-57). Cada aspecto ajusta
+   dónde cuelgan; ver aspectos.css. */
+
+.pip-container {
+  position: absolute;
+  right: 28px;
+  bottom: 118px;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  max-width: calc(100% - 56px);
+}
+
+.camera-pip,
+.screen-pip {
+  position: relative;
+  border: 1px solid var(--border);
+  background: #000;
+  overflow: hidden;
+}
+
+/* Tamaños fijos: pantalla en 16:9, que es la proporción de lo que ve el
+   modelo; cámara en 4:3, como llega del dispositivo. */
+.screen-pip { width: 256px; height: 144px; }
+.camera-pip { width: 192px; height: 144px; }
+
+.camera-pip video,
+.screen-pip img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Las esquinas marcadas: la firma de .esc-bloque y .pnl-hud. La imagen va sin
+   filtro a propósito: esta caja informa de lo que hay delante, y un preview en
+   blanco y negro mentiría sobre lo que el modelo está viendo. */
+.camera-pip::before, .camera-pip::after,
+.screen-pip::before, .screen-pip::after {
+  content: '';
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.camera-pip::before, .screen-pip::before { top: 4px; left: 4px; border-top: 1px solid var(--fg); border-left: 1px solid var(--fg); }
+.camera-pip::after, .screen-pip::after { bottom: 4px; right: 4px; border-bottom: 1px solid var(--fg); border-right: 1px solid var(--fg); }
+
+.pip-etiqueta {
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  z-index: 2;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+  text-shadow: 0 1px 3px #000;
+}
+
+/* ═══════════════════════════════════════
+    BOTTOM CONTROLS
    ═══════════════════════════════════════ */
 
 .controls-bar {

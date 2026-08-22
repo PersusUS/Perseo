@@ -407,16 +407,19 @@ function App() {
         proyectosAbiertos={showProyectos}
       />
 
-      {/* PIP Containers */}
+      {/* Lo que Perseo ve: la cámara en vivo y el JPEG que le llega del modelo.
+          Son lecturas del borde; cada aspecto las coloca donde no estorban. */}
       <div className="pip-container">
         {cameraStream && (
           <div className="camera-pip">
             <video ref={cameraVideoRef} autoPlay playsInline muted />
+            <span className="pip-etiqueta">Cámara</span>
           </div>
         )}
         {screenFrame && (
           <div className="screen-pip">
-            <img src={`data:image/jpeg;base64,${screenFrame}`} alt="Screen display" />
+            <img src={`data:image/jpeg;base64,${screenFrame}`} alt="Pantalla compartida" />
+            <span className="pip-etiqueta">Pantalla</span>
           </div>
         )}
       </div>

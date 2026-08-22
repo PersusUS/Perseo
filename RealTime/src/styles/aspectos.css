@@ -383,6 +383,14 @@
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.5));
 }
 
+/* Lo que Perseo ve no puede colgarse a la derecha aquí: esa esquina es de la
+   bitácora. Se ancla dentro de la columna del medio, por encima de las barras
+   de voz, pegado al borde derecho de esa banda. */
+.aspecto-mando .pip-container {
+  right: calc(340px + 18px);
+  bottom: 124px;
+}
+
 /* En una ventana estrecha las dos columnas se comen a Perseo: 250 y 340 dejan
    la cara en 310 px, que es justo lo que mide. Se estrechan antes de llegar
    ahí, que es mejor que recortar la cara o sacar barra de deslizamiento. */
@@ -390,6 +398,8 @@
   .app-container.aspecto-mando {
     grid-template-columns: 210px minmax(0, 1fr) 280px;
   }
+
+  .aspecto-mando .pip-container { right: calc(280px + 18px); }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -554,6 +564,15 @@
 }
 
 .aspecto-cartel .transcript-line { text-align: left; padding-left: 0; }
+
+/* Y lo que Perseo ve sube arriba a la derecha: abajo vive la transcripción, y
+   arriba no vive nadie. Alineado con el borde derecho de la cartela, por
+   debajo del riel de la ventana y dentro del marco. */
+.aspecto-cartel .pip-container {
+  top: 46px;
+  right: clamp(36px, 7vw, 120px);
+  bottom: auto;
+}
 
 /* Cuando la marca de esta ventana y la que sella el núcleo no coinciden, esta
    app es de una construcción anterior. Va en ámbar, como el resto de los avisos
