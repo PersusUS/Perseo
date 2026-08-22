@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "live-maquetas",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["RealTime/node_modules/vite/bin/vite.js", "RealTime", "--port", "1420", "--strictPort"],
+      "port": 1420
+    }
+  ]
+}
