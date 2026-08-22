@@ -131,11 +131,10 @@ fn clave_del_nucleo(app: &AppHandle) -> String {
     String::new()
 }
 
-/// Guarda la clave de API en el almacen local y la persiste en disco.
-#[tauri::command]
-pub fn guardar_api_key(app: AppHandle, clave: String) -> Result<(), String> {
-    guardar_ajuste(app, CLAVE_API.to_string(), serde_json::Value::String(clave))
-}
+// La clave ya no se guarda desde la interfaz (2026-08-22). Se pone donde la
+// pone el nucleo —`<datos>/gemini.txt`, o la variable GEMINI_API_KEY— y aqui
+// solo se lee: un secreto que se escribe en una ventana es un secreto que se
+// ensena en una ventana. El comando `guardar_api_key` se fue con el campo.
 
 /// Lee un ajuste cualquiera del almacen local.
 ///

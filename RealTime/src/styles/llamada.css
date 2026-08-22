@@ -1,0 +1,658 @@
+/* La pantalla de la llamada: la cara, lo que se dice, los controles y los ajustes.
+   Esta hoja la carga `globals.css`, que es la única que importa `main.tsx`.
+   Ver el reparto ahí. */
+
+/* ═══════════════════════════════════════
+   LAYOUT
+   ═══════════════════════════════════════ */
+
+.app-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Hokusai background */
+.bg-art {
+  position: absolute;
+  inset: 0;
+  background-image: url('/hokusai-bg.png');
+  background-size: cover;
+  background-position: center bottom;
+  background-repeat: no-repeat;
+  opacity: 0.07;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ═══════════════════════════════════════
+   PERSEO FACE (Central Avatar)
+   ═══════════════════════════════════════ */
+
+.call-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px; /* Reduced gap since containers handle spacing */
+  z-index: 1;
+  flex: 1;
+  justify-content: center;
+  padding-bottom: 120px;
+}
+
+.perseo-face-container {
+  width: 360px;
+  height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.perseo-text-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  justify-content: flex-start;
+}
+
+.perseo-status-wrapper {
+  min-height: 20px;
+}
+
+.perseo-face {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s linear; /* Fast but smooth for volume reaction */
+}
+
+.perseo-avatar-img {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  position: relative;
+  z-index: 2;
+  filter: grayscale(100%) brightness(0.85);
+}
+
+/* Hablando: la foto respira con la voz. La escala sale de `--vol`, que ya
+   viene suavizada desde App.tsx; el factor es 0,10 y no 0,8 como antes, porque
+   con 0,8 la cara se hinchaba casi al doble en cada sílaba. La transición
+   remata lo que el suavizado deja: sin ella, a 60 cuadros por segundo todavía
+   se aprecia el escalón. */
+.perseo-avatar-img {
+  transform: scale(calc(1 + var(--vol) * 0.10));
+  transition: transform 0.12s ease-out, border-color 0.3s ease;
+}
+
+.perseo-face.speaking .perseo-avatar-img {
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+/* Concentric ripples emanating outward */
+.ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%) scale(1);
+  animation: ripple-out 2s ease-out infinite;
+  z-index: 1;
+}
+
+.ripple.r2 { animation-delay: 0.5s; }
+.ripple.r3 { animation-delay: 1.0s; }
+
+@keyframes ripple-out {
+  0%   { transform: translate(-50%, -50%) scale(1); opacity: 0.4; }
+  100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
+}
+
+/* Listening: gentle glow breathe */
+.perseo-face.listening .perseo-avatar-img {
+  animation: glow-breathe 3s ease-in-out infinite;
+}
+
+@keyframes glow-breathe {
+  0%, 100% { box-shadow: 0 0 0 rgba(255,255,255,0); }
+  50%      { box-shadow: 0 0 30px rgba(255,255,255,0.08); }
+}
+
+/* Connecting: No spin, just subtle pulse */
+.perseo-face.connecting .perseo-avatar-img {
+  opacity: 0.8;
+  animation: glow-breathe 2s ease-in-out infinite;
+}
+
+/* Idle: dimmed */
+.perseo-face.idle .perseo-avatar-img {
+  opacity: 0.5;
+}
+
+/* Name + Status */
+.perseo-name {
+  font-size: 18px;
+  font-weight: 300;
+  letter-spacing: 12px;
+  text-transform: uppercase;
+  color: var(--fg);
+  text-shadow: 0 2px 10px rgba(255, 255, 255, 0.2);
+}
+
+.perseo-status {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--fg-dim);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* ═══════════════════════════════════════
+   TRANSCRIPT OVERLAY
+   ═══════════════════════════════════════ */
+
+.transcript-overlay {
+  position: absolute;
+  bottom: 110px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(550px, 85%);
+  max-height: 100px;
+  overflow-y: auto;
+  z-index: 2;
+  padding: 8px 0;
+  mask-image: linear-gradient(transparent 0%, black 40%, black 100%);
+  -webkit-mask-image: linear-gradient(transparent 0%, black 40%, black 100%);
+}
+
+.transcript-overlay::-webkit-scrollbar { display: none; }
+
+.transcript-line {
+  text-align: center;
+  font-size: 14px;
+  font-weight: 300;
+  color: var(--fg-muted);
+  padding: 4px 20px;
+  line-height: 1.6;
+  animation: fade-up 0.3s ease;
+}
+
+.transcript-line.ai { color: var(--fg); font-weight: 400; }
+.transcript-line.system { color: var(--fg-dim); font-style: italic; font-size: 12px; }
+
+/* Lo que Perseo ha pedido hacer y espera un sí, encima de la transcripción y
+   debajo de los controles. Va aquí y no solo en el panel: durante una llamada
+   nadie mira el panel, y la acción se quedaba parada sin que se notara (H-51). */
+.pendientes {
+  position: absolute;
+  bottom: 230px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(550px, 85%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 4;
+}
+
+.pendiente {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  animation: fade-up 0.3s ease;
+}
+
+.pendiente-texto { font-size: 13px; color: var(--fg); line-height: 1.5; }
+
+.pendiente-acciones { display: flex; gap: 8px; margin-top: 10px; }
+
+.pendiente-acciones button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  border-radius: 999px;
+  padding: 4px 14px;
+  font: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  cursor: pointer;
+}
+
+.pendiente-acciones button:hover { color: var(--fg); border-color: var(--fg); }
+.pendiente-acciones button.aprobar { border-color: #4ade80; color: #4ade80; }
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══════════════════════════════════════
+   BOTTOM CONTROLS
+   ═══════════════════════════════════════ */
+
+.controls-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  z-index: 3;
+  background: linear-gradient(transparent, rgba(0,0,0,0.9));
+  padding-bottom: 16px;
+}
+
+.ctrl-btn {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.05);
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+  outline: none;
+  padding: 0;
+}
+
+.ctrl-btn svg {
+  width: 26px;
+  height: 26px;
+  stroke: #ffffff;
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ctrl-btn:hover {
+  background: var(--surface-hover);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: scale(1.08);
+}
+
+.ctrl-btn:active {
+  transform: scale(0.94);
+}
+
+.ctrl-btn.active {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+/* Call button - White */
+.ctrl-btn.call-btn {
+  width: 72px;
+  height: 72px;
+  background: #ffffff;
+  border-color: #ffffff;
+}
+
+.ctrl-btn.call-btn svg { stroke: #000000; width: 30px; height: 30px; }
+.ctrl-btn.call-btn:hover { background: #eeeeee; border-color: #eeeeee; }
+
+/* Hangup button - Very Dark Gray (almost black) */
+.ctrl-btn.hangup-btn {
+  width: 72px;
+  height: 72px;
+  background: #222222;
+  border-color: #333333;
+}
+
+.ctrl-btn.hangup-btn svg { stroke: #ffffff; width: 30px; height: 30px; }
+.ctrl-btn.hangup-btn:hover { background: #333333; border-color: #444444; }
+
+/* Muted state - Grayscale */
+.ctrl-btn.muted {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.ctrl-btn.muted svg { stroke: #aaaaaa; }
+
+
+/* ═══════════════════════════════════════
+   AJUSTES (rehechos el 2026-08-22)
+   ═══════════════════════════════════════
+   Era un formulario gris —campos redondeados, etiquetas en minúscula— en medio
+   de una pantalla negra con esquinas de mira. Ahora es del mismo sitio: fondo
+   negro, esquinas marcadas, versalitas espaciadas y nada redondeado.
+   Ver components/Settings.tsx. */
+
+.ajustes-fondo {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 24px 24px;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(3px);
+  animation: fade-up 0.18s ease;
+}
+
+.ajustes {
+  position: relative;
+  width: min(760px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #050505;
+  border: 1px solid var(--border);
+  /* La rejilla y las esquinas, igual que las tarjetas del panel: es lo que dice
+     que esta ventana es de Perseo y no del sistema. */
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-size: 44px 44px, 44px 44px;
+}
+
+.ajustes::before,
+.ajustes::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.ajustes::before { top: 6px; left: 6px; border-top: 1px solid var(--fg); border-left: 1px solid var(--fg); }
+.ajustes::after { right: 6px; bottom: 6px; border-right: 1px solid var(--fg); border-bottom: 1px solid var(--fg); }
+
+.ajustes-cabeza {
+  display: flex;
+  align-items: center;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ajustes-cabeza h3 {
+  font-size: 13px;
+  font-weight: 300;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+}
+
+.ajustes-cerrar {
+  margin-left: auto;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 13px;
+  width: 30px;
+  height: 26px;
+  cursor: pointer;
+}
+
+.ajustes-cerrar:hover { color: var(--fg); border-color: var(--border); }
+
+.ajustes-cuerpo {
+  padding: 20px 22px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  scrollbar-width: thin;
+}
+
+.ajustes-titulo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  margin-bottom: 10px;
+}
+
+/* Las fichas: el aspecto y la voz se eligen viendo qué son, no leyendo una
+   lista desplegable donde todo se llama igual. */
+.ajustes-fichas { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.ajustes-ficha {
+  flex: 1 1 180px;
+  min-width: 150px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 14px;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--fg-muted);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.ajustes-ficha.estrecha { flex: 1 1 110px; min-width: 100px; }
+
+.ajustes-ficha:hover { border-color: rgba(255, 255, 255, 0.32); color: var(--fg); }
+
+.ajustes-ficha.elegida {
+  border-color: var(--fg);
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ajustes-ficha-nombre {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.ajustes-ficha-que { font-size: 12px; line-height: 1.45; color: var(--fg-dim); }
+.ajustes-ficha.elegida .ajustes-ficha-que { color: var(--fg-muted); }
+
+.ajustes-nota { font-size: 12px; color: var(--fg-dim); line-height: 1.6; margin-top: 10px; }
+.ajustes-nota code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 1px 5px;
+}
+
+.ajustes-interruptor {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.ajustes-interruptor input { accent-color: #fff; width: 15px; height: 15px; }
+
+.ajustes textarea {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.6;
+  padding: 12px;
+  resize: vertical;
+}
+
+.ajustes textarea:focus { outline: none; border-color: rgba(255, 255, 255, 0.35); }
+
+.ajustes-restaurar {
+  margin-left: auto;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--fg-dim);
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.ajustes-restaurar:hover:not(:disabled) { color: var(--fg); border-color: var(--border); }
+.ajustes-restaurar:disabled { opacity: 0.35; cursor: default; }
+
+.ajustes-error { color: #f87171; font-size: 12.5px; padding: 0 22px; }
+
+.ajustes-pie {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ajustes-pie button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding: 8px 20px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ajustes-pie button:hover:not(:disabled) { color: var(--fg); border-color: var(--fg); }
+.ajustes-pie button.principal { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+.ajustes-pie button.principal:hover:not(:disabled) { background: #ddd; }
+.ajustes-pie button:disabled { opacity: 0.5; cursor: default; }
+
+
+/* ── La tira de proyectos (T-5, 2026-08-21) ─────────────────────────────────
+   Vive encima de la barra de controles y debajo de la cara: lo que no se está
+   usando no ocupa sitio, y a Perseo no se le tapa nunca. La capa de fondo no
+   pinta nada —ni un velo— porque detrás hay una llamada en curso que se sigue
+   mirando; solo recoge el clic que cierra. */
+.proyectos-capa {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 116px;
+}
+
+.proyectos-tira-marco {
+  width: min(980px, 92%);
+  /* Los bordes se desvanecen en vez de cortarse: es lo que dice que la tira
+     sigue habiendo más allá, sin pintar una flecha ni una barra. */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+  animation: fade-up 0.28s ease;
+}
+
+.proyectos-tira {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 6px 24px 10px;
+  scroll-behavior: smooth;
+  cursor: grab;
+  /* Sin barra a la vista: se arrastra, se gira la rueda o se usan las flechas. */
+  scrollbar-width: none;
+}
+
+.proyectos-tira::-webkit-scrollbar { display: none; }
+.proyectos-tira:active { cursor: grabbing; }
+.proyectos-tira:focus-visible { outline: none; }
+
+.proyecto-ficha {
+  flex: 0 0 auto;
+  width: 190px;
+  min-height: 104px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+  /* Que arrastrar la tira no seleccione el texto de las tarjetas por el camino. */
+  user-select: none;
+}
+
+.proyecto-ficha:hover {
+  background: var(--surface-hover);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-3px);
+}
+
+.proyecto-ficha.arrancando { border-color: rgba(255, 255, 255, 0.45); }
+.proyecto-ficha.hecho { border-color: rgba(255, 255, 255, 0.6); }
+.proyecto-ficha.con-fallo { border-color: rgba(255, 255, 255, 0.6); border-style: dashed; }
+
+.proyecto-icono { display: flex; opacity: 0.75; }
+.proyecto-icono svg { width: 20px; height: 20px; }
+
+.proyecto-nombre {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  /* Un nombre largo no puede ensanchar la tarjeta ni partir la tira. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.proyecto-detalle {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fg-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.proyectos-vacio {
+  padding: 18px 14px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+

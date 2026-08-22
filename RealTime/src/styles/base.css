@@ -1,0 +1,43 @@
+/* Lo que comparten las tres hojas: la fuente, los colores y el reinicio.
+   Va aparte porque una regla suelta antes de un `@import` invalida el import
+   —así lo manda CSS—, y aquí importa: `globals.css` no es más que la lista de
+   hojas. */
+
+:root {
+  --bg: #000000;
+  --fg: #ffffff;
+  --fg-muted: #999999;
+  --fg-dim: #555555;
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-hover: rgba(255, 255, 255, 0.18);
+  --border: rgba(255, 255, 255, 0.15);
+  --danger: #ffffff;
+  --call-green: #ffffff;
+  /* Sin fuentes de fuera: la CSP del binario (`tauri.conf.json`) solo deja
+     `self`, así que el `@import` de Google Fonts que había aquí no llegó a
+     cargar nunca dentro de la aplicación —lo que se veía eran ya las familias
+     del sistema—. Se pide Inter por si está instalada y se cae con orden. */
+  --font: 'Inter', 'Segoe UI Variable Display', 'Segoe UI', -apple-system, system-ui, sans-serif;
+  /* Las lecturas del puesto de mando van en monoespaciada: cifras que cambian
+     cada segundo con anchos distintos hacen bailar la línea entera. */
+  --mono: ui-monospace, 'Cascadia Mono', Consolas, 'Roboto Mono', monospace;
+  /* Volumen instantáneo de la voz de Perseo, 0..1. Lo escribe App.tsx. */
+  --vol: 0;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-weight: 300;
+  -webkit-font-smoothing: antialiased;
+}

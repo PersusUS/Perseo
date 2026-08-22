@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maquetas — modo live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500&family=Roboto+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   Maqueta del modo live. NO es la aplicación: es un banco de pruebas para
+   decidir qué elementos decorativos entran en App.tsx y globals.css.
+   Reglas heredadas de T-7: negro, monocromo, la ola al fondo y nada de neones.
+   Lo que da el aire de puesto de mando es la geometría y el movimiento.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg: #000;
+  --fg: #fff;
+  --fg-muted: #999;
+  --fg-dim: #555;
+  --border: rgba(255,255,255,.15);
+  --font: 'Inter', -apple-system, sans-serif;
+  --mono: 'Roboto Mono', ui-monospace, monospace;
+  --vol: 0;            /* volumen simulado 0..1, lo escribe el JS */
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; background:var(--bg); color:var(--fg);
+  font-family:var(--font); font-weight:300; overflow:hidden; -webkit-font-smoothing:antialiased; }
+
+/* ── Barra de la maqueta (esto no va en la app) ───────────────────────────── */
+#barra {
+  position:fixed; top:0; left:0; right:0; height:44px; z-index:100;
+  display:flex; align-items:center; gap:6px; padding:0 12px;
+  background:#0b0b0b; border-bottom:1px solid #1c1c1c;
+  font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+}
+#barra .et { color:#666; margin-right:6px; }
+#barra .sep { width:1px; height:20px; background:#222; margin:0 10px; }
+#barra button {
+  font:inherit; color:#888; background:transparent; cursor:pointer;
+  border:1px solid #262626; border-radius:3px; padding:5px 10px; transition:.15s;
+}
+#barra button:hover { color:#ddd; border-color:#3a3a3a; }
+#barra button.on { color:#000; background:#fff; border-color:#fff; }
+
+#escena { position:absolute; top:44px; left:0; right:0; bottom:0; overflow:hidden; }
+
+.variante { position:absolute; inset:0; display:none; }
+body.v-a .variante[data-v="a"],
+body.v-b .variante[data-v="b"],
+body.v-c .variante[data-v="c"] { display:block; }
+
+/* ── Fondo común: la ola ──────────────────────────────────────────────────── */
+.bg-art {
+  position:absolute; inset:0; background:url('/hokusai-bg.png') center bottom/cover no-repeat;
+  opacity:.07; pointer-events:none;
+}
+
+/* ── Piezas compartidas ───────────────────────────────────────────────────── */
+.avatar { width:100%; height:100%; border-radius:50%; object-fit:cover;
+  filter:grayscale(100%) brightness(.85); border:1px solid rgba(255,255,255,.2);
+  position:relative; z-index:2; display:block; }
+body.s-idle .avatar { opacity:.5; }
+
+.mono { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+
+/* Barra de controles: igual que la de la app, no se toca. */
+.controles {
+  position:absolute; bottom:0; left:0; right:0; height:100px; z-index:6;
+  display:flex; align-items:center; justify-content:center; gap:28px;
+  background:linear-gradient(transparent, rgba(0,0,0,.9)); padding-bottom:16px;
+}
+.ctrl { width:60px; height:60px; border-radius:50%; border:1.5px solid rgba(255,255,255,.2);
+  background:rgba(255,255,255,.05); display:flex; align-items:center; justify-content:center;
+  cursor:pointer; backdrop-filter:blur(10px); }
+.ctrl svg { width:26px; height:26px; stroke:#fff; stroke-width:1.8; fill:none;
+  stroke-linecap:round; stroke-linejoin:round; }
+.ctrl.colgar { width:72px; height:72px; background:#222; border-color:#333; }
+
+/* Rejilla tenue reutilizable */
+.rejilla {
+  position:absolute; inset:0; pointer-events:none;
+  background-image:
+    linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
+  background-size:44px 44px, 44px 44px;
+}
+
+/* Barrido: una línea que recorre la pantalla muy despacio. */
+.barrido {
+  position:absolute; left:0; right:0; height:120px; pointer-events:none;
+  background:linear-gradient(transparent, rgba(255,255,255,.035), transparent);
+  animation:barrer 9s linear infinite;
+}
+@keyframes barrer { from { top:-120px; } to { top:100%; } }
+
+/* Esquinas de mira sobre toda la pantalla */
+.mira { position:absolute; width:26px; height:26px; pointer-events:none; opacity:.45; }
+.mira.tl { top:16px; left:16px; border-top:1px solid var(--fg); border-left:1px solid var(--fg); }
+.mira.tr { top:16px; right:16px; border-top:1px solid var(--fg); border-right:1px solid var(--fg); }
+.mira.bl { bottom:16px; left:16px; border-bottom:1px solid var(--fg); border-left:1px solid var(--fg); }
+.mira.br { bottom:16px; right:16px; border-bottom:1px solid var(--fg); border-right:1px solid var(--fg); }
+
+/* Regla de marcas en un borde */
+.regla { position:absolute; pointer-events:none; opacity:.35;
+  background-image:repeating-linear-gradient(90deg, var(--fg) 0 1px, transparent 1px 14px);
+  height:5px; }
+
+/* Punto que late */
+.latido { width:6px; height:6px; border-radius:50%; background:var(--fg);
+  animation:latir 2.4s ease-in-out infinite; flex:none; }
+@keyframes latir { 0%,100% { opacity:.25; } 50% { opacity:1; } }
+
+/* Texto vertical japonés: decoración, del mismo peso visual que una regla. */
+.kana { position:absolute; writing-mode:vertical-rl; font-size:12px; letter-spacing:.5em;
+  color:rgba(255,255,255,.22); user-select:none; pointer-events:none; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   VARIANTE A · «Mira»
+   La composición de ahora, sin mover nada de sitio: el avatar sigue en el
+   centro y la transcripción debajo. Lo que se añade son anillos que giran
+   alrededor de la cara, lecturas en las cuatro esquinas y un barrido.
+   ══════════════════════════════════════════════════════════════════════════ */
+.a-centro { position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:26px; padding-bottom:120px; }
+
+.a-cara { position:relative; width:340px; height:340px; display:flex;
+  align-items:center; justify-content:center; }
+.a-foto { width:196px; height:196px; transform:scale(calc(1 + var(--vol) * .16)); transition:transform .08s linear; }
+
+.a-anillo { position:absolute; inset:0; }
+.a-anillo svg { width:100%; height:100%; display:block; overflow:visible; }
+.a-anillo .traz { fill:none; stroke:var(--fg); vector-effect:non-scaling-stroke; }
+
+/* Tres anillos, tres velocidades y sentidos: es lo que da la sensación de
+   instrumento y no de gif. Parados en reposo, girando cuando hay llamada. */
+.a-anillo.g1 { animation:girar 46s linear infinite; }
+.a-anillo.g2 { animation:girar 30s linear infinite reverse; }
+.a-anillo.g3 { animation:girar 17s linear infinite; }
+body.s-idle .a-anillo { animation-play-state:paused; opacity:.35; }
+@keyframes girar { to { transform:rotate(360deg); } }
+
+/* El anillo de volumen: el trazo crece con la voz de Perseo. */
+.a-vol { position:absolute; inset:0; }
+.a-vol circle { fill:none; stroke:var(--fg); stroke-width:2; opacity:.85;
+  stroke-dasharray:calc(var(--vol) * 534) 534; transform:rotate(-90deg); transform-origin:50% 50%;
+  transition:stroke-dasharray .08s linear; }
+body:not(.s-hab) .a-vol { opacity:0; }
+
+.a-nombre { font-size:18px; letter-spacing:12px; text-transform:uppercase; }
+.a-sub { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:12px; }
+.a-estado { font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--fg-muted); }
+
+/* Lecturas de las esquinas: lo que en la app ya se sabe (sesión, modelo, red). */
+.a-lect { position:absolute; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--fg-dim); line-height:1.9; }
+.a-lect.tl { top:34px; left:34px; }
+.a-lect.tr { top:34px; right:34px; text-align:right; }
+.a-lect.bl { bottom:122px; left:34px; }
+.a-lect b { color:var(--fg-muted); font-weight:400; }
+
+.a-transcripcion { position:absolute; bottom:110px; left:50%; transform:translateX(-50%);
+  width:min(560px,80%); text-align:center; z-index:5;
+  mask-image:linear-gradient(transparent, #000 45%);
+  -webkit-mask-image:linear-gradient(transparent, #000 45%); }
+.a-transcripcion div { font-size:14px; color:var(--fg-muted); padding:4px 0; }
+.a-transcripcion div.ai { color:var(--fg); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   VARIANTE B · «Puesto de mando»
+   Cambia la distribución: tres columnas. A la izquierda los instrumentos, en
+   medio Perseo, a la derecha el registro de la conversación con hora y quién
+   habla. Es la que más se parece a estar sentado delante de una consola.
+   ══════════════════════════════════════════════════════════════════════════ */
+.b-rejilla { position:absolute; inset:0; display:grid;
+  grid-template-columns:250px 1fr 320px; grid-template-rows:38px 1fr 100px; }
+
+.b-cinta { grid-column:1/-1; display:flex; align-items:center; gap:14px;
+  padding:0 22px; border-bottom:1px solid rgba(255,255,255,.08);
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--fg-muted); }
+.b-cinta .der { margin-left:auto; display:flex; gap:14px; align-items:center; }
+.b-cinta .sep { opacity:.3; }
+
+.b-col { padding:22px 20px; display:flex; flex-direction:column; gap:18px; overflow:hidden; }
+.b-col.izq { border-right:1px solid rgba(255,255,255,.08); }
+.b-col.der { border-left:1px solid rgba(255,255,255,.08); }
+
+.b-bloque { position:relative; padding:12px 12px 10px; border:1px solid rgba(255,255,255,.1); }
+.b-bloque::before, .b-bloque::after { content:''; position:absolute; width:9px; height:9px; opacity:.55; }
+.b-bloque::before { top:4px; left:4px; border-top:1px solid var(--fg); border-left:1px solid var(--fg); }
+.b-bloque::after { right:4px; bottom:4px; border-right:1px solid var(--fg); border-bottom:1px solid var(--fg); }
+.b-titulo { font-family:var(--mono); font-size:9.5px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--fg-dim); display:flex; justify-content:space-between; }
+.b-valor { font-family:var(--mono); font-size:20px; margin-top:4px; font-variant-numeric:tabular-nums; }
+.b-linea svg { width:100%; height:34px; display:block; margin-top:6px; }
+.b-linea .traz { fill:none; stroke:var(--fg); stroke-width:1.2; vector-effect:non-scaling-stroke; }
+.b-linea .area { fill:rgba(255,255,255,.07); stroke:none; }
+
+/* Franja de aviso: diagonales, sin color. Marca dónde acaba lo que informa y
+   empieza lo que actúa. */
+.b-franja { height:8px; background:repeating-linear-gradient(45deg,
+  rgba(255,255,255,.16) 0 6px, transparent 6px 12px); }
+
+.b-centro { position:relative; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:22px; }
+.b-cara { position:relative; width:280px; height:280px; display:flex; align-items:center; justify-content:center; }
+.b-foto { width:170px; height:170px; transform:scale(calc(1 + var(--vol) * .14)); transition:transform .08s linear; }
+.b-anillo { position:absolute; inset:0; }
+.b-anillo svg { width:100%; height:100%; overflow:visible; }
+.b-anillo .traz { fill:none; stroke:var(--fg); vector-effect:non-scaling-stroke; }
+.b-anillo.g1 { animation:girar 40s linear infinite; }
+.b-anillo.g2 { animation:girar 22s linear infinite reverse; }
+body.s-idle .b-anillo { animation-play-state:paused; opacity:.35; }
+
+.b-nombre { font-size:16px; letter-spacing:11px; text-transform:uppercase; }
+.b-estado { font-family:var(--mono); font-size:10.5px; letter-spacing:.2em;
+  text-transform:uppercase; color:var(--fg-muted); display:flex; align-items:center; gap:9px; }
+
+/* Barras de voz: columnas que se mueven con el volumen. */
+.b-voz { display:flex; align-items:flex-end; gap:3px; height:26px; }
+.b-voz i { width:3px; background:var(--fg); opacity:.5; height:2px; transition:height .09s linear; }
+
+.b-registro { display:flex; flex-direction:column; gap:10px; overflow:hidden; flex:1; }
+.b-msj { font-size:12.5px; line-height:1.5; color:var(--fg-muted); }
+.b-msj .cab { font-family:var(--mono); font-size:9.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--fg-dim); display:flex; gap:8px; margin-bottom:3px; }
+.b-msj.ai { color:var(--fg); }
+.b-msj.ai .cab b { color:var(--fg-muted); font-weight:400; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   VARIANTE C · «Cartel»
+   La más agresiva: composición descentrada, tipografía enorme que anuncia el
+   estado como una cartela, y kanji gigante de fondo. Menos instrumento y más
+   presencia; es la que más se aleja de lo que hay hoy.
+   ══════════════════════════════════════════════════════════════════════════ */
+.c-marco { position:absolute; inset:26px; border:1px solid rgba(255,255,255,.18); pointer-events:none; }
+.c-marco::before { content:''; position:absolute; top:-1px; left:60px; width:170px; height:3px; background:#000;
+  border-left:1px solid rgba(255,255,255,.18); border-right:1px solid rgba(255,255,255,.18); }
+
+/* El kanji de fondo se dibuja en vertical, así que hay que darle ancho: sin él
+   la caja se estira a todo lo ancho y el texto de al lado queda dentro. */
+.c-kanji { position:absolute; right:3%; top:50%; transform:translateY(-50%);
+  width:min(46vh,340px); line-height:1; text-align:center;
+  font-size:min(46vh,340px); font-weight:500; color:rgba(255,255,255,.045);
+  writing-mode:vertical-rl; letter-spacing:.02em; user-select:none; pointer-events:none; }
+
+.c-cuerpo { position:absolute; inset:0; display:flex; align-items:center;
+  gap:56px; padding:0 clamp(40px,9vw,140px) 100px; }
+
+.c-cara { position:relative; width:300px; height:300px; flex:none;
+  display:flex; align-items:center; justify-content:center; }
+.c-foto { width:230px; height:230px; border-radius:0;
+  clip-path:polygon(0 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%);
+  transform:scale(calc(1 + var(--vol) * .06)); transition:transform .08s linear; }
+.c-cara .esq { position:absolute; width:20px; height:20px; opacity:.6; }
+.c-cara .e1 { top:14px; left:14px; border-top:1px solid var(--fg); border-left:1px solid var(--fg); }
+.c-cara .e2 { bottom:14px; right:14px; border-bottom:1px solid var(--fg); border-right:1px solid var(--fg); }
+
+.c-texto { min-width:0; }
+.c-etiqueta { font-family:var(--mono); font-size:10px; letter-spacing:.32em;
+  text-transform:uppercase; color:var(--fg-dim); display:flex; align-items:center; gap:10px; }
+.c-cartela { font-size:clamp(38px,7.2vw,86px); font-weight:200; letter-spacing:.14em;
+  text-transform:uppercase; line-height:1; margin:14px 0 6px; white-space:nowrap; }
+.c-cartela span { display:inline-block; animation:entrar .5s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes entrar { from { opacity:0; transform:translateX(-14px); } to { opacity:1; transform:none; } }
+.c-regla { height:1px; background:rgba(255,255,255,.2); margin:18px 0 14px; position:relative; }
+.c-regla::after { content:''; position:absolute; left:0; top:-2px; width:64px; height:5px; background:var(--fg); opacity:.8; }
+.c-frase { font-size:15px; color:var(--fg-muted); line-height:1.7; max-width:520px; }
+.c-datos { display:flex; gap:26px; margin-top:22px; font-family:var(--mono);
+  font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--fg-dim); }
+.c-datos b { display:block; color:var(--fg); font-size:15px; font-weight:400; margin-top:4px; letter-spacing:.06em; }
+</style>
+</head>
+
+<body class="v-a s-hab">
+
+<div id="barra">
+  <span class="et">Maqueta</span>
+  <button data-var="a" class="on">A · Mira</button>
+  <button data-var="b">B · Puesto de mando</button>
+  <button data-var="c">C · Cartel</button>
+  <span class="sep"></span>
+  <span class="et">Estado</span>
+  <button data-est="idle">Sin llamada</button>
+  <button data-est="esc">Escuchando</button>
+  <button data-est="hab" class="on">Hablando</button>
+</div>
+
+<div id="escena">
+
+  <!-- ─────────────────────────── VARIANTE A ─────────────────────────── -->
+  <section class="variante" data-v="a">
+    <div class="bg-art"></div>
+    <div class="rejilla"></div>
+    <div class="barrido"></div>
+    <div class="mira tl"></div><div class="mira tr"></div>
+    <div class="mira bl"></div><div class="mira br"></div>
+    <div class="regla" style="top:16px; left:60px; right:60px;"></div>
+
+    <div class="kana" style="left:26px; top:50%; transform:translateY(-50%);">音声接続 · 待機</div>
+
+    <div class="a-lect tl mono">
+      SESIÓN <b class="reloj-sesion">00:04:12</b><br>
+      ENLACE <b>GEMINI LIVE</b>
+    </div>
+    <div class="a-lect tr mono">
+      ENTRADA <b>16 kHz</b><br>
+      SALIDA <b>24 kHz</b>
+    </div>
+    <div class="a-lect bl mono">
+      CPU <b class="cpu">31%</b> · RAM <b class="ram">58%</b><br>
+      LATENCIA <b class="lat">240 ms</b>
+    </div>
+
+    <div class="a-centro">
+      <div class="a-cara">
+        <!-- Anillo exterior: marcas de grado, gira despacio -->
+        <div class="a-anillo g1">
+          <svg viewBox="0 0 340 340"><g class="traz" stroke-width="1" opacity=".5">
+            <circle cx="170" cy="170" r="168" stroke-dasharray="2 10"></circle>
+          </g></svg>
+        </div>
+        <!-- Anillo medio: arcos cortados -->
+        <div class="a-anillo g2">
+          <svg viewBox="0 0 340 340"><g class="traz" stroke-width="1.2" opacity=".7">
+            <path d="M170 24 a146 146 0 0 1 126 73"></path>
+            <path d="M296 243 a146 146 0 0 1 -126 73"></path>
+            <path d="M44 243 a146 146 0 0 1 0 -146"></path>
+          </g></svg>
+        </div>
+        <!-- Anillo interior: cuatro marcas gruesas -->
+        <div class="a-anillo g3">
+          <svg viewBox="0 0 340 340"><g class="traz" stroke-width="2" opacity=".55">
+            <path d="M170 46 l0 12"></path>
+            <path d="M170 282 l0 12"></path>
+            <path d="M46 170 l12 0"></path>
+            <path d="M282 170 l12 0"></path>
+          </g></svg>
+        </div>
+        <!-- Anillo de volumen -->
+        <div class="a-vol">
+          <svg viewBox="0 0 340 340"><circle cx="170" cy="170" r="85"></circle></svg>
+        </div>
+        <img class="avatar a-foto" src="/perseo-avatar.jpg" alt="">
+      </div>
+
+      <div style="text-align:center">
+        <div class="a-nombre">Perseo</div>
+        <div class="a-sub">
+          <span class="latido"></span>
+          <span class="a-estado texto-estado">Perseo está hablando</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="a-transcripcion registro-a"></div>
+
+    <div class="controles">
+      <div class="ctrl"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg></div>
+      <div class="ctrl"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
+      <div class="ctrl"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+      <div class="ctrl colgar"><svg viewBox="0 0 24 24"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="22" y1="2" x2="2" y2="22"/></svg></div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── VARIANTE B ─────────────────────────── -->
+  <section class="variante" data-v="b">
+    <div class="bg-art"></div>
+    <div class="rejilla"></div>
+    <div class="barrido"></div>
+
+    <div class="b-rejilla">
+      <div class="b-cinta">
+        <span class="latido"></span>
+        <span class="reloj">00:00:00</span>
+        <span class="sep">·</span>
+        <span>EN PIE <span class="reloj-sesion">00:04:12</span></span>
+        <span class="sep">·</span>
+        <span class="texto-estado">Perseo está hablando</span>
+        <span class="der">
+          <span>ENLACE ESTABLE</span><span class="sep">·</span>
+          <span class="lat">240 ms</span><span class="sep">·</span>
+          <span>16 / 24 kHz</span>
+        </span>
+      </div>
+
+      <div class="b-col izq">
+        <div class="b-bloque b-linea">
+          <div class="b-titulo"><span>CPU</span><span class="cpu">31%</span></div>
+          <svg viewBox="0 0 240 34" preserveAspectRatio="none" data-serie="cpu">
+            <path class="area"></path><path class="traz"></path>
+          </svg>
+        </div>
+        <div class="b-bloque b-linea">
+          <div class="b-titulo"><span>MEMORIA</span><span class="ram">58%</span></div>
+          <svg viewBox="0 0 240 34" preserveAspectRatio="none" data-serie="ram">
+            <path class="area"></path><path class="traz"></path>
+          </svg>
+        </div>
+        <div class="b-bloque">
+          <div class="b-titulo"><span>Cola</span><span>2 · 0</span></div>
+          <div class="b-valor">2 <span style="font-size:11px;color:var(--fg-dim)">EN CURSO</span></div>
+        </div>
+        <div class="b-franja"></div>
+        <div class="b-bloque">
+          <div class="b-titulo"><span>Siguiente cita</span><span>18:30</span></div>
+          <div style="font-size:12px;color:var(--fg-muted);margin-top:6px">Tutoría TFG · Sala 3</div>
+        </div>
+      </div>
+
+      <div class="b-centro">
+        <div class="b-cara">
+          <div class="b-anillo g1">
+            <svg viewBox="0 0 280 280"><g class="traz" stroke-width="1" opacity=".5">
+              <circle cx="140" cy="140" r="138" stroke-dasharray="2 9"></circle>
+            </g></svg>
+          </div>
+          <div class="b-anillo g2">
+            <svg viewBox="0 0 280 280"><g class="traz" stroke-width="1.2" opacity=".65">
+              <path d="M140 18 a122 122 0 0 1 106 61"></path>
+              <path d="M34 201 a122 122 0 0 1 0 -122"></path>
+            </g></svg>
+          </div>
+          <img class="avatar b-foto" src="/perseo-avatar.jpg" alt="">
+        </div>
+        <div style="text-align:center">
+          <div class="b-nombre">Perseo</div>
+          <div class="b-estado" style="justify-content:center;margin-top:10px">
+            <span class="texto-estado">Perseo está hablando</span>
+          </div>
+        </div>
+        <div class="b-voz"></div>
+      </div>
+
+      <div class="b-col der">
+        <div class="b-titulo" style="justify-content:space-between">
+          <span>Registro de la llamada</span><span>記録</span>
+        </div>
+        <div class="b-registro registro-b"></div>
+      </div>
+
+      <div class="controles" style="position:static;grid-column:1/-1;height:100px">
+        <div class="ctrl"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg></div>
+        <div class="ctrl"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
+        <div class="ctrl"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+        <div class="ctrl colgar"><svg viewBox="0 0 24 24"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="22" y1="2" x2="2" y2="22"/></svg></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── VARIANTE C ─────────────────────────── -->
+  <section class="variante" data-v="c">
+    <div class="bg-art"></div>
+    <div class="rejilla"></div>
+    <div class="barrido"></div>
+    <div class="c-marco"></div>
+    <div class="c-kanji">応答</div>
+
+    <div class="c-cuerpo">
+      <div class="c-cara">
+        <span class="esq e1"></span><span class="esq e2"></span>
+        <img class="avatar c-foto" src="/perseo-avatar.jpg" alt="" style="border-radius:0">
+      </div>
+
+      <div class="c-texto">
+        <div class="c-etiqueta"><span class="latido"></span> PERSEO · ENLACE DE VOZ</div>
+        <div class="c-cartela cartela"><span>Hablando</span></div>
+        <div class="c-regla"></div>
+        <div class="c-frase frase-c">Claro, señor Persus. El núcleo lleva cuatro horas en pie y la cola está en dos trabajos.</div>
+        <div class="c-datos">
+          <div>Sesión<b class="reloj-sesion">00:04:12</b></div>
+          <div>Latencia<b class="lat">240 ms</b></div>
+          <div>CPU<b class="cpu">31%</b></div>
+          <div>Cola<b>2</b></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="controles">
+      <div class="ctrl"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg></div>
+      <div class="ctrl"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
+      <div class="ctrl"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+      <div class="ctrl colgar"><svg viewBox="0 0 24 24"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="22" y1="2" x2="2" y2="22"/></svg></div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+/* ── Maqueta: datos falsos y movimiento, para juzgar el aire, no el contenido ── */
+
+const cuerpo = document.body;
+
+// Cambiar de variante y de estado desde la barra de arriba.
+document.querySelectorAll('#barra button').forEach(b => {
+  b.addEventListener('click', () => {
+    if (b.dataset.var) {
+      cuerpo.className = cuerpo.className.replace(/v-\w/, 'v-' + b.dataset.var);
+      marcar(b, '[data-var]');
+    } else {
+      cuerpo.className = cuerpo.className.replace(/s-\w+/, 's-' + b.dataset.est);
+      marcar(b, '[data-est]');
+      pintarEstado();
+    }
+  });
+});
+function marcar(boton, sel) {
+  document.querySelectorAll('#barra button' + sel).forEach(o => o.classList.remove('on'));
+  boton.classList.add('on');
+}
+
+const ESTADOS = {
+  idle: { texto: 'Sin llamada', cartela: 'En reposo', kanji: '待機' },
+  esc:  { texto: 'Perseo está escuchando', cartela: 'Escuchando', kanji: '傾聴' },
+  hab:  { texto: 'Perseo está hablando', cartela: 'Hablando', kanji: '応答' },
+};
+function estadoActual() {
+  return cuerpo.classList.contains('s-idle') ? 'idle'
+       : cuerpo.classList.contains('s-esc') ? 'esc' : 'hab';
+}
+function pintarEstado() {
+  const e = ESTADOS[estadoActual()];
+  document.querySelectorAll('.texto-estado').forEach(n => n.textContent = e.texto);
+  document.querySelectorAll('.cartela').forEach(n => n.innerHTML = '<span>' + e.cartela + '</span>');
+  document.querySelectorAll('.c-kanji').forEach(n => n.textContent = e.kanji);
+}
+
+// Volumen simulado: una onda suave, para ver cómo respira el anillo y las barras.
+let t = 0;
+setInterval(() => {
+  t += 0.08;
+  const hablando = estadoActual() === 'hab';
+  const v = hablando
+    ? Math.max(0, 0.42 + 0.32 * Math.sin(t * 2.1) + 0.2 * Math.sin(t * 5.7) + 0.1 * Math.random())
+    : 0;
+  document.documentElement.style.setProperty('--vol', v.toFixed(3));
+  pintarVoz(v);
+}, 70);
+
+// Barras de voz de la variante B.
+const voz = document.querySelector('.b-voz');
+for (let i = 0; i < 26; i++) voz.appendChild(document.createElement('i'));
+function pintarVoz(v) {
+  const barras = voz.children;
+  for (let i = 0; i < barras.length; i++) {
+    const centro = 1 - Math.abs(i - barras.length / 2) / (barras.length / 2);
+    const h = 2 + v * 26 * (0.35 + centro) * (0.7 + 0.6 * Math.random());
+    barras[i].style.height = Math.min(26, h).toFixed(1) + 'px';
+  }
+}
+
+// Relojes y telemetría de mentira.
+setInterval(() => {
+  const ahora = new Date();
+  document.querySelectorAll('.reloj').forEach(n =>
+    n.textContent = ahora.toLocaleTimeString('es-ES', { hour12: false }));
+  document.querySelectorAll('.lat').forEach(n =>
+    n.textContent = (200 + Math.round(Math.random() * 90)) + ' ms');
+}, 1000);
+
+let seg = 252;
+setInterval(() => {
+  seg++;
+  const s = String(seg % 60).padStart(2, '0');
+  const m = String(Math.floor(seg / 60) % 60).padStart(2, '0');
+  const h = String(Math.floor(seg / 3600)).padStart(2, '0');
+  document.querySelectorAll('.reloj-sesion').forEach(n => n.textContent = h + ':' + m + ':' + s);
+}, 1000);
+
+// Series de CPU y memoria: paseo aleatorio, mismo dibujo que usa el panel.
+const series = { cpu: [], ram: [] };
+function paso(serie, base) {
+  const ultimo = serie.length ? serie[serie.length - 1] : base;
+  const v = Math.min(96, Math.max(6, ultimo + (Math.random() - 0.5) * 14));
+  serie.push(v);
+  if (serie.length > 90) serie.shift();
+  return v;
+}
+function pintarSeries() {
+  const cpu = paso(series.cpu, 31), ram = paso(series.ram, 58);
+  document.querySelectorAll('.cpu').forEach(n => n.textContent = Math.round(cpu) + '%');
+  document.querySelectorAll('.ram').forEach(n => n.textContent = Math.round(ram) + '%');
+  document.querySelectorAll('svg[data-serie]').forEach(svg => {
+    const datos = series[svg.dataset.serie];
+    if (datos.length < 2) return;
+    const px = (i) => (i / (datos.length - 1)) * 240;
+    const py = (v) => 34 - (v / 100) * 32;
+    const d = datos.map((v, i) => (i ? 'L' : 'M') + px(i).toFixed(1) + ' ' + py(v).toFixed(1)).join(' ');
+    svg.querySelector('.traz').setAttribute('d', d);
+    svg.querySelector('.area').setAttribute('d', d + ' L240 34 L0 34 Z');
+  });
+}
+for (let i = 0; i < 40; i++) { paso(series.cpu, 31); paso(series.ram, 58); }
+pintarSeries();
+setInterval(pintarSeries, 1400);
+
+// Conversación de mentira, que va cayendo para ver cómo se lee.
+const GUION = [
+  { q: 'user', t: 'Perseo, ¿cómo va la cola?' },
+  { q: 'ai',   t: 'Dos trabajos en curso, señor Persus. El resumen del correo terminó hace ocho minutos.' },
+  { q: 'user', t: 'Enséñame lo de la tutoría.' },
+  { q: 'ai',   t: 'A las 18:30, sala 3. Le he dejado el guion abierto en Obsidian.' },
+  { q: 'user', t: 'Perfecto, ábreme el proyecto de visión.' },
+  { q: 'ai',   t: 'Arrancando. El entorno tarda unos veinte segundos en levantar.' },
+];
+let iGuion = 0;
+const regA = document.querySelector('.registro-a');
+const regB = document.querySelector('.registro-b');
+function soltarLinea() {
+  const m = GUION[iGuion % GUION.length];
+  iGuion++;
+
+  const a = document.createElement('div');
+  a.className = m.q;
+  a.textContent = m.t;
+  regA.appendChild(a);
+  while (regA.children.length > 4) regA.removeChild(regA.firstChild);
+
+  const b = document.createElement('div');
+  b.className = 'b-msj ' + m.q;
+  const hora = new Date().toLocaleTimeString('es-ES', { hour12: false }).slice(0, 5);
+  b.innerHTML = '<div class="cab"><b>' + (m.q === 'ai' ? 'PERSEO' : 'SEÑOR PERSUS') + '</b><span>' + hora + '</span></div>' + m.t;
+  regB.appendChild(b);
+  while (regB.children.length > 8) regB.removeChild(regB.firstChild);
+
+  if (m.q === 'ai') document.querySelectorAll('.frase-c').forEach(n => n.textContent = m.t);
+}
+soltarLinea(); soltarLinea(); soltarLinea();
+setInterval(soltarLinea, 3800);
+
+pintarEstado();
+</script>
+</body>
+</html>

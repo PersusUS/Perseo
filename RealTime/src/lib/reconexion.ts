@@ -82,6 +82,10 @@ export function avisoDeEspera(plan: PlanReintento): string {
   const segundos = Math.round(plan.esperaMs / 1000);
   const cuando = segundos >= 60 ? `${Math.round(segundos / 60)} min` : `${segundos} s`;
   return plan.causa === 'limite'
-    ? `Gemini está limitando las conexiones. Se reintenta en ${cuando}.`
+    // El nombre del proveedor no sale a pantalla: en la llamada todo se llama
+    // «el enlace de voz», que es lo que el señor Persus ve. Lo que importa para
+    // entender el aviso —que es un límite de conexiones y cuánto se espera— sí
+    // está entero.
+    ? `El enlace de voz está limitando las conexiones. Se reintenta en ${cuando}.`
     : `Reconectando en ${cuando}.`;
 }

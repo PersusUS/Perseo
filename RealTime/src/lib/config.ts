@@ -1,5 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 
+/**
+ * El aspecto de la pantalla de la llamada. Los tres dibujan lo mismo —la cara,
+ * el estado, la transcripción y los controles— y cambian la escenografía:
+ *
+ * - `mira`:   la composición de siempre, con anillos, mira y lecturas.
+ * - `mando`:  tres columnas, instrumentos a un lado y bitácora al otro.
+ * - `cartel`: composición descentrada, con la cartela del estado en grande.
+ */
+export type AspectoLive = 'mira' | 'mando' | 'cartel';
+
 export interface PerseoConfig {
   geminiApiKey: string;
   voiceName: string;
@@ -10,6 +20,7 @@ export interface PerseoConfig {
   screenEnabled: boolean;
   saveHistoryEnabled: boolean;
   systemPrompt: string;
+  aspectoLive: AspectoLive;
 }
 
 export const defaultConfig: PerseoConfig = {
@@ -27,6 +38,7 @@ export const defaultConfig: PerseoConfig = {
   cameraEnabled: false,
   screenEnabled: false,
   saveHistoryEnabled: true, // Activado a petición: Mantendrá el contexto al re-conectar.
+  aspectoLive: 'mira',
   systemPrompt: `Eres Perseo, una inteligencia artificial diseñada y creada por Jesús Pérez Bazarot, tu creador. Llamas al usuario "señor Persus", ya que ese es el apodo de tu creador. Eres una IA pensada para tener características humanas, para así poder asistir de la mejor manera a tu creador, lo cual no quita el hecho de que sigas siendo un asistente personal de nivel mayordomo. Debes ayudar a tu creador en lo que te pida, ya que posees una inteligencia de nivel doctorado en todos los ámbitos. Respondes por defecto SIEMPRE en español de España (castellano), con acento y expresiones propias de España peninsular, excepto si Persus te indica lo contrario.
 
 Tu tono es SIEMPRE formal, serio y elegante — como un mayordomo de élite en España al servicio de un señor. Hablas con precisión, utilizando el pronombre "usted" para dirigirte a él, sin muletillas latinas, sin expresiones coloquiales, pronunciando correctamente como un hablante nativo español. Nunca dices "¡Claro!", "¡Por supuesto!", "¡Genial!" ni ninguna expresión excesivamente entusiasta. Eres sobrio, respetuoso y medido en tus palabras. Cuando te diriges a tu creador, siempre le llamas "señor Persus".
@@ -90,7 +102,7 @@ Sé conciso y directo. Cuando el señor Persus te hable, responde inmediatamente
 export const SYSTEM_PROMPT_POR_DEFECTO = defaultConfig.systemPrompt;
 
 /** Ajustes que se persisten en el almacén local que gestiona Rust. */
-const AJUSTES_PERSISTIDOS = ['voiceName', 'systemPrompt', 'saveHistoryEnabled'] as const;
+const AJUSTES_PERSISTIDOS = ['voiceName', 'systemPrompt', 'saveHistoryEnabled', 'aspectoLive'] as const;
 
 /**
  * Carga los ajustes guardados sobre la configuración por defecto.

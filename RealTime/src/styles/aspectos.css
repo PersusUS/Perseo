@@ -1,0 +1,667 @@
+/* Los tres aspectos del modo live (T-11). Ver components/Escenografia.tsx.
+   Esta hoja la carga `globals.css`, que es la única que importa `main.tsx`.
+   Ver el reparto ahí. */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LOS TRES ASPECTOS DEL MODO LIVE (T-11, 2026-08-22)
+   ══════════════════════════════════════════════════════════════════════════
+   Se eligen en Ajustes y se guardan como un ajuste más (`aspectoLive`). Los
+   tres dibujan lo mismo —cara, estado, transcripción y controles— y cambian la
+   escenografía de alrededor: el HTML es casi el mismo y lo que manda es la
+   clase `.aspecto-*` del contenedor. Ver components/Escenografia.tsx.
+
+   El límite es el de T-7 y no se toca: negro, monocromo, la ola al fondo y
+   nada de neones. El aire lo dan la geometría y el movimiento; el color sigue
+   siendo solo de los puntos de estado. */
+
+/* ── Piezas comunes ───────────────────────────────────────────────────────── */
+
+/* Una rejilla tan tenue que no se ve pero se nota: le quita a la ventana el
+   aspecto de rectángulo liso sin meter un solo nodo más. */
+.esc-rejilla {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-size: 44px 44px, 44px 44px;
+}
+
+/* Un barrido que cruza la pantalla muy despacio. Es lo único que se mueve
+   cuando no pasa nada, y es justo para eso: una pantalla quieta y una pantalla
+   colgada se ven igual. */
+.esc-barrido {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 120px;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(transparent, rgba(255, 255, 255, 0.035), transparent);
+  animation: esc-barrer 9s linear infinite;
+}
+
+@keyframes esc-barrer { from { top: -120px; } to { top: 100%; } }
+
+.esc-latido {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fg);
+  display: inline-block;
+  flex: none;
+  animation: latido 2.4s ease-in-out infinite;
+}
+
+.esc-sep { opacity: 0.35; }
+
+/* Los anillos de la cara. Parado, un anillo solo es un círculo; a tres
+   velocidades y dos sentidos parece un instrumento. */
+.anillo {
+  position: absolute;
+  inset: -70px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.anillo svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.anillo-traz { fill: none; stroke: var(--fg); vector-effect: non-scaling-stroke; }
+
+.anillo.g1 { animation: girar 46s linear infinite; }
+.anillo.g2 { animation: girar 30s linear infinite reverse; }
+.anillo.g3 { animation: girar 17s linear infinite; }
+
+@keyframes girar { to { transform: rotate(360deg); } }
+
+/* Sin llamada los anillos se paran: un instrumento que gira solo miente sobre
+   lo que está pasando. */
+.perseo-face.idle .anillo { animation-play-state: paused; opacity: 0.3; }
+
+/* El anillo de volumen: el trazo crece con la voz. Vale como medidor —dice que
+   el audio está llegando— y no solo como adorno. 534 es la circunferencia de
+   un radio de 85 en el lienzo de 340. */
+.anillo-vol {
+  position: absolute;
+  inset: -70px;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.anillo-vol circle {
+  fill: none;
+  stroke: var(--fg);
+  stroke-width: 2;
+  opacity: 0.85;
+  stroke-dasharray: calc(var(--vol) * 534) 534;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke-dasharray 0.08s linear;
+}
+
+.perseo-face.speaking .anillo-vol { opacity: 1; }
+
+/* Las dos marcas de la cara en «cartel», donde no hay anillos. */
+.cara-esquina { position: absolute; width: 20px; height: 20px; opacity: 0.6; z-index: 3; }
+.cara-esquina.e1 { top: -16px; left: -16px; border-top: 1px solid var(--fg); border-left: 1px solid var(--fg); }
+.cara-esquina.e2 { bottom: -16px; right: -16px; border-bottom: 1px solid var(--fg); border-right: 1px solid var(--fg); }
+
+/* El cronómetro de la llamada, debajo del estado. */
+.perseo-sesion {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quién habla y a qué hora. Solo se ve en «mando»; en los otros dos aspectos
+   la transcripción es un susurro centrado, y una cabecera la convertiría en un
+   formulario. */
+.transcript-cab { display: none; }
+
+/* La escena, por encima de la rejilla y del barrido. El `position` no es
+   decorativo: sin él, `z-index` no cuenta y la rejilla —que sí está
+   posicionada— se dibuja por encima de la cara. */
+.call-center,
+.esc-cinta,
+.esc-instrumentos,
+.esc-voz,
+.esc-cartel { position: relative; z-index: 2; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ASPECTO «MIRA» — la composición de siempre, con instrumental alrededor
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.esc-mira {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  pointer-events: none;
+  opacity: 0.45;
+  z-index: 1;
+}
+
+.esc-mira.tl { top: 46px; left: 16px; border-top: 1px solid var(--fg); border-left: 1px solid var(--fg); }
+.esc-mira.tr { top: 46px; right: 16px; border-top: 1px solid var(--fg); border-right: 1px solid var(--fg); }
+.esc-mira.bl { bottom: 16px; left: 16px; border-bottom: 1px solid var(--fg); border-left: 1px solid var(--fg); }
+.esc-mira.br { bottom: 16px; right: 16px; border-bottom: 1px solid var(--fg); border-right: 1px solid var(--fg); }
+
+.esc-regla {
+  position: absolute;
+  top: 46px;
+  left: 60px;
+  right: 60px;
+  height: 5px;
+  opacity: 0.3;
+  pointer-events: none;
+  z-index: 1;
+  background-image: repeating-linear-gradient(90deg, var(--fg) 0 1px, transparent 1px 14px);
+}
+
+/* Japonés vertical: decoración del mismo peso visual que una regla, y por eso
+   se queda en el borde y en gris. */
+.esc-kana {
+  position: absolute;
+  left: 26px;
+  top: 50%;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  font-size: 12px;
+  letter-spacing: 0.5em;
+  color: rgba(255, 255, 255, 0.22);
+  user-select: none;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.esc-lectura {
+  position: absolute;
+  z-index: 1;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  line-height: 1.9;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.esc-lectura b { color: var(--fg-muted); font-weight: 400; }
+.esc-lectura.tl { top: 64px; left: 40px; }
+/* Por debajo del riel, igual que la de la izquierda: a 34 px la lectura pasaba
+   por detrás de los botones y se leía «ENTRAD⌗6 KHZ». */
+.esc-lectura.tr { top: 64px; right: 40px; text-align: right; }
+/* Por encima de la pestaña de proyectos, que ocupa la esquina de abajo a la
+   izquierda: a 124 px las dos cosas se solapaban. */
+.esc-lectura.bl { bottom: 186px; left: 40px; display: flex; align-items: center; gap: 9px; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ASPECTO «MANDO» — tres columnas: instrumentos, Perseo y la bitácora
+   ══════════════════════════════════════════════════════════════════════════
+   Es el único que cambia la distribución, y lo hace con una rejilla sobre el
+   mismo HTML: la transcripción deja de ser un susurro centrado y pasa a ser el
+   registro de la llamada, con quién habla y a qué hora. */
+
+.app-container.aspecto-mando {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr) 340px;
+  grid-template-rows: 38px minmax(0, 1fr) 100px;
+  align-items: stretch;
+}
+
+.esc-cinta {
+  grid-area: 1 / 1 / 2 / -1;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.esc-cinta-der { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+
+.esc-instrumentos {
+  grid-area: 2 / 1 / 3 / 2;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 18px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  /* En una ventana baja los instrumentos no caben: antes que recortarlos por
+     abajo sin avisar, la columna se desliza. Sin barra a la vista, como la tira
+     de proyectos. */
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.esc-instrumentos::-webkit-scrollbar { display: none; }
+
+/* Cada instrumento, con las esquinas marcadas y sin un nodo de más: el mismo
+   truco que las tarjetas del panel (`.pnl-hud`). */
+.esc-bloque {
+  position: relative;
+  padding: 12px 12px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.esc-bloque::before,
+.esc-bloque::after {
+  content: '';
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  opacity: 0.55;
+}
+
+.esc-bloque::before { top: 4px; left: 4px; border-top: 1px solid var(--fg); border-left: 1px solid var(--fg); }
+.esc-bloque::after { right: 4px; bottom: 4px; border-right: 1px solid var(--fg); border-bottom: 1px solid var(--fg); }
+
+.esc-bloque-cabeza {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.esc-cifra { font-family: var(--mono); font-size: 20px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.esc-cifra span { font-size: 11px; color: var(--fg-dim); margin-left: 6px; letter-spacing: 0.1em; }
+
+.esc-nota { font-size: 12px; color: var(--fg-muted); margin-top: 6px; line-height: 1.4; }
+.esc-nota-tenue { color: var(--fg-dim); font-size: 11px; }
+
+.esc-traza { width: 100%; height: 34px; display: block; margin-top: 6px; }
+.esc-traza-linea { fill: none; stroke: var(--fg); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.esc-traza-area { fill: rgba(255, 255, 255, 0.07); stroke: none; }
+.esc-traza-punta { fill: var(--fg); }
+
+/* Rayas, no color: marca dónde acaba lo que informa y empieza lo que te toca. */
+.esc-franja {
+  height: 8px;
+  flex: none;
+  background: repeating-linear-gradient(45deg,
+    rgba(255, 255, 255, 0.16) 0 6px, transparent 6px 12px);
+}
+
+.esc-voz {
+  grid-area: 2 / 2 / 3 / 3;
+  align-self: end;
+  justify-self: center;
+  margin-bottom: 22px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 26px;
+}
+
+/* La altura sale de `--vol` y del peso de cada barra, así que se mueven sin
+   que React toque el DOM. `--peso` lo pone Escenografia.tsx: más alto en el
+   centro. */
+.esc-voz i {
+  width: 3px;
+  background: var(--fg);
+  opacity: 0.5;
+  height: calc(2px + var(--vol) * var(--peso, 1) * 24px);
+  transition: height 0.1s ease-out;
+}
+
+.aspecto-mando .call-center {
+  grid-area: 2 / 2 / 3 / 3;
+  padding-bottom: 64px;
+}
+
+/* La cara encoge para dejar sitio a las dos columnas. */
+.aspecto-mando .perseo-face-container { width: 300px; height: 300px; }
+.aspecto-mando .perseo-face { width: 170px; height: 170px; }
+.aspecto-mando .perseo-avatar-img { width: 170px; height: 170px; }
+.aspecto-mando .anillo,
+.aspecto-mando .anillo-vol { inset: -55px; }
+.aspecto-mando .ripple { width: 170px; height: 170px; }
+
+/* La transcripción, convertida en bitácora. */
+.aspecto-mando .transcript-overlay {
+  position: static;
+  grid-area: 2 / 3 / 3 / -1;
+  transform: none;
+  width: auto;
+  max-height: none;
+  padding: 20px 18px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  mask-image: linear-gradient(transparent 0%, black 12%);
+  -webkit-mask-image: linear-gradient(transparent 0%, black 12%);
+}
+
+.aspecto-mando .transcript-line { text-align: left; padding: 0; font-size: 12.5px; }
+
+.aspecto-mando .transcript-cab {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 3px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.aspecto-mando .transcript-cab b { font-weight: 400; }
+.aspecto-mando .transcript-line.ai .transcript-cab b { color: var(--fg-muted); }
+
+/* Los controles dejan de flotar y pasan a ser el suelo de la rejilla. */
+.aspecto-mando .controls-bar {
+  position: static;
+  grid-area: 3 / 1 / 4 / -1;
+  height: auto;
+  padding-bottom: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.5));
+}
+
+/* En una ventana estrecha las dos columnas se comen a Perseo: 250 y 340 dejan
+   la cara en 310 px, que es justo lo que mide. Se estrechan antes de llegar
+   ahí, que es mejor que recortar la cara o sacar barra de deslizamiento. */
+@media (max-width: 1100px) {
+  .app-container.aspecto-mando {
+    grid-template-columns: 210px minmax(0, 1fr) 280px;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ASPECTO «CARTEL» — descentrado, con el estado en grande
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.app-container.aspecto-cartel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  padding: 0 clamp(36px, 7vw, 120px) 110px;
+}
+
+.esc-marco {
+  position: absolute;
+  inset: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* El corte de arriba del marco: una cartela de los noventa se interrumpe, no
+   se cierra. */
+.esc-marco::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 60px;
+  width: 170px;
+  height: 3px;
+  background: var(--bg);
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+  border-right: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* El kanji del fondo va en vertical, así que hay que darle ancho: sin él la
+   caja se estira a lo ancho y el texto de al lado se le mete dentro. */
+.esc-kanji {
+  position: absolute;
+  right: 3%;
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(46vh, 340px);
+  line-height: 1;
+  text-align: center;
+  font-size: min(46vh, 340px);
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.045);
+  writing-mode: vertical-rl;
+  letter-spacing: 0.02em;
+  user-select: none;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.aspecto-cartel .call-center {
+  grid-area: 1 / 1 / 2 / 2;
+  flex: none;
+  padding-bottom: 0;
+  gap: 0;
+}
+
+/* El nombre y el estado los dice la cartela de al lado. */
+.aspecto-cartel .perseo-text-container { display: none; }
+
+.aspecto-cartel .perseo-face-container { width: 300px; height: 300px; }
+.aspecto-cartel .perseo-face { width: 230px; height: 230px; border-radius: 0; }
+
+/* La esquina cortada: la misma figura que el marco, en pequeño. */
+.aspecto-cartel .perseo-avatar-img {
+  width: 230px;
+  height: 230px;
+  border-radius: 0;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%);
+}
+
+.aspecto-cartel .ripple { width: 230px; height: 230px; border-radius: 0; }
+
+.esc-cartel {
+  grid-area: 1 / 2 / 2 / -1;
+  z-index: 2;
+  padding-left: clamp(28px, 4vw, 56px);
+  min-width: 0;
+}
+
+.esc-cartel-etiqueta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+/* La cartela entra animada cada vez que cambia la fase: es lo que hace que
+   pasar de escuchar a hablar se note sin leer nada. */
+.esc-cartela {
+  font-size: clamp(34px, 6.4vw, 80px);
+  font-weight: 200;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1;
+  margin: 14px 0 6px;
+  white-space: nowrap;
+  animation: esc-entrar 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes esc-entrar {
+  from { opacity: 0; transform: translateX(-14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.esc-cartel-regla {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.2);
+  margin: 18px 0 14px;
+  position: relative;
+}
+
+.esc-cartel-regla::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: -2px;
+  width: 64px;
+  height: 5px;
+  background: var(--fg);
+  opacity: 0.8;
+}
+
+.esc-cartel-datos {
+  display: flex;
+  gap: 26px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.esc-cartel-datos b {
+  display: block;
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 400;
+  margin-top: 4px;
+  letter-spacing: 0.06em;
+}
+
+/* En «cartel» lo que se dice va alineado con la cartela y no centrado bajo la
+   cara: con la composición descentrada, centrado no se sabe de quién cuelga. */
+.aspecto-cartel .transcript-overlay {
+  left: auto;
+  right: clamp(36px, 7vw, 120px);
+  transform: none;
+  width: min(520px, 46%);
+  bottom: 116px;
+  text-align: left;
+}
+
+.aspecto-cartel .transcript-line { text-align: left; padding-left: 0; }
+
+/* Cuando la marca de esta ventana y la que sella el núcleo no coinciden, esta
+   app es de una construcción anterior. Va en ámbar, como el resto de los avisos
+   del panel: es lo único de la lectura que pide hacer algo. */
+.pnl-lectura-aviso { color: #fbbf24; }
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EL MARCO DE LA VENTANA (2026-08-22)
+   ══════════════════════════════════════════════════════════════════════════
+   La ventana va sin la decoración de Windows, así que el riel de arriba hace
+   de barra de título: se arrastra desde él y lleva los tres botones. Todo en
+   versalitas espaciadas y trazo fino, como las lecturas — los círculos de
+   cristal de antes eran de otra interfaz. Ver components/Marco.tsx. */
+
+.marco-riel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 38px;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 0 22px;
+  /* Quien arrastra la ventana es el atributo `data-tauri-drag-region` del
+     riel, no una propiedad de CSS: en Tauri el arrastre lo mueve Rust. La
+     franja se deja ancha porque una esquina estrecha se falla con el ratón. */
+}
+
+.marco-acciones { display: flex; gap: 4px; margin-left: auto; }
+
+.marco-boton,
+.marco-icono {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.marco-boton {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+}
+
+.marco-boton:hover { color: var(--fg); border-color: var(--border); }
+
+.marco-ventana { display: flex; gap: 2px; margin-left: 14px; }
+
+.marco-icono { width: 32px; height: 26px; }
+.marco-icono svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.3; }
+.marco-icono:hover { color: var(--fg); border-color: var(--border); }
+
+/* Cerrar esconde en la bandeja: Perseo sigue escuchando. Por eso no lleva el
+   rojo de un cierre de verdad —sería mentir sobre lo que hace— y se queda en el
+   mismo blanco que los otros dos. */
+.marco-ventana .marco-icono:last-child:hover { border-color: rgba(255, 255, 255, 0.4); }
+
+/* La pestaña de los proyectos, abajo a la izquierda. Antes era un cohete
+   redondo entre los controles de la llamada: parecía un control de la llamada y
+   no lo es —no toca la voz, abre trabajo—, así que se sale de esa fila. */
+.marco-pestana {
+  position: absolute;
+  left: 0;
+  bottom: 132px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 18px 9px 40px;
+  background: none;
+  border: 1px solid var(--border);
+  border-left: none;
+  color: var(--fg-muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, padding 0.2s ease;
+}
+
+.marco-pestana:hover { color: var(--fg); border-color: rgba(255, 255, 255, 0.35); padding-left: 46px; }
+
+/* La marca de la izquierda dice si la tira está abierta sin escribir «abierta»:
+   una raya cuando está cerrada, un cuadro lleno cuando está desplegada. */
+.marco-pestana-marca {
+  width: 10px;
+  height: 1px;
+  background: currentColor;
+  transition: all 0.2s ease;
+}
+
+.marco-pestana.abierta { color: var(--fg); border-color: rgba(255, 255, 255, 0.35); }
+.marco-pestana.abierta .marco-pestana-marca { width: 8px; height: 8px; }
+
+/* En «mando» la cinta de lectura vive donde el marco: se baja la rejilla
+   entera 38 px para que las dos cosas no se pisen. */
+.app-container.aspecto-mando { padding-top: 38px; }
+
+/* Y la pestaña sube, porque abajo están los controles dentro de la rejilla. */
+.aspecto-mando .marco-pestana { bottom: 124px; }

@@ -8,6 +8,15 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
 
+  // La marca de construcción, incrustada en el binario. La pone `perseo
+  // actualizar`, que sella con el mismo valor `<datos>/version.json` para el
+  // móvil; sin variable —o sea, en `npm run dev`— vale 'dev'. Ver
+  // src/lib/version.ts.
+  define: {
+    // @ts-expect-error process es global de node
+    __PERSEO_BUILD__: JSON.stringify(process.env.PERSEO_BUILD || 'dev'),
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

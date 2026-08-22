@@ -24,6 +24,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { CONSTRUCCION, EN_DESARROLLO } from '../lib/version';
+
 type Pestana = 'chat' | 'cola' | 'correo' | 'memoria' | 'estado';
 
 type Trabajo = {
@@ -53,6 +55,8 @@ type Estado = {
   maquina?: any;
   /** Qué se está haciendo, qué correo espera y qué toca en la agenda. */
   presencia?: any;
+  /** La marca de la última construcción, la que sella `perseo actualizar`. */
+  version?: { marca?: string; construido?: string };
 };
 
 const ESTADOS_ABIERTOS = new Set(['pendiente', 'en_curso', 'esperando']);
@@ -211,7 +215,9 @@ const Barra: React.FC<{ etiqueta: string; porcentaje: number; detalle?: string }
  *  No dice nada que no esté ya en las cifras de debajo, y aun así hace falta:
  *  es lo que convierte una pantalla de datos en un puesto encendido. El punto
  *  late porque un panel quieto y un panel colgado se ven igual. */
-const Lectura: React.FC<{ encendido: string; generado?: string }> = ({ encendido, generado }) => {
+const Lectura: React.FC<{ encendido: string; generado?: string; version?: string }> = ({
+  encendido, generado, version,
+}) => {
   const [reloj, setReloj] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setReloj(new Date()), 1000);
@@ -222,6 +228,9 @@ const Lectura: React.FC<{ encendido: string; generado?: string }> = ({ encendido
   // El desfase entre el reloj y el último vistazo al núcleo: si esto crece, la
   // pantalla dejó de refrescarse y el resto de números son de hace rato.
   const desde = generado ? Math.max(0, Math.round((reloj.getTime() - new Date(generado).getTime()) / 1000)) : null;
+
+  // En desarrollo no hay marca que comparar: se construye en cada recarga.
+  const desfasada = !EN_DESARROLLO && !!version && version !== CONSTRUCCION;
 
   return (
     <div className="pnl-lectura">
@@ -237,6 +246,14 @@ const Lectura: React.FC<{ encendido: string; generado?: string }> = ({ encendido
           <span>DATOS DE HACE {desde}s</span>
         </>
       )}
+      {/* Dos marcas, no una: la que lleva esta app dentro y la que el núcleo
+          tiene sellada. Si no coinciden, esta ventana es de una construcción
+          anterior y hay que pasar `perseo actualizar`. Ver lib/version.ts. */}
+      <span className="pnl-lectura-sep">·</span>
+      <span className={desfasada ? 'pnl-lectura-aviso' : undefined}>
+        VERSIÓN {EN_DESARROLLO ? 'DESARROLLO' : CONSTRUCCION}
+        {desfasada && ` · EL NÚCLEO DICE ${version}`}
+      </span>
     </div>
   );
 };
@@ -826,7 +843,11 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
 
         {pestana === 'estado' && estado && (
           <>
-            <Lectura encendido={duracion(estado.encendido_segundos)} generado={estado.generado} />
+            <Lectura
+              encendido={duracion(estado.encendido_segundos)}
+              generado={estado.generado}
+              version={estado.version?.marca}
+            />
             <div className="pnl-tarjeta pnl-hud">
               <div className="pnl-cifras">
                 <div className="pnl-cifra">

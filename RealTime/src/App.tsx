@@ -5,62 +5,32 @@ import { PerseoFace } from './components/PerseoFace';
 import { Settings } from './components/Settings';
 import { Panel } from './components/Panel';
 import { Proyectos } from './components/Proyectos';
+import { Escenografia, comoReloj, type Fase } from './components/Escenografia';
+import { Marco } from './components/Marco';
+import {
+  IconCamera, IconCameraOff, IconMic, IconMicOff, IconPhone, IconPhoneOff, IconScreen,
+} from './components/Iconos';
 import { geminiClient } from './lib/gemini-live';
 import { audioManager } from './lib/audio-manager';
 import { audioPlayer } from './lib/audio-player';
 import { cameraManager } from './lib/camera-manager';
 import { screenManager } from './lib/screen-manager';
-import { defaultConfig, cargarAjustesPersistidos } from './lib/config';
-
-// ── SVG Icons (clean, white, stroke-only) ──
-
-const IconMic = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
-);
-
-const IconMicOff = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="2" y1="2" x2="22" y2="22"></line><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"></path><path d="M5 10v2a7 7 0 0 0 12 5"></path><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"></path><path d="M9 9v3a3 3 0 0 0 5.12 1.67"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
-);
-
-const IconCamera = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
-);
-
-const IconCameraOff = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="2" y1="2" x2="22" y2="22"></line><path d="M21 21H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3m3-3h6l2 3h4a2 2 0 0 1 2 2v9.34M14.54 14.54a3 3 0 0 1-4.08-4.08"></path></svg>
-);
-
-const IconScreen = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
-);
-
-const IconPhone = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
-);
-
-const IconPhoneOff = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path><line x1="22" y1="2" x2="2" y2="22"></line></svg>
-);
-
-const IconSettings = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-);
-
-// Cuadrícula: el panel — cola, correo, memoria y estado — en esta misma
-// ventana. Ver components/Panel.tsx y src-tauri/src/panel.rs.
-const IconPanel = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
-);
-
-// Cohete: la tira de proyectos, en la propia pantalla de la llamada. Ver
-// components/Proyectos.tsx.
-const IconProyectos = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 13c-1.5 1.5-2 5-2 5s3.5-.5 5-2"></path><path d="M12 15 9 12c0-5 3-9 9-10 1 6-3 9-6 13Z"></path><path d="m9 12-3-1c1-2 3-3 5-3"></path><path d="m12 15 1 3c2 0 3-2 3-4"></path></svg>
-);
+import { defaultConfig, cargarAjustesPersistidos, type AspectoLive } from './lib/config';
 
 // ── Types ──
 // `abierto` marca un mensaje que aún está recibiendo fragmentos de transcripción.
-type TranscriptMsg = { id: string; text: string; type: 'ai' | 'user' | 'system'; abierto?: boolean };
+// `hora` se sella al abrir el mensaje, no al cerrarlo: es cuando se dijo. Solo
+// se enseña en el aspecto «mando», donde la transcripción es una bitácora.
+type TranscriptMsg = {
+  id: string;
+  text: string;
+  type: 'ai' | 'user' | 'system';
+  abierto?: boolean;
+  hora: string;
+};
+
+const ahoraCorta = () =>
+  new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
 
 const MAX_MENSAJES = 400;   // tope de memoria de una sesión
 const MENSAJES_VISIBLES = 40;
@@ -79,12 +49,30 @@ function App() {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [volume, setVolume] = useState(0);
+  // El volumen NO es estado de React. Llega a 60 por segundo desde el
+  // reproductor (`audio-player.ts` lo mide con un rAF), y con `useState` eso
+  // repintaba la aplicación entera sesenta veces por segundo y hacía que la
+  // cara diera saltos. Ahora se guarda en una referencia, se suaviza en el
+  // propio rAF y sale por una variable de CSS, que el navegador aplica sin
+  // pasar por React. Lo único que sigue siendo estado es «habla o no habla»,
+  // que cambia dos veces por frase y no sesenta veces por segundo.
+  const volumenCrudo = useRef(0);
+  const ultimaMedida = useRef(0);
+  const contenedorRef = useRef<HTMLDivElement>(null);
   const [apiKeyReady, setApiKeyReady] = useState(false);
   // El panel es una vista de esta misma ventana, no otra ventana: ver
   // src-tauri/src/panel.rs para por qué no puede ser la interfaz del núcleo.
   const [showPanel, setShowPanel] = useState(false);
   const [showProyectos, setShowProyectos] = useState(false);
+  // El aspecto del modo live (T-11). Se elige en Ajustes y se guarda con el
+  // resto: aquí hace falta como estado —y no leyendo `defaultConfig`— porque
+  // cambiarlo tiene que repintar la pantalla sin cerrar la aplicación.
+  const [aspecto, setAspecto] = useState<AspectoLive>(defaultConfig.aspectoLive);
+  // Segundos que lleva abierta esta llamada. Cuenta desde que el enlace queda
+  // conectado, no desde que se pulsa: entre las dos cosas hay una negociación
+  // que a veces falla.
+  const [sesion, setSesion] = useState(0);
+  const sesionDesde = useRef<number | null>(null);
   // Lo que Perseo ha pedido hacer y está parado esperando un sí. Ver H-51: la
   // pregunta vivía solo en el panel, que en mitad de una llamada nadie mira.
   const [pendientes, setPendientes] = useState<{ id: number; pregunta: string }[]>([]);
@@ -122,6 +110,7 @@ function App() {
     geminiClient.onConnectionStateChange = (state) => {
       setConnectionState(state as any);
       if (state === 'connected') {
+        if (sesionDesde.current === null) sesionDesde.current = Date.now();
         audioManager.start(); // Reactivar el micrófono al reconectar
         if (defaultConfig.cameraEnabled) cameraManager.start();
         if (defaultConfig.screenEnabled) {
@@ -158,12 +147,11 @@ function App() {
     screenManager.onFrameReady = (base64) => setScreenFrame(base64);
 
     audioPlayer.onVolumeChange = (v) => {
-      setVolume(v);
-      if (v > 0.05) {
-        setIsSpeaking(true);
-      } else {
-        setIsSpeaking(false);
-      }
+      volumenCrudo.current = v;
+      ultimaMedida.current = Date.now();
+      // Dos umbrales y no uno: con un único corte en 0,05 el estado parpadeaba
+      // en cada pausa entre palabras.
+      setIsSpeaking(previo => (previo ? v > 0.02 : v > 0.08));
     };
 
     // Historial que se reinyecta en el prompt al reconectar. Ahora incluye
@@ -201,6 +189,7 @@ function App() {
     (async () => {
       try {
         await cargarAjustesPersistidos();
+        setAspecto(defaultConfig.aspectoLive);
         const clave = await invoke<string>('obtener_api_key');
         defaultConfig.geminiApiKey = clave;
         if (!clave) addTranscript('system', 'No hay API Key configurada. Pulsa ⚙ para añadirla.');
@@ -256,13 +245,46 @@ function App() {
     if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
   }, [transcripts]);
 
+  // El suavizado de la voz. La medida cruda es la energía de cada trozo de
+  // audio: sube y baja con cada sílaba, y aplicada tal cual a una escala hacía
+  // que la cara vibrase. Se persigue el valor con una constante distinta al
+  // subir que al bajar —rápido al empezar a hablar, lento al callar—, que es
+  // como se comporta un vúmetro y por qué se lee bien.
+  useEffect(() => {
+    let suave = 0;
+    let cuadro = 0;
+    const pintar = () => {
+      // Cuando Perseo termina de hablar, el reproductor deja de medir: sin esto
+      // la última medida se quedaría clavada y la cara, hinchada.
+      const callado = Date.now() - ultimaMedida.current > 200;
+      const objetivo = callado ? 0 : volumenCrudo.current;
+      suave += (objetivo - suave) * (objetivo > suave ? 0.22 : 0.06);
+      contenedorRef.current?.style.setProperty('--vol', suave.toFixed(3));
+      cuadro = requestAnimationFrame(pintar);
+    };
+    cuadro = requestAnimationFrame(pintar);
+    return () => cancelAnimationFrame(cuadro);
+  }, []);
+
+  // El cronómetro de la llamada. Cuenta desde una marca de tiempo y no sumando
+  // segundos, porque 'disconnected' se emite también en cada reconexión
+  // automática (H-06) y sumando se pondría a cero a media conversación. La
+  // marca solo se borra al colgar, que es cuando la llamada acaba de verdad.
+  useEffect(() => {
+    const t = setInterval(() => {
+      const desde = sesionDesde.current;
+      setSesion(desde ? Math.floor((Date.now() - desde) / 1000) : 0);
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
   useEffect(() => {
     if (cameraVideoRef.current && cameraStream) cameraVideoRef.current.srcObject = cameraStream;
   }, [cameraStream]);
 
   const addTranscript = (type: TranscriptMsg['type'], text: string) => {
     setTranscripts(prev =>
-      [...prev, { id: `${Date.now()}-${Math.random()}`, text, type }].slice(-MAX_MENSAJES)
+      [...prev, { id: `${Date.now()}-${Math.random()}`, text, type, hora: ahoraCorta() }].slice(-MAX_MENSAJES)
     );
   };
 
@@ -282,7 +304,7 @@ function App() {
       }
       return [
         ...prev,
-        { id: `${Date.now()}-${Math.random()}`, text: delta, type: rol, abierto: true },
+        { id: `${Date.now()}-${Math.random()}`, text: delta, type: rol, abierto: true, hora: ahoraCorta() },
       ].slice(-MAX_MENSAJES);
     });
   };
@@ -299,6 +321,8 @@ function App() {
     audioManager.stop();
     audioPlayer.clearQueue();
     setIsSpeaking(false);
+    sesionDesde.current = null;
+    setSesion(0);
     // Colgar cierra también las preguntas sin contestar: siguen vivas en la
     // cola, y ahí es donde tiene sentido mirarlas cuando ya no hay llamada.
     setPendientes([]);
@@ -342,6 +366,13 @@ function App() {
   const isActive = connectionState === 'connected' || connectionState === 'connecting';
   const isConnected = connectionState === 'connected';
 
+  // La fase manda el dibujo; `statusText` manda el texto. Son dos cosas: hay
+  // estados que se cuentan distinto (silenciado) y se pintan igual.
+  const fase: Fase = !isActive ? 'reposo'
+    : connectionState === 'connecting' ? 'conectando'
+    : isSpeaking ? 'hablando'
+    : 'escuchando';
+
   const statusText = connectionState === 'disconnected' ? ''
     : connectionState === 'connecting' ? 'Conectando...'
     : connectionState === 'error' ? 'Error de conexión'
@@ -350,24 +381,31 @@ function App() {
     : 'Perseo está escuchando';
 
   return (
-    <div className="app-container">
+    // El volumen viaja como variable de CSS (`--vol`, la escribe el rAF de
+    // arriba) para que lo lean el anillo, las barras y la cara sin props ni
+    // repintados.
+    <div ref={contenedorRef} className={`app-container aspecto-${aspecto}`}>
       <div className="bg-art" />
+
+      <Escenografia
+        aspecto={aspecto}
+        fase={fase}
+        estadoTexto={statusText}
+        sesion={sesion}
+      />
 
       {/* El panel tapa la llamada, no la corta: la sesión de voz sigue viva
           detrás, así que volver es instantáneo y no se pierde la conversación. */}
       {showPanel && <Panel onCerrar={() => setShowPanel(false)} />}
 
-      {/* Panel y ajustes */}
-      <button
-        className="settings-btn panel-btn"
-        title="Panel: cola, correo y estado"
-        onClick={() => setShowPanel(true)}
-      >
-        <IconPanel />
-      </button>
-      <button className="settings-btn" onClick={() => setShowSettings(true)}>
-        <IconSettings />
-      </button>
+      {/* El riel de arriba —panel, ajustes y los botones de la ventana— y la
+          pestaña de proyectos. Ver components/Marco.tsx. */}
+      <Marco
+        onPanel={() => setShowPanel(true)}
+        onAjustes={() => setShowSettings(true)}
+        onProyectos={() => setShowProyectos(v => !v)}
+        proyectosAbiertos={showProyectos}
+      />
 
       {/* PIP Containers */}
       <div className="pip-container">
@@ -390,13 +428,14 @@ function App() {
             isSpeaking={isSpeaking}
             isListening={isConnected && !isSpeaking}
             isConnecting={connectionState === 'connecting'}
-            volume={volume}
+            aspecto={aspecto}
           />
         </div>
         <div className="perseo-text-container">
           <span className="perseo-name">Perseo</span>
           <div className="perseo-status-wrapper">
             {statusText && <span className="perseo-status">{statusText}</span>}
+            {sesion > 0 && <span className="perseo-sesion">{comoReloj(sesion)}</span>}
           </div>
         </div>
       </div>
@@ -423,7 +462,16 @@ function App() {
       {/* Transcript */}
       <div className="transcript-overlay" ref={transcriptRef}>
         {transcripts.slice(-MENSAJES_VISIBLES).map(msg => (
-          <div key={msg.id} className={`transcript-line ${msg.type}`}>{msg.text}</div>
+          <div key={msg.id} className={`transcript-line ${msg.type}`}>
+            {/* Quién habla y a qué hora. Solo se ve en «mando», donde la
+                transcripción deja de ser un susurro y pasa a ser bitácora; en
+                los otros dos aspectos el CSS lo esconde. */}
+            <span className="transcript-cab">
+              <b>{msg.type === 'ai' ? 'Perseo' : msg.type === 'user' ? 'Señor Persus' : 'Sistema'}</b>
+              <span>{msg.hora}</span>
+            </span>
+            {msg.text}
+          </div>
         ))}
       </div>
 
@@ -447,14 +495,6 @@ function App() {
           </>
         )}
 
-        <button
-          className={`ctrl-btn ${showProyectos ? 'active' : ''}`}
-          onClick={() => setShowProyectos(v => !v)}
-          title="Proyectos"
-        >
-          <IconProyectos />
-        </button>
-
         {!isActive ? (
           <button className="ctrl-btn call-btn" onClick={handleCall} title="Llamar">
             <IconPhone />
@@ -467,7 +507,11 @@ function App() {
       </div>
 
       {showSettings && (
-        <Settings onClose={() => setShowSettings(false)} llamadaActiva={isActive} />
+        <Settings
+          onClose={() => setShowSettings(false)}
+          llamadaActiva={isActive}
+          onAspecto={setAspecto}
+        />
       )}
     </div>
   );
