@@ -29,6 +29,11 @@ use tokio::time::{sleep, Instant};
 /// esperarse.
 const ESPERA_MAXIMA: Duration = Duration::from_secs(30);
 
+/// Cuanto se espera a un encargo de código. El agente `dev` tiene su propio
+/// tope en el núcleo (900 s por defecto) y su propio carril; aquí se espera
+/// parecido para poder contar el resultado real cuando termina.
+const ESPERA_DEV: Duration = Duration::from_secs(870);
+
 /// Cada cuanto se pregunta por el estado del trabajo.
 const SONDEO: Duration = Duration::from_millis(250);
 
@@ -124,6 +129,13 @@ fn traducir(herramienta: &str, args: &Value) -> Result<(String, Value), String> 
             if entidad.is_empty() {
                 return Err("Falta la entidad del recuerdo".into());
             }
+            if visual.is_empty() && contexto.is_empty() {
+                // Antes `descripcion_visual` era obligatoria y el modelo se
+                // inventaba una descripcion de camara para guardar un dato sin
+                // ninguna imagen delante. Ahora vale cualquiera de los dos,
+                // pero algo tiene que quedar escrito.
+                return Err("El recuerdo necesita contexto o descripcion_visual".into());
+            }
             let mut cuerpo = String::new();
             if !contexto.is_empty() {
                 cuerpo.push_str(contexto);
@@ -157,16 +169,105 @@ fn traducir(herramienta: &str, args: &Value) -> Result<(String, Value), String> 
                 .unwrap_or_default();
             Ok(("pc".into(), json!({ "accion": accion, "parametro": parametro })))
         }
+        // N-2: lo que el núcleo ya sabía hacer y la voz no podía pedir.
+        "consultar_agenda" => {            // Sin horas es «hoy», que es casi siempre lo que se pregunta.
+            let mut peticion = json!({ "accion": "proximos" });
+            if let Some(horas) = args.get("horas").and_then(Value::as_f64) {
+                if horas > 0.0 {
+                    peticion["horas"] = json!(horas);
+                }
+            }
+            Ok(("agenda".into(), peticion))
+        }
+        "buscar_en_web" => {
+            let texto = args
+                .get("texto")
+                .or_else(|| args.get("consulta"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if texto.is_empty() {
+                return Err("Falta lo que hay que buscar".into());
+            }
+            Ok(("web".into(), json!({ "accion": "buscar", "texto": texto })))
+        }
+        "leer_pagina" => {
+            let url = args.get("url").and_then(Value::as_str).unwrap_or_default();
+            if url.is_empty() {
+                return Err("Falta la URL de la página. Sale de buscar_en_web.".into());
+            }
+            Ok(("web".into(), json!({ "accion": "leer", "url": url })))
+        }
+        // N-3: los servidores MCP configurados en `<datos>/mcp.json`. La
+        // llamada no sabe nada de protocolos: encola un trabajo para el agente
+        // `mcp`, que es quien lanza y habla con los procesos.
+        // El subagente de código (§4.2): Claude Code por `claude -p`, con su
+        // carril propio en el núcleo. Tarda minutos; el modelo queda mejor
+        // esperando la respuesta real que con un «ya te contaré», y el tope
+        // largo de abajo lo permite sin bloquear a nadie más.
+        "encargar_codigo" => {
+            let texto = args
+                .get("texto")
+                .or_else(|| args.get("orden"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if texto.is_empty() {
+                return Err("Falta la descripción de lo que hay que hacer en el código.".into());
+            }
+            let mut peticion = json!({ "texto": texto });
+            if let Some(directorio) = args.get("directorio").and_then(Value::as_str) {
+                if !directorio.is_empty() {
+                    peticion["directorio"] = json!(directorio);
+                }
+            }
+            Ok(("dev".into(), peticion))
+        }
+        "listar_mcp" => Ok(("mcp".into(), json!({ "accion": "servidores" }))),
+        "usar_mcp" => {
+            let servidor = args.get("servidor").and_then(Value::as_str).unwrap_or_default();
+            let herramienta = args.get("herramienta").and_then(Value::as_str).unwrap_or_default();
+            if servidor.is_empty() || herramienta.is_empty() {
+                return Err(
+                    "Faltan 'servidor' y 'herramienta'. Con listar_mcp ves cuáles hay.".into(),
+                );
+            }
+            let argumentos = args.get("argumentos").cloned().unwrap_or_else(|| json!({}));
+            Ok((
+                "mcp".into(),
+                json!({
+                    "accion": "llamar",
+                    "servidor": servidor,
+                    "herramienta": herramienta,
+                    "argumentos": argumentos,
+                }),
+            ))
+        }
         otra => Err(format!("Herramienta desconocida: {otra}")),
     }
 }
 
 /// Convierte el resultado de un trabajo en la frase que lee el modelo.
 fn resumir(resultado: &Value) -> String {
+    // Una pagina de la web (`leer_pagina`): trae titulo y url junto al texto.
+    // Va LO PRIMERO, antes del caso generico del `texto` de abajo, porque
+    // volcar una pagina entera al prompt seria tirar el contexto por la
+    // ventana.
+    if let (Some(titulo), Some(url), Some(texto)) = (
+        resultado.get("titulo").and_then(Value::as_str),
+        resultado.get("url").and_then(Value::as_str),
+        resultado.get("texto").and_then(Value::as_str),
+    ) {
+        let trozo = recortar(texto, 3500);
+        let aviso = if texto.chars().count() > 3500 {
+            "\n[…la página sigue; pide más si hace falta]"
+        } else {
+            ""
+        };
+        return format!("{titulo} ({url}):\n{trozo}{aviso}");
+    }
+
     if let Some(texto) = resultado.get("texto").and_then(Value::as_str) {
         return texto.to_string();
     }
-
     if let Some(notas) = resultado.get("notas").and_then(Value::as_array) {
         if notas.is_empty() {
             return "No hay ninguna nota sobre eso en el vault.".into();
@@ -200,11 +301,75 @@ fn resumir(resultado: &Value) -> String {
         return contenido.to_string();
     }
 
+    // Lo que viene de la agenda (`consultar_agenda`): una lista de eventos con
+    // su hora. Sin esto, el modelo recibira el JSON en crudo y leera llaves.
+    if let Some(eventos) = resultado.get("eventos").and_then(Value::as_array) {
+        if eventos.is_empty() {
+            return "No hay nada en la agenda para ese plazo.".into();
+        }
+        let lineas: Vec<String> = eventos
+            .iter()
+            .map(|e| {
+                let titulo = e.get("titulo").and_then(Value::as_str).unwrap_or("(sin titulo)");
+                let inicio = e.get("inicio").and_then(Value::as_str).unwrap_or("");
+                let cuando: String = inicio.chars().take(16).collect();
+                let lugar = e.get("lugar").and_then(Value::as_str).unwrap_or_default();
+                if lugar.is_empty() {
+                    format!("- {titulo}: {cuando}")
+                } else {
+                    format!("- {titulo}: {cuando} ({lugar})")
+                }
+            })
+            .collect();
+        return lineas.join("\n");
+    }
+
+    // Resultados de `buscar_en_web`: titulo, URL y extracto de cada uno.
+    if let Some(hallazgos) = resultado.get("resultados").and_then(Value::as_array) {
+        if hallazgos.is_empty() {
+            return "La busqueda no devolvio nada.".into();
+        }
+        let lineas: Vec<String> = hallazgos
+            .iter()
+            .map(|p| {
+                let titulo = p.get("titulo").and_then(Value::as_str).unwrap_or("(sin titulo)");
+                let url = p.get("url").and_then(Value::as_str).unwrap_or("");
+                let extracto = p
+                    .get("texto")
+                    .and_then(Value::as_str)
+                    .map(|t| recortar(t, 200))
+                    .unwrap_or_default();
+                format!("- {titulo} — {url}\n  {extracto}")
+            })
+            .collect();
+        return format!(
+            "{} resultado(s). Para leer uno entero, usa leer_pagina con su URL:\n{}",
+            hallazgos.len(),
+            lineas.join("\n")
+        );
+    }
+
+    // Una pagina de la web ya se ha atendido arriba: aqui solo puede llegar un
+    // `texto` suelto, que se devuelve tal cual.
+    if let Some(texto) = resultado.get("texto").and_then(Value::as_str) {
+        return texto.to_string();
+    }
+
     if let Some(ruta) = resultado.get("ruta").and_then(Value::as_str) {
         return format!("Guardado en {ruta}.");
     }
 
     resultado.to_string()
+}
+
+/// Recorta por caracteres y no por bytes, que es como se parte un caracter del
+/// espanol por la mitad — y como un limite de UTF-8 acaba en panico.
+fn recortar(texto: &str, maximo: usize) -> String {
+    if texto.chars().count() <= maximo {
+        return texto.to_string();
+    }
+    let cortado: String = texto.chars().take(maximo).collect();
+    format!("{cortado}…")
 }
 
 pub(crate) async fn pedir_json(
@@ -243,6 +408,22 @@ pub async fn ejecutar_herramienta(
 ) -> Result<String, String> {
     let args: Value =
         serde_json::from_str(&argumentos).map_err(|e| format!("Argumentos JSON invalidos: {e}"))?;
+
+    // La confirmacion no encola nada: resuelve un trabajo que ya esta parado.
+    // Va antes de `traducir` porque no es un trabajo nuevo para un agente, es
+    // una decision sobre uno que existe. Ver N-1 en bitacora/06_HANDOFF.md §12:
+    // desde que Telegram dejo de tener botones, el si se da aqui, de viva voz.
+    if tool_name == "responder_confirmacion" {
+        return responder_confirmacion(&app, &args).await;
+    }
+    // Lo mismo para la de N-2 que habla con rutas de la API y no con la cola:
+    // lee lo que hay delante ahora mismo. Abrir proyectos se quedó fuera de la
+    // llamada (2026-08-23): para eso están el panel y el servidor MCP
+    // 'subagentes', que además trabaja en ellos, no solo los abre.
+    if tool_name == "situacion_actual" {
+        return situacion_actual(&app).await;
+    }
+
     let (agente, peticion) = traducir(&tool_name, &args)?;
 
     let token = token(&app)?;
@@ -262,12 +443,208 @@ pub async fn ejecutar_herramienta(
         .and_then(Value::as_i64)
         .ok_or("El nucleo no devolvio el identificador del trabajo")?;
 
-    let limite = Instant::now() + ESPERA_MAXIMA;
+    let tope = if agente == "dev" { ESPERA_DEV } else { ESPERA_MAXIMA };
+    esperar_trabajo(&cliente, &token, &base, id, tope).await
+}
+
+/// Resuelve por voz un trabajo parado esperando un si.
+///
+/// El flujo entero es hablado: una herramienta devolvio «pendiente de que lo
+/// confirmes», Perseo pregunta en voz alta, el señor Persus contesta, y el
+/// modelo llama aqui con su decision. Nadie pulsa nada durante la llamada; los
+/// botones del panel y de la pantalla siguen para cuando no hay voz delante.
+///
+/// Tras aprobar se espera al resultado con el mismo plazo que cualquier otra
+/// herramienta: lo normal es que el señor Persus pregunte «¿y?» justo despues,
+/// y asi hay respuesta de verdad y no un «esta en ello» para todo.
+async fn responder_confirmacion(app: &AppHandle, args: &Value) -> Result<String, String> {
+    let id = args
+        .get("id")
+        .and_then(Value::as_i64)
+        .ok_or("Falta el numero del trabajo a confirmar")?;
+    let decision = args
+        .get("decision")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !["aprobar", "rechazar"].contains(&decision) {
+        return Err(format!("Decision desconocida: {decision}"));
+    }
+
+    let token = token(app)?;
+    let cliente = reqwest::Client::new();
+    let base = base_url();
+
+    pedir_json(
+        cliente
+            .post(format!("{base}/trabajos/{id}/{decision}"))
+            .bearer_auth(&token)
+            .json(&json!({})),
+    )
+    .await?;
+
+    if decision == "rechazar" {
+        // Rechazar no tiene mas recorrido: el trabajo se cierra sin ejecutarse,
+        // y no hay nada que esperar.
+        return Ok(format!(
+            "Hecho: el trabajo #{id} queda rechazado y no se ejecuta."
+        ));
+    }
+
+    esperar_trabajo(&cliente, &token, &base, id, ESPERA_MAXIMA).await
+}
+
+/// Responde a «¿qué hay ahora mismo?» con lo que ya sabe el núcleo.
+///
+/// Rehecho el 2026-08-23: antes decía "trabaja en un asunto de 'correo'", que
+/// no dice nada. El briefing ahora trae lo que de verdad se pregunta en voz:
+/// **qué** está haciendo Perseo (agente y encargo), **qué espera un sí** —con
+/// la pregunta literal, para que la decisión sea contestarla y no ir a
+/// buscarla—, **qué falló por última vez**, el buzón por cajones y la batería.
+///
+/// Lee `/estado`, como el panel, y `/trabajos`, que es de donde salen las
+/// preguntas pendientes.
+async fn situacion_actual(app: &AppHandle) -> Result<String, String> {
+    let token = token(app)?;
+    let cliente = reqwest::Client::new();
+    let base = base_url();
+    let estado = pedir_json(
+        cliente
+            .get(format!("{base}/estado"))
+            .bearer_auth(&token),
+    )
+    .await?;
+    let trabajos = pedir_json(
+        cliente
+            .get(format!("{base}/trabajos?limite=15"))
+            .bearer_auth(&token),
+    )
+    .await?;
+
+    let presencia = estado.get("presencia").cloned().unwrap_or_else(|| json!({}));
+    let mut partes: Vec<String> = Vec::new();
+
+    // Qué está haciendo AHORA, con el encargo delante y no solo el nombre del
+    // agente: "un asunto de 'dev'" no dice nada; "el código de mi web", sí.
+    let lista_vacia: Vec<Value> = Vec::new();
+    let filas = trabajos.get("trabajos").and_then(Value::as_array).unwrap_or(&lista_vacia);
+    if let Some(en_curso) = filas.iter().find(|t| t.get("estado").and_then(Value::as_str) == Some("en_curso")) {
+        let agente = en_curso.get("agente").and_then(Value::as_str).unwrap_or("?");
+        let peticion = en_curso
+            .get("peticion")
+            .and_then(|p| p.get("texto").or_else(|| p.get("consulta")).or_else(|| p.get("titulo")))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if peticion.is_empty() {
+            partes.push(format!("ahora mismo trabaja en un asunto de '{agente}'"));
+        } else {
+            partes.push(format!(
+                "ahora mismo trabaja en '{}' ({agente})",
+                recortar(peticion, 80)
+            ));
+        }
+    }
+
+    // Lo que espera un sí, con su pregunta. Es lo único parado esperando al
+    // señor Persus: si hay algo, esto va primero aunque lo demás callara.
+    let esperando: Vec<String> = filas
+        .iter()
+        .filter(|t| t.get("estado").and_then(Value::as_str) == Some("esperando"))
+        .filter_map(|t| {
+            let id = t.get("id").and_then(Value::as_i64)?;
+            let pregunta = t
+                .get("confirmacion")
+                .and_then(|c| c.get("resumen"))
+                .and_then(Value::as_str)
+                .unwrap_or("una confirmación");
+            Some(format!("#{id} {pregunta}"))
+        })
+        .collect();
+    match esperando.len() {
+        0 => {}
+        1 => partes.insert(0, format!("espera tu sí sobre: {}", esperando[0])),
+        _ => partes.insert(
+            0,
+            format!(
+                "esperan tu sí {} asuntos: {}",
+                esperando.len(),
+                esperando.join("; ")
+            ),
+        ),
+    }
+
+    // El último fallo, con su primera línea. Saber QUE falló algo cambia la
+    // conversación; saber POR QUÉ suele ahorrar la pregunta de seguimiento.
+    if let Some(fallido) = filas.iter().find(|t| t.get("estado").and_then(Value::as_str) == Some("fallido")) {
+        let agente = fallido.get("agente").and_then(Value::as_str).unwrap_or("?");
+        let error = fallido
+            .get("error")
+            .and_then(Value::as_str)
+            .unwrap_or("sin detalle")
+            .lines()
+            .next()
+            .unwrap_or("sin detalle");
+        partes.push(format!("falló por última vez un asunto de '{agente}': {}", recortar(error, 100)));
+    }
+
+    match presencia.get("correo").and_then(Value::as_object) {
+        Some(cajones) if !cajones.is_empty() => {
+            // Los nombres de los cajones son los del triaje; al señor Persus
+            // se le dicen como se le dicen en la web.
+            for (clase, cuantos) in cajones {
+                let como = match clase.as_str() {
+                    "requiere_accion" => "piden acción",
+                    "interesante" => "interesante(s)",
+                    "no_seguro" => "sin decidir",
+                    otra => otra,
+                };
+                partes.push(format!("el buzón tiene {} correo(s) que {como}", cuantos));
+            }
+        }
+        _ => partes.push("el buzón está al día".into()),
+    }
+
+    // La batería es la pregunta de máquina más frecuente y aquí vive su
+    // respuesta corta; el resto de telemetría queda para el panel.
+    let bateria = estado
+        .get("maquina")
+        .and_then(|m| m.get("bateria"))
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    if let Some(pct) = bateria.get("porcentaje").and_then(Value::as_i64) {
+        let enchufado = bateria
+            .get("enchufado")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        partes.push(format!(
+            "la batería va al {pct}% {}",
+            if enchufado { "(enchufada)" } else { "sin enchufar" }
+        ));
+    }
+
+    if partes.is_empty() {
+        return Ok("Todo tranquilo: nada en marcha y el buzón al día.".into());
+    }
+    Ok(format!("{}.", partes.join("; ")))
+}
+
+/// Sonda un trabajo hasta que termina o se agota el plazo.
+///
+/// Extraido de `ejecutar_herramienta` para compartirlo con
+/// `responder_confirmacion`: en los dos casos el modelo queda mejor con el
+/// resultado real que con un «sigue en marcha», pero el techo es el mismo.
+async fn esperar_trabajo(
+    cliente: &reqwest::Client,
+    token: &str,
+    base: &str,
+    id: i64,
+    tope: Duration,
+) -> Result<String, String> {
+    let limite = Instant::now() + tope;
     loop {
         let trabajo = pedir_json(
             cliente
                 .get(format!("{base}/trabajos/{id}"))
-                .bearer_auth(&token),
+                .bearer_auth(token),
         )
         .await?;
 
@@ -285,9 +662,9 @@ pub async fn ejecutar_herramienta(
             }
             "cancelado" | "rechazado" => return Err("El trabajo se cerro sin ejecutarse".into()),
             "esperando" => {
-                // El agente ha parado a pedir un si. No se espera aqui: la
-                // pregunta esta en la web y en Telegram, y el modelo tiene que
-                // poder seguir hablando mientras tanto.
+                // El agente ha parado a pedir un si — otra vez, o la primera.
+                // No se espera aqui: el modelo pregunta en voz alta, y quien
+                // quiera resolverlo sin hablar tiene el panel.
                 let pregunta = trabajo
                     .get("confirmacion")
                     .and_then(|c| c.get("resumen"))

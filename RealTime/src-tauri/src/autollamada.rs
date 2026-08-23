@@ -49,6 +49,15 @@ pub fn vigilar(app: AppHandle) {
 
             let Some(ruta) = encontrado else { continue };
 
+            // El contenido del marcador es el MOTIVO de la llamada — el
+            // detector de aplausos lo deja vacío, pero los subagentes escriben
+            // en él por qué llaman ("el agente de tu web terminó"). Se lee
+            // antes de borrar: sin motivo, Perseo entraría en llamada y no
+            // sabría decir para qué.
+            let motivo = std::fs::read_to_string(&ruta)
+                .map(|t| t.trim().to_string())
+                .unwrap_or_default();
+
             // Se borra antes de avisar: si el frontend tardara en responder, no
             // se debe disparar dos veces por el mismo aplauso.
             if std::fs::remove_file(&ruta).is_err() {
@@ -56,7 +65,7 @@ pub fn vigilar(app: AppHandle) {
             }
 
             bandeja::mostrar_ventana(&app);
-            if let Err(e) = app.emit(EVENTO, ()) {
+            if let Err(e) = app.emit(EVENTO, motivo) {
                 eprintln!("[autollamada] no se pudo avisar al frontend: {e}");
             }
         }

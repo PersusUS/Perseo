@@ -241,7 +241,7 @@ export const Escenografia: React.FC<Props> = ({ aspecto, fase, estadoTexto, sesi
             <span className="esc-sep">·</span>
             <span>SESIÓN {comoReloj(sesion)}</span>
             <span className="esc-sep">·</span>
-            <span>{estadoTexto || 'SIN LLAMADA'}</span>
+            <span className="esc-cinta-estado">{estadoTexto || 'SIN LLAMADA'}</span>
             <span className="esc-cinta-der">
               <span>{enLlamada ? 'ENLACE ABIERTO' : 'ENLACE CERRADO'}</span>
               <span className="esc-sep">·</span>

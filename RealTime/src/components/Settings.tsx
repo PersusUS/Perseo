@@ -47,6 +47,7 @@ export const Settings: React.FC<Props> = ({ onClose, llamadaActiva = false, onAs
   const [voice, setVoice] = useState(defaultConfig.voiceName);
   const [prompt, setPrompt] = useState(defaultConfig.systemPrompt);
   const [guardarHistorial, setGuardarHistorial] = useState(defaultConfig.saveHistoryEnabled);
+  const [pantallaAuto, setPantallaAuto] = useState(defaultConfig.pantallaAuto);
   const [aspecto, setAspecto] = useState<AspectoLive>(defaultConfig.aspectoLive);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
@@ -77,6 +78,7 @@ export const Settings: React.FC<Props> = ({ onClose, llamadaActiva = false, onAs
       await guardarAjuste('voiceName', voice);
       await guardarAjuste('systemPrompt', prompt);
       await guardarAjuste('saveHistoryEnabled', guardarHistorial);
+      await guardarAjuste('pantallaAuto', pantallaAuto);
       await guardarAjuste('aspectoLive', aspecto);
       onClose();
     } catch (e) {
@@ -140,6 +142,22 @@ export const Settings: React.FC<Props> = ({ onClose, llamadaActiva = false, onAs
               />
               <span>Guardar la conversación en el vault</span>
             </label>
+          </section>
+
+          <section className="ajustes-bloque">
+            <div className="ajustes-titulo">Durante la llamada</div>
+            <label className="ajustes-interruptor">
+              <input
+                type="checkbox"
+                checked={pantallaAuto}
+                onChange={e => setPantallaAuto(e.target.checked)}
+              />
+              <span>Compartir mi pantalla con Perseo al conectar</span>
+            </label>
+            <p className="ajustes-nota">
+              Apagado, Perseo no ve nada hasta que se lo pidas: te preguntará y, con tu
+              sí, empezará a mirar por su cuenta.
+            </p>
           </section>
 
           <section className="ajustes-bloque">

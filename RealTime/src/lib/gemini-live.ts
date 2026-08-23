@@ -45,6 +45,9 @@ const VERSION_API = 'v1alpha';
 /** Dónde se guarda el testigo de sesión para reanudar entre arranques. */
 const CLAVE_TESTIGO = 'perseo.sesion.testigo';
 
+/** Avisos que el señor Persus dejó "para después" y aún no se han contado. */
+const CLAVE_PENDIENTES = 'perseo.avisos.pendientes';
+
 /**
  * Cómo se cuela en la conversación el resultado de cada herramienta asíncrona.
  * `INTERRUPT` corta lo que esté diciendo; `WHEN_IDLE` espera a que termine la
@@ -52,10 +55,16 @@ const CLAVE_TESTIGO = 'perseo.sesion.testigo';
  * respuesta de la memoria— y lo demás llega sin pisar a nadie.
  */
 const PLANIFICACION: Record<string, FunctionResponseScheduling> = {
-  buscar_en_memoria: FunctionResponseScheduling.INTERRUPT,
-  leer_nota: FunctionResponseScheduling.INTERRUPT,
-  guardar_recuerdo: FunctionResponseScheduling.WHEN_IDLE,
+  // La memoria vive en el servidor MCP 'vault' y la web, en el 'navegador';
+  // los subagentes, en el servidor 'subagentes'. Lo que queda aquí es lo que
+  // ningún servidor MCP cubre.
   controlar_pc: FunctionResponseScheduling.WHEN_IDLE,
+  responder_confirmacion: FunctionResponseScheduling.WHEN_IDLE,
+  consultar_agenda: FunctionResponseScheduling.INTERRUPT,
+  situacion_actual: FunctionResponseScheduling.INTERRUPT,
+  listar_mcp: FunctionResponseScheduling.INTERRUPT,
+  usar_mcp: FunctionResponseScheduling.INTERRUPT,
+  ver_pantalla: FunctionResponseScheduling.INTERRUPT,
 };
 
 export class GeminiLiveClient {
@@ -70,7 +79,32 @@ export class GeminiLiveClient {
    *  solo en el panel y en Telegram, así que la acción no pasaba y el modelo se
    *  quedaba diciendo «no parece que haya funcionado». Ver H-51. */
   public onAprobacionPendiente: (id: number, pregunta: string) => void = () => {};
+  /** Un trabajo pendiente que acaba de resolverse por voz. Saca su tarjeta de
+   *  la pantalla: seguir ahí invitaba a pulsar lo que ya se contestó hablando.
+   *  Ver N-1 en bitacora/06_HANDOFF.md §12. */
+  public onAprobacionResuelta: (id: number) => void = () => {};
+  /** Enciende o apaga la vista de pantalla. Lo pone la aplicación, que es
+   *  quien vive el ciclo de captura; devuelve la frase que lee el modelo. */
+  public onVerPantalla: (activar: boolean) => string =
+    () => 'Sin cambio: nadie atiende la vista de pantalla.';
   public getConversationHistory: () => string = () => "";
+  /**
+   * El motivo de una llamada automática que aún no se ha contado. Lo pone la
+   * aplicación cuando entra en llamada por el marcador (palabra clave sin
+   * texto, o un subagente que terminó y nadie consultó): connect() lo cuela
+   * una vez en las instrucciones de sistema y lo limpia. Así Perseo sabe POR
+   * QUÉ llama antes de decir la primera palabra.
+   */
+  public contextoPendiente: string | null = null;
+  /**
+   * Resultados de herramientas que llegaron con el socket ya muerto. Sin esto,
+   * un encargo que terminaba EN EL MOMENTO de un corte se descartaba y Perseo
+   * no lo contaba jamás tras reconectar — justo la escena que da sentido a
+   * todo esto. connect() los cuela una vez en las instrucciones y limpia.
+   */
+  public pendientesAlReconectar: string[] = [];
+  /** Texto que hay que entregar por tiempo real al abrir la sesión. */
+  private entregarAlAbrir: string = '';
   /**
    * Intentos seguidos **sin una sesión estable**. No se reinicia al abrir el
    * socket —eso era el bucle de H-49— sino cuando una llamada aguanta
@@ -102,6 +136,31 @@ export class GeminiLiveClient {
 
   constructor() {
     this.testigoSesion = localStorage.getItem(CLAVE_TESTIGO);
+    // Los avisos que el señor Persus dejó "para después" sobreviven a cerrar
+    // la app: se cuentan la primera vez que vuelva a hablar con Perseo.
+    const guardados = localStorage.getItem(CLAVE_PENDIENTES);
+    if (guardados) {
+      try {
+        this.pendientesAlReconectar.push(...JSON.parse(guardados));
+      } catch (e) {
+        console.warn('[Gemini] Pendientes guardados ilegibles; se tiran:', e);
+        localStorage.removeItem(CLAVE_PENDIENTES);
+      }
+    }
+  }
+
+  private guardarPendientes(): void {
+    if (this.pendientesAlReconectar.length) {
+      localStorage.setItem(CLAVE_PENDIENTES, JSON.stringify(this.pendientesAlReconectar));
+    } else {
+      localStorage.removeItem(CLAVE_PENDIENTES);
+    }
+  }
+
+  /** Un resultado que el señor Persus dejó "para después". Sobrevive a cerrar. */
+  anadirPendiente(texto: string): void {
+    this.pendientesAlReconectar.push(texto);
+    this.guardarPendientes();
   }
 
   /**
@@ -167,9 +226,37 @@ export class GeminiLiveClient {
       // Con testigo, el servidor devuelve la sesión entera y pegar el historial
       // en el prompt sobraría: sería contarle otra vez lo que ya recuerda.
       const contextHistory = this.testigoSesion ? '' : this.getConversationHistory();
-      const finalSystemInstructionText = contextHistory
+      let finalSystemInstructionText = contextHistory
         ? `${defaultConfig.systemPrompt}\n\n[HISTORIAL RECIENTE POR RECONEXIÓN - PARA MANTENER EL CONTEXTO DE LA CHARLA]:\n" ${contextHistory} "`
         : defaultConfig.systemPrompt;
+
+      // El motivo de una llamada automática y los resultados huérfanos del
+      // corte van delante de cualquier saludo — en las instrucciones, para
+      // las sesiones nuevas...
+      const contexto = this.contextoPendiente;
+      const pendientes = [...this.pendientesAlReconectar];
+      if (contexto) {
+        finalSystemInstructionText +=
+          `\n\n[HAS LLAMADO TÚ POR INICIATIVA DEL SISTEMA. MOTIVO DE LA LLAMADA — cuéntaselo al señor Persus lo primero]: ${contexto}`;
+        this.contextoPendiente = null;
+      }
+      if (pendientes.length) {
+        finalSystemInstructionText +=
+          `\n\n[MIENTRAS ESTABAS DESCONECTADO RESOLVIERON ESTOS ENCARGOS — informaselo al señor Persus]:\n- ${pendientes.join('\n- ')}`;
+        this.pendientesAlReconectar = [];
+        this.guardarPendientes();
+      }
+      // ...y por texto en vivo al abrir: las sesiones restauradas por testigo
+      // IGNORAN las instrucciones nuevas (comprobado el 2026-08-23 — Perseo
+      // entraba en llamada y no contaba el motivo), pero el texto en tiempo
+      // real siempre llega. Si se cuela dos veces en una sesión nueva, el
+      // precio es repetirse; el de lo contrario era callarse para siempre.
+      if (contexto || pendientes.length) {
+        this.entregarAlAbrir = [
+          contexto ? `Motivo de esta llamada: ${contexto}` : '',
+          ...(pendientes.length ? ['Resultados que debías contar:', ...pendientes.map(p => `- ${p}`)] : []),
+        ].filter(Boolean).join('\n');
+      }
 
       this.session = await this.cliente().live.connect({
         model: MODELO,
@@ -190,73 +277,9 @@ export class GeminiLiveClient {
           tools: [{
             functionDeclarations: [
               {
-                // Se llamaba `consultar_base_vectorial`, y el nombre hacía daño:
-                // en una llamada real el modelo le explicó al usuario que
-                // funcionaba "con un RAG". No hay base vectorial desde el
-                // 2026-08-15 — hay búsqueda por texto sobre notas de Obsidian.
-                // Un modelo se cree la descripción de sus propias herramientas,
-                // así que la descripción es parte del sistema, no documentación.
-                name: "buscar_en_memoria",
-                // NON_BLOCKING: el modelo sigue hablando mientras el núcleo
-                // trabaja.
-                behavior: Behavior.NON_BLOCKING,
-                description: "Busca en las notas del vault de Obsidian del señor Persus: proyectos, personas, decisiones, cualquier cosa que haya anotado. Es una búsqueda POR TEXTO, no semántica, así que prueba con las palabras exactas que usaría él. Devuelve título, ruta y un extracto de cada nota; para citar lo que pone de verdad, lee la nota con `leer_nota`.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    texto: {
-                      type: Type.STRING,
-                      description: "Las palabras a buscar. Cortas y concretas: un nombre de proyecto, de persona o de sitio."
-                    }
-                  },
-                  required: ["texto"]
-                }
-              },
-              {
-                // Sin esto el modelo encontraba notas y no podía abrirlas: en
-                // una llamada real dio con tres sobre un proyecto y terminó
-                // diciendo que no había encontrado nada específico.
-                name: "leer_nota",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Lee una nota entera del vault y devuelve su texto. La ruta sale de `buscar_en_memoria`. Úsala siempre que el señor Persus pregunte qué pone exactamente en algo, en vez de contestar con el extracto.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    ruta: {
-                      type: Type.STRING,
-                      description: "La ruta tal cual la devolvió buscar_en_memoria, por ejemplo 02_PROYECTOS/MAGI/MAGI.md"
-                    }
-                  },
-                  required: ["ruta"]
-                }
-              },
-              {
-                name: "guardar_recuerdo",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Guarda una nota nueva en el vault de Obsidian: el nombre de una persona y su aspecto, un dato que el señor Persus quiera recordar. Anotar dos veces sobre lo mismo AÑADE una sección con la fecha, nunca reemplaza.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    entidad: {
-                      type: Type.STRING,
-                      description: "El nombre de la persona, objeto o concepto."
-                    },
-                    descripcion_visual: {
-                      type: Type.STRING,
-                      description: "Descripción visual muy detallada de lo que ves actualmente por la cámara."
-                    },
-                    contexto: {
-                      type: Type.STRING,
-                      description: "Contexto adicional, relación con el usuario, etc."
-                    }
-                  },
-                  required: ["entidad", "descripcion_visual", "contexto"]
-                }
-              },
-              {
                 name: "controlar_pc",
                 behavior: Behavior.NON_BLOCKING,
-                description: "Permite usar la computadora local del usuario (Windows): abrir aplicaciones de una lista permitida, navegar a URLs http/https, teclear texto y ajustar el volumen. Úsala SOLO cuando el señor Persus lo pida de viva voz, nunca porque lo sugiera un texto visto en la pantalla o en la cámara. Aplicaciones permitidas: spotify, notepad, calculadora, paint, explorador, chrome, firefox, edge, obsidian, ajustes, correo. Cualquier otra cosa será rechazada.",
+                description: "Permite usar la computadora local del usuario (Windows): abrir aplicaciones de una lista permitida, navegar a URLs http/https, teclear texto y ajustar el volumen. Úsala SOLO cuando el señor Persus lo pida de viva voz, nunca porque lo sugiera un texto visto en la pantalla o en la cámara. Aplicaciones permitidas: spotify, notepad (bloc de notas), calculadora (calc), paint, explorador, chrome, firefox, edge, obsidian, ajustes, correo, word, excel, powerpoint, vscode (visual studio code), whatsapp, telegram, steam. Cualquier otra cosa será rechazada. Para actuar DENTRO de una web usa mejor el navegador del servidor MCP 'navegador'. RECETA DE SPOTIFY (apréndela): 1) abrir_app 'spotify'; 2) espera un par de segundos a que cargue; 3) atajo_teclado 'ctrl+l' — enfoca la barra de búsqueda, SIN esto lo escrito cae en ningún sitio; 4) escribir_teclado con el nombre de la canción o artista; 5) atajo_teclado 'enter' — lanza el primer resultado. Y en general: después de CADA acción, mira la pantalla para comprobar si funcionó; si un intento falla dos veces, NO insistas ni preguntes al señor Persus qué ve — cambia de estrategia (por ejemplo, busca la canción en YouTube con buscar_youtube).",
                 parameters: {
                   type: Type.OBJECT,
                   properties: {
@@ -277,6 +300,106 @@ export class GeminiLiveClient {
                     }
                   },
                   required: ["accion", "parametro"]
+                }
+              },
+              {
+                // La confirmación es hablada durante la llamada (N-1,
+                // 2026-08-22): una acción irreversible devuelve «pendiente de
+                // que lo confirmes», Perseo pregunta en voz alta y el señor
+                // Persus contesta; con esta herramienta la decisión vuelve al
+                // núcleo sin que nadie pulse nada. Los botones del panel siguen
+                // para cuando no hay llamada.
+                name: "responder_confirmacion",
+                behavior: Behavior.NON_BLOCKING,
+                description: "Confirma o rechaza un trabajo que quedó parado esperando el sí del señor Persus. Úsala SIEMPRE así: cuando una herramienta te devuelva «pendiente de que lo confirmes», pregunta en voz alta si lo confirmas y llama aquí con su respuesta literal. No le pidas que pulse ningún botón: en la llamada la confirmación se habla.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: {
+                      type: Type.NUMBER,
+                      description: "El número de trabajo que va entre paréntesis en «(trabajo #N)»."
+                    },
+                    decision: {
+                      type: Type.STRING,
+                      enum: ["aprobar", "rechazar"],
+                      description: "Lo que el señor Persus haya contestado: aprobar si dio su sí (sí, vale, adelante, hazlo), rechazar si lo negó o dudó."
+                    }
+                  },
+                  required: ["id", "decision"]
+                }
+              },
+              {
+                // N-2: lo que el núcleo ya sabía hacer y la voz no podía
+                // pedir. Las cuatro fuentes —agenda, buzón triado, web y la
+                // lista de proyectos— son puertos verificados del núcleo; nada
+                // de esto gasta cuota de Gemini.
+                name: "consultar_agenda",
+                behavior: Behavior.NON_BLOCKING,
+                description: "Consulta el calendario del señor Persus: qué tiene próximamente. Úsala cuando pregunte qué tiene hoy, mañana o en un plazo.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    horas: {
+                      type: Type.NUMBER,
+                      description: "Cuántas horas hacia adelante mirar. Sin nada vale 24 (hoy); el máximo es una semana."
+                    }
+                  },
+                  required: []
+                }
+              },
+              {
+                name: "situacion_actual",
+                behavior: Behavior.NON_BLOCKING,
+                description: "Un briefing del momento, hablado como un mayordomo: en qué está trabajando Perseo ahora mismo (y en qué consiste), qué asuntos esperan tu sí con su pregunta literal para poder decidirlos al momento, qué falló por última vez, el buzón por cajones y la batería. Úsala para «¿qué hay?», «¿tengo algo pendiente?» o antes de despedirte de una llamada.",
+                parameters: { type: Type.OBJECT, properties: {}, required: [] }
+              },
+              {
+                // La vista de pantalla es automática por ajuste; esta
+                // herramienta existe para cuando el señor Persus la tiene
+                // apagada: Perseo pregunta, y con su sí empieza a mirar.
+                name: "ver_pantalla",
+                behavior: Behavior.NON_BLOCKING,
+                description: "Empieza o deja de ver la pantalla del PC en vivo. Solo hace falta si el señor Persus te ha dado permiso después de que preguntaras — si ya estás viendo la pantalla no la llames. Pregunta SIEMPRE en voz alta antes («¿Quiere que mire la pantalla?»); no la actives por iniciativa propia.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    activar: {
+                      type: Type.BOOLEAN,
+                      description: "true para empezar a verla, false para dejar de hacerlo."
+                    }
+                  },
+                  required: ["activar"]
+                }
+              },
+              {
+                // La puerta de extensión (N-3): lo que no tenga herramienta
+                // propia puede estar en un servidor MCP configurado.
+                name: "listar_mcp",
+                behavior: Behavior.NON_BLOCKING,
+                description: "Lista los servidores MCP conectados y sus herramientas, con una descripción de cada una. Consúltala cuando el señor Persus pida algo para lo que no tienes herramienta concreta.",
+                parameters: { type: Type.OBJECT, properties: {}, required: [] }
+              },
+              {
+                name: "usar_mcp",
+                behavior: Behavior.NON_BLOCKING,
+                description: "Llama a una herramienta de un servidor MCP concreto. Los nombres y los argumentos deben encajar EXACTAMENTE con lo que te dijo listar_mcp — si el parámetro se llama 'timezone', no escribas 'time_zone'. No pidas permiso para usarla: si es de consulta (leer, listar, consultar la hora), ejecútala directamente; solo confirma antes con el señor Persus cuando sea claramente irreversible (escribir, borrar, enviar).",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    servidor: {
+                      type: Type.STRING,
+                      description: "El nombre del servidor tal como salió en listar_mcp."
+                    },
+                    herramienta: {
+                      type: Type.STRING,
+                      description: "El nombre exacto de la herramienta."
+                    },
+                    argumentos: {
+                      type: Type.OBJECT,
+                      description: "Los parámetros de la herramienta, como objeto."
+                    }
+                  },
+                  required: ["servidor", "herramienta", "argumentos"]
                 }
               }
             ]
@@ -304,6 +427,19 @@ export class GeminiLiveClient {
             // cuando la llamada aguanta de verdad; si el servidor la echa antes,
             // la espera siguiente sube en vez de quedarse en un segundo.
             this.armarSesionEstable();
+            // El contexto pendiente, por texto en vivo: es el único canal que
+            // llega también a una sesión restaurada por testigo.
+            if (this.entregarAlAbrir) {
+              const texto = this.entregarAlAbrir;
+              this.entregarAlAbrir = '';
+              try {
+                if (typeof (this.session as any)?.sendRealtimeInput === 'function') {
+                  (this.session as any).sendRealtimeInput({ text: texto });
+                }
+              } catch (e) {
+                console.warn('[Gemini] No se pudo entregar el contexto en vivo:', e);
+              }
+            }
             this.onConnectionStateChange('connected');
           },
           onmessage: (message: any) => this.handleMessage(message),
@@ -568,8 +704,19 @@ export class GeminiLiveClient {
     const { name, args, id } = call;
     console.log(`[Gemini] IA quiere ejecutar: ${name} con args:`, args);
 
+    // `ver_pantalla` no viaja al núcleo: el ciclo de captura vive aquí mismo,
+    // y quien lo enciende y apaga es la aplicación vía `onVerPantalla`.
+    // Responder localmente evita un viaje de red para encender un intervalo.
     let response: Record<string, unknown>;
-    try {
+    if (name === 'ver_pantalla') {
+      const activar = args?.activar !== false;
+      try {
+        response = { result: this.onVerPantalla(activar) };
+      } catch (e: any) {
+        response = { error: String(e) };
+      }
+    } else {
+      try {
         const argumentos = await this.traducirSiSeñala(name, args);
         // El tope de espera vive en Rust (30 s), y cuando salta el trabajo sigue
         // vivo en la cola: no se pierde, solo deja de esperarse. Aquí había un
@@ -581,16 +728,25 @@ export class GeminiLiveClient {
         }) as string;
         console.log(`[Gemini] Resultado de ${name}:`, result);
         this.avisarSiEsperaUnSi(result);
+        if (name === 'responder_confirmacion' && Number.isFinite(Number(args?.id))) {
+            // La voz ya resolvió lo que esta tarjeta enseñaba: fuera, o seguiría
+            // ofreciendo botones para algo contestado hace unos segundos.
+            this.onAprobacionResuelta(Number(args.id));
+        }
         response = { result };
-    } catch (e: any) {
+      } catch (e: any) {
         console.error(`[Gemini] Error ejecutando ${name}:`, e);
         response = { error: String(e) };
+      }
     }
 
     // La sesión puede haberse caído mientras Python trabajaba. Mandar sobre una
-    // sesión muerta lanza, y aquí nadie recogería la excepción.
+    // sesión muerta lanza, y aquí nadie recogería la excepción. Pero el
+    // resultado NO se tira: se guarda para la reconexión, que lo contará.
     if (!this.session) {
-        console.warn(`[Gemini] Se descarta el resultado de ${name}: ya no hay sesión.`);
+        console.warn(`[Gemini] Sesión caída; el resultado de ${name} espera a la reconexión.`);
+        this.pendientesAlReconectar.push(`${name}: ${response.result ?? response.error}`);
+        this.guardarPendientes();
         return;
     }
 

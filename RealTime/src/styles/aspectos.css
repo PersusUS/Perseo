@@ -230,8 +230,15 @@
   text-transform: uppercase;
   color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
+  /* La cinta es una sola línea: lo que llegue con ganas de crecer se recorta
+     y no empuja al resto de lecturas. */
   white-space: nowrap;
   overflow: hidden;
+}
+
+.esc-cinta-estado {
+  max-width: 240px;
+  text-overflow: ellipsis;
 }
 
 .esc-cinta-der { margin-left: auto; display: flex; align-items: center; gap: 14px; }

@@ -8,9 +8,10 @@ import { Proyectos } from './components/Proyectos';
 import { Escenografia, comoReloj, type Fase } from './components/Escenografia';
 import { Marco } from './components/Marco';
 import {
-  IconCamera, IconCameraOff, IconMic, IconMicOff, IconPhone, IconPhoneOff, IconScreen,
+  IconCamera, IconCameraOff, IconMic, IconMicOff, IconPhone, IconPhoneOff,
 } from './components/Iconos';
 import { geminiClient } from './lib/gemini-live';
+import { sonar, callar } from './lib/timbre';
 import { audioManager } from './lib/audio-manager';
 import { audioPlayer } from './lib/audio-player';
 import { cameraManager } from './lib/camera-manager';
@@ -45,8 +46,6 @@ function App() {
   const [transcripts, setTranscripts] = useState<TranscriptMsg[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [screenFrame, setScreenFrame] = useState<string | null>(null);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   // El volumen NO es estado de React. Llega a 60 por segundo desde el
@@ -76,6 +75,8 @@ function App() {
   // Lo que Perseo ha pedido hacer y está parado esperando un sí. Ver H-51: la
   // pregunta vivía solo en el panel, que en mitad de una llamada nadie mira.
   const [pendientes, setPendientes] = useState<{ id: number; pregunta: string }[]>([]);
+  /** Aviso de subagente terminado, esperando que se acepte o se deje para luego. */
+  const [avisoEntrante, setAvisoEntrante] = useState<string | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -113,18 +114,27 @@ function App() {
         if (sesionDesde.current === null) sesionDesde.current = Date.now();
         audioManager.start(); // Reactivar el micrófono al reconectar
         if (defaultConfig.cameraEnabled) cameraManager.start();
-        if (defaultConfig.screenEnabled) {
+        // La vista de la pantalla ya no se pide: si el ajuste no dice lo
+        // contrario, Perseo la ve desde el primer segundo de la llamada. Es lo
+        // que hace de esto un agente — mirar sin que le den las cosas.
+        if (defaultConfig.pantallaAuto) {
           screenManager.start();
-          setIsScreenSharing(true);
+        } else if (defaultConfig.screenEnabled) {
+          screenManager.start();
         }
+        // Confianza automática en llamada (N-3): si hay enlace de voz hay una
+        // persona delante, y lo irreversible deja de pedir un sí que ya está
+        // oyendo. El techo de 60 min es red de seguridad por si la app muere
+        // sin pasar por el colgado; cada reconexión lo rearma.
+        invoke('panel_confianza', { minutos: 60 }).catch(e =>
+          console.warn('[Confianza] No se pudo activar:', e)
+        );
         addTranscript('system', 'Conectado.');
       } else if (state === 'disconnected' || state === 'error') {
         audioManager.stop();
         cameraManager.stop();
         screenManager.stop();
         setCameraStream(null);
-        setScreenFrame(null);
-        setIsScreenSharing(false);
         setIsSpeaking(false);
         // La conversación NO se borra aquí: 'disconnected' también se emite en
         // cada reconexión automática, y borrarla era lo que dejaba sin efecto la
@@ -141,11 +151,22 @@ function App() {
     geminiClient.onAprobacionPendiente = (id, pregunta) => {
       setPendientes(prev => (prev.some(p => p.id === id) ? prev : [...prev, { id, pregunta }]));
     };
+    // Resuelta por voz: la tarjeta sale de la pantalla. Los botones siguen para
+    // cuando la confirmación no llega hablada —sin micro, o sin llamada—.
+    geminiClient.onAprobacionResuelta = (id) => {
+      setPendientes(prev => prev.filter(p => p.id !== id));
+    };
+    // La herramienta `ver_pantalla`: enciende o apaga la captura aquí, que es
+    // donde vive. La frase que devuelve es la que Perseo cuenta por voz.
+    geminiClient.onVerPantalla = (activar) => {
+      if (activar) { screenManager.start(); return 'Empiezo a ver su pantalla.'; }
+      screenManager.stop();
+      return 'Dejo de mirar la pantalla.';
+    };
     audioManager.onStreamReady = () => addTranscript('system', 'Micrófono activo.');
     audioManager.onError = (err) => addTranscript('system', err);
     cameraManager.onStreamReady = (stream) => setCameraStream(stream);
-    screenManager.onFrameReady = (base64) => setScreenFrame(base64);
-
+  
     audioPlayer.onVolumeChange = (v) => {
       volumenCrudo.current = v;
       ultimaMedida.current = Date.now();
@@ -201,6 +222,22 @@ function App() {
     })();
   }, []);
 
+  /**
+   * Qué hacer con un marcador de autollamada.
+   *
+   * Vacío —palabra clave o aplauso—: entrar en llamada sin más, que es para lo
+   * que el detector existe. Con motivo —un subagente terminó—: TIMBRE y
+   * decisión del señor Persus; si prefiere no atender, queda pendiente y se
+   * cuenta la próxima vez que hable con Perseo.
+   */
+  const atenderMarcador = (motivo: string, lanzarLlamada: () => void) => {
+    if (!motivo) {
+      setTimeout(lanzarLlamada, 1500);
+      return;
+    }
+    setAvisoEntrante(prev => (prev ? `${prev}\n${motivo}` : motivo));
+  };
+
   // Auto-llamada cuando la app se abre desde el detector de aplausos.
   // La señal se consume en tiempo de ejecución desde Rust (un fichero marcador
   // que se borra al leerlo), no con un JSON importado estáticamente: Vite
@@ -210,10 +247,10 @@ function App() {
     if (!apiKeyReady || connectionState !== 'disconnected') return;
 
     let cancelado = false;
-    invoke<boolean>('consumir_autollamada').then(pedida => {
-      if (pedida && !cancelado) {
-        setTimeout(() => { if (!cancelado) handleCall(); }, 1500);
-      }
+    const lanzar = () => { if (!cancelado) handleCall(); };
+    invoke<string>('consumir_autollamada').then(motivo => {
+      if (cancelado) return;
+      atenderMarcador(motivo || '', lanzar);
     }).catch(e => console.warn('[AutoLlamada] No se pudo comprobar la señal:', e));
 
     return () => { cancelado = true; };
@@ -227,12 +264,12 @@ function App() {
     if (!apiKeyReady) return;
 
     let cancelado = false;
-    const dejarDeEscuchar = listen('perseo://autollamada', () => {
+    const dejarDeEscuchar = listen<string>('perseo://autollamada', evento => {
       if (cancelado) return;
       // Si ya está en llamada no se hace nada: la palabra clave sirve para
       // empezar una conversación, no para cortar la que hay.
       if (connectionStateRef.current !== 'disconnected') return;
-      setTimeout(() => { if (!cancelado) handleCall(); }, 1500);
+      atenderMarcador(evento.payload || '', () => { if (!cancelado) handleCall(); });
     });
 
     return () => {
@@ -283,9 +320,14 @@ function App() {
   }, [cameraStream]);
 
   const addTranscript = (type: TranscriptMsg['type'], text: string) => {
-    setTranscripts(prev =>
-      [...prev, { id: `${Date.now()}-${Math.random()}`, text, type, hora: ahoraCorta() }].slice(-MAX_MENSAJES)
-    );
+    setTranscripts(prev => {
+      // Antiduplicación: los reintentos y los avisos de sistema repiten la
+      // misma frase varias veces seguidas, y una bitácora que se hace eco a sí
+      // misma es ruido, no información.
+      const ultimo = prev[prev.length - 1];
+      if (ultimo && ultimo.type === type && ultimo.text === text) return prev;
+      return [...prev, { id: `${Date.now()}-${Math.random()}`, text, type, hora: ahoraCorta() }].slice(-MAX_MENSAJES);
+    });
   };
 
   /** Acumula un fragmento de transcripción sobre el mensaje abierto del mismo
@@ -309,6 +351,26 @@ function App() {
     });
   };
 
+  // El timbre suena mientras haya un aviso de subagente sin resolver.
+  useEffect(() => {
+    if (avisoEntrante) sonar(); else callar();
+    return () => callar();
+  }, [avisoEntrante]);
+
+  const atenderAviso = () => {
+    if (!avisoEntrante) return;
+    geminiClient.contextoPendiente = avisoEntrante;
+    setAvisoEntrante(null);
+    handleCall();
+  };
+
+  const dejarAvisoParaDespues = () => {
+    if (!avisoEntrante) return;
+    geminiClient.anadirPendiente(`Pendiente de contarte: ${avisoEntrante}`);
+    addTranscript('system', `Queda pendiente para la próxima: ${avisoEntrante}`);
+    setAvisoEntrante(null);
+  };
+
   const handleCall = () => {
     if (!defaultConfig.geminiApiKey) { addTranscript('system', 'API Key no configurada. Pulsa ⚙.'); return; }
     audioPlayer.initialize();
@@ -326,6 +388,13 @@ function App() {
     // Colgar cierra también las preguntas sin contestar: siguen vivas en la
     // cola, y ahí es donde tiene sentido mirarlas cuando ya no hay llamada.
     setPendientes([]);
+    // Y se apaga la confianza que encendió la llamada (N-3): sin persona
+    // delante, lo irreversible vuelve a preguntar.
+    try {
+      await invoke('panel_confianza', {});
+    } catch (e) {
+      console.warn('[Confianza] No se pudo apagar:', e);
+    }
 
     // Colgar sí cierra la conversación de verdad: aquí es donde se guarda y se
     // limpia, no en cada 'disconnected'. Ver H-06 y H-07.
@@ -358,27 +427,30 @@ function App() {
     else { defaultConfig.cameraEnabled = true; cameraManager.start(); }
   };
 
-  const toggleScreen = () => {
-    if (isScreenSharing) { screenManager.stop(); setIsScreenSharing(false); setScreenFrame(null); defaultConfig.screenEnabled = false; }
-    else { setIsScreenSharing(true); defaultConfig.screenEnabled = true; screenManager.start(); }
-  };
 
   const isActive = connectionState === 'connected' || connectionState === 'connecting';
   const isConnected = connectionState === 'connected';
 
-  // La fase manda el dibujo; `statusText` manda el texto. Son dos cosas: hay
-  // estados que se cuentan distinto (silenciado) y se pintan igual.
+  // La fase manda el dibujo. El texto largo de un error vive solo en la
+  // transcripción (lo pone `onError`); bajo la cara y en la cinta manda una
+  // etiqueta corta, porque una frase que crece rompe la composición.
   const fase: Fase = !isActive ? 'reposo'
     : connectionState === 'connecting' ? 'conectando'
     : isSpeaking ? 'hablando'
     : 'escuchando';
 
-  const statusText = connectionState === 'disconnected' ? ''
-    : connectionState === 'connecting' ? 'Conectando...'
-    : connectionState === 'error' ? 'Error de conexión'
-    : isMuted ? 'Micrófono silenciado'
-    : isSpeaking ? 'Perseo está hablando'
-    : 'Perseo está escuchando';
+  // La etiqueta corta es lo que se pinta bajo el nombre y en la cinta de
+  // «mando»: cuatro palabras como mucho. El detalle de un error —que puede
+  // ser una frase larga— vive solo en la transcripción, donde hay sitio para
+  // leerlo; en la pantalla manda la geometría, y una línea que crece y rompe
+  // la composición al cambiar de texto es justo lo que no.
+  const etiquetaEstado = connectionState === 'disconnected' ? ''
+    : connectionState === 'connecting' ? 'Conectando…'
+    : connectionState === 'error' ? 'Error de enlace'
+    : isMuted ? 'Silenciado'
+    : isSpeaking ? 'Hablando'
+    : isConnected ? 'Escuchando'
+    : '';
 
   return (
     // El volumen viaja como variable de CSS (`--vol`, la escribe el rAF de
@@ -390,7 +462,7 @@ function App() {
       <Escenografia
         aspecto={aspecto}
         fase={fase}
-        estadoTexto={statusText}
+        estadoTexto={etiquetaEstado}
         sesion={sesion}
       />
 
@@ -398,12 +470,37 @@ function App() {
           detrás, así que volver es instantáneo y no se pierde la conversación. */}
       {showPanel && <Panel onCerrar={() => setShowPanel(false)} />}
 
+      {/* La llamada entrante de un subagente: timbre y decisión del señor
+          Persus. Nada de entrar solos — él acepta o lo deja para después, y
+          en ese caso el resultado espera a la próxima conversación. */}
+      {avisoEntrante && (
+        <div className="aviso-capa">
+          <div className="aviso-caja">
+            <div className="aviso-cabecera">
+              <span className="aviso-punto" />
+              <span className="aviso-etiqueta">PERSEO LLAMA</span>
+            </div>
+            <p className="aviso-texto">{avisoEntrante}</p>
+            <div className="aviso-botones">
+              <button className="aviso-btn atender" onClick={atenderAviso}>ATENDER</button>
+              <button className="aviso-btn despues" onClick={dejarAvisoParaDespues}>DESPUÉS</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* El riel de arriba —panel, ajustes y los botones de la ventana— y la
           pestaña de proyectos. Ver components/Marco.tsx. */}
       <Marco
         onPanel={() => setShowPanel(true)}
         onAjustes={() => setShowSettings(true)}
-        onProyectos={() => setShowProyectos(v => !v)}
+        // La pestaña de proyectos se queda VISTA pero MUERTA (encargo del
+        // señor Persus, 2026-08-23: «cuando lo pulses haz que no haga nada
+        // por ahora porque esto lo vamos a modificar»). El apartado entero —
+        // tira, componente y comando de Rust `panel_abrir_proyecto`— sigue
+        // en pie; volver a enchufarlo es restaurar esta línea:
+        //   onProyectos={() => setShowProyectos(v => !v)}
+        onProyectos={() => {}}
         proyectosAbiertos={showProyectos}
       />
 
@@ -414,12 +511,6 @@ function App() {
           <div className="camera-pip">
             <video ref={cameraVideoRef} autoPlay playsInline muted />
             <span className="pip-etiqueta">Cámara</span>
-          </div>
-        )}
-        {screenFrame && (
-          <div className="screen-pip">
-            <img src={`data:image/jpeg;base64,${screenFrame}`} alt="Pantalla compartida" />
-            <span className="pip-etiqueta">Pantalla</span>
           </div>
         )}
       </div>
@@ -437,7 +528,7 @@ function App() {
         <div className="perseo-text-container">
           <span className="perseo-name">Perseo</span>
           <div className="perseo-status-wrapper">
-            {statusText && <span className="perseo-status">{statusText}</span>}
+            {etiquetaEstado && <span className="perseo-status">{etiquetaEstado}</span>}
             {sesion > 0 && <span className="perseo-sesion">{comoReloj(sesion)}</span>}
           </div>
         </div>
@@ -482,7 +573,9 @@ function App() {
           toca la llamada: abrir un proyecto no corta la sesión de voz. */}
       <Proyectos abierto={showProyectos} onCerrar={() => setShowProyectos(false)} />
 
-      {/* Controls */}
+      {/* Controls. La vista de pantalla ya no tiene botón: es automática al
+          conectar (pantallaAuto) y un interruptor para algo que siempre está
+          encendido solo ocupaba sitio. La cámara sigue siendo manual. */}
       <div className="controls-bar">
         {isActive && (
           <>
@@ -491,9 +584,6 @@ function App() {
             </button>
             <button className={`ctrl-btn ${cameraStream ? 'active' : ''}`} onClick={toggleCamera} title="Cámara">
               {cameraStream ? <IconCamera /> : <IconCameraOff />}
-            </button>
-            <button className={`ctrl-btn ${isScreenSharing ? 'active' : ''}`} onClick={toggleScreen} title="Pantalla">
-              <IconScreen />
             </button>
           </>
         )}

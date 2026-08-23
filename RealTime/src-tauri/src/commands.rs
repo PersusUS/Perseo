@@ -159,22 +159,28 @@ pub fn guardar_ajuste(
     Ok(())
 }
 
-/// Consume la senal de autollamada dejada por el detector de aplausos.
+/// Consume la senal de autollamada dejada por el detector de aplausos o por
+/// los subagentes.
 ///
-/// Devuelve true una sola vez: el fichero marcador se borra al leerlo. Antes
-/// esto era `src/autocall.json`, importado estaticamente por React, con dos
-/// problemas: Vite congela el valor al compilar (asi que en produccion el
-/// disparo por aplausos no funcionaba) y nadie lo devolvia a false, de modo que
-/// toda apertura manual entraba en llamada sola. Ver H-09.
+/// Devuelve el **motivo** escrito en el marcador (cadena vacia si no lo habia,
+/// o si quien lo dejo —el detector— no escribio ninguno): la app se lo cuenta
+/// a Perseo para que sepa por que llama. El fichero marcador se borra al
+/// leerlo. Antes esto era `src/autocall.json`, importado estaticamente por
+/// React, con dos problemas: Vite congela el valor al compilar (asi que en
+/// produccion el disparo por aplausos no funcionaba) y nadie lo devolvia a
+/// false, de modo que toda apertura manual entraba en llamada sola. Ver H-09.
 #[tauri::command]
-pub fn consumir_autollamada(app: AppHandle) -> bool {
+pub fn consumir_autollamada(app: AppHandle) -> Result<String, String> {
     for ruta in rutas_marcador_autollamada(&app) {
         if ruta.is_file() {
+            let motivo = std::fs::read_to_string(&ruta)
+                .map(|t| t.trim().to_string())
+                .unwrap_or_default();
             let _ = std::fs::remove_file(&ruta);
-            return true;
+            return Ok(motivo);
         }
     }
-    false
+    Ok(String::new())
 }
 
 pub fn rutas_marcador_autollamada(app: &AppHandle) -> Vec<std::path::PathBuf> {
