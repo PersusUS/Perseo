@@ -7,7 +7,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from perseo_core import agenda
+from perseo_core import agenda, almacen
 
 
 def dentro_de(minutos: float) -> str:
@@ -133,3 +133,62 @@ def test_el_agente_devuelve_los_eventos_y_el_titular() -> None:
 def test_el_agente_sin_eventos_no_avisa() -> None:
     resultado = asyncio.run(agenda._agenda({"peticion": {"accion": "avisar", "eventos": []}}))
     assert resultado["titular"] is None
+
+
+# -- La acción `proximos`: lo que hay, leído bajo demanda (tools del live) ---- #
+
+
+def test_proximos_lee_del_calendario_de_verdad(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fichero = escribir(
+        tmp_path / "agenda.json", [{"id": "x", "titulo": "Cita", "inicio": dentro_de(30)}]
+    )
+    monkeypatch.setenv("PERSEO_AGENDA", "falso")
+    monkeypatch.setenv("PERSEO_AGENDA_FALSA", str(fichero))
+    asyncio.run(agenda.detener())
+    agenda.iniciar(almacen.cargar_configuracion())
+    try:
+        resultado = asyncio.run(agenda._agenda({"peticion": {"accion": "proximos"}}))
+    finally:
+        asyncio.run(agenda.detener())
+    assert [e["id"] for e in resultado["eventos"]] == ["x"]
+    assert resultado["horas"] == agenda.HORAS_POR_DEFECTO
+
+
+def test_proximos_recorta_el_horizonte_al_techo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """«¿Qué tengo este mes?» no cabe en una respuesta hablada."""
+    monkeypatch.setenv("PERSEO_AGENDA", "falso")
+    monkeypatch.setenv("PERSEO_AGENDA_FALSA", str(tmp_path / "vacio.json"))
+    asyncio.run(agenda.detener())
+    agenda.iniciar(almacen.cargar_configuracion())
+    try:
+        resultado = asyncio.run(
+            agenda._agenda({"peticion": {"accion": "proximos", "horas": 10_000}})
+        )
+    finally:
+        asyncio.run(agenda.detener())
+    assert resultado["horas"] == agenda.HORAS_MAXIMAS
+
+
+def test_proximos_sin_calendario_es_un_error_claro(cfg) -> None:
+    asyncio.run(agenda.detener())
+    agenda.iniciar(cfg)
+    try:
+        asyncio.run(agenda._agenda({"peticion": {"accion": "proximos"}}))
+        raise AssertionError("debía fallar: no hay calendario configurado")
+    except RuntimeError as e:
+        assert "PERSEO_AGENDA" in str(e)
+    finally:
+        asyncio.run(agenda.detener())
+
+
+def test_proximos_sin_iniciar_avisa_de_lo_que_falta() -> None:
+    asyncio.run(agenda.detener())
+    try:
+        asyncio.run(agenda._agenda({"peticion": {"accion": "proximos"}}))
+        raise AssertionError("debía fallar: el agente no está iniciado")
+    except RuntimeError as e:
+        assert "iniciar" in str(e)

@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import shutil
 import subprocess
 import urllib.parse
@@ -63,6 +64,18 @@ APLICACIONES_PERMITIDAS: dict[str, tuple[str, str]] = {
     "obsidian": ("uri", "obsidian:"),
     "ajustes": ("uri", "ms-settings:"),
     "correo": ("uri", "mailto:"),
+    # Ampliado el 2026-08-23 a petición del señor Persus: que el modo live
+    # pueda abrir lo que se usa. Los esquemas URI solo saltan si el programa
+    # registró el suyo; si no está instalado, el intento falla con un error
+    # claro y no pasa nada.
+    "word": ("uri", "ms-word:"),
+    "excel": ("uri", "ms-excel:"),
+    "powerpoint": ("uri", "ms-powerpoint:"),
+    "vscode": ("uri", "vscode:"),
+    "visual studio code": ("uri", "vscode:"),
+    "whatsapp": ("uri", "whatsapp:"),
+    "telegram": ("uri", "telegram:"),
+    "steam": ("uri", "steam:"),
 }
 
 ESQUEMAS_URL_PERMITIDOS = frozenset({"http", "https"})
@@ -313,7 +326,10 @@ def controlar(accion: str, parametro: str = "") -> str:
             return f"Éxito: se ha tecleado el texto '{texto}' en la ventana actual."
 
         if accion == "atajo_teclado":
-            teclas = [t.strip().lower() for t in parametro.split(",") if t.strip()]
+            # Separadores válidos: coma y signo más ("ctrl, l" o "ctrl+l").
+            # El modelo escribe el segundo con naturalidad, y rechazarlo por
+            # ortografía es perder el atajo entero.
+            teclas = [t.strip().lower() for t in re.split(r"[,+]", parametro) if t.strip()]
 
             if not teclas:
                 return "Error: no se ha indicado ninguna tecla."

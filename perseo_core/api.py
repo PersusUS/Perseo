@@ -31,8 +31,10 @@ Ver bitacora/05_PLAN_PERSEO_V2.md §5 y §7, y bitacora/03_ROADMAP.md (Fase 3).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
+import math
 import secrets
 from pathlib import Path
 from typing import Any
@@ -343,6 +345,13 @@ async def _cambiar_confianza(peticion: web.Request) -> web.Response:
             text=json.dumps({"error": "'minutos' debe ser un número"}),
             content_type="application/json",
         )
+    if not math.isfinite(minutos):
+        # `NaN` e infinitos atraviesan el `float()` y, sin este guardo, el NaN
+        # acababa recortado a "un minuto de confianza" en vez de rechazarse.
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "'minutos' debe ser un número finito"}),
+            content_type="application/json",
+        )
 
     hasta = await asyncio.to_thread(politica.activar_confianza, minutos)
     peticion.app[CLAVE_BUS].publicar("confianza.cambiada", hasta=hasta.isoformat())
@@ -530,7 +539,14 @@ async def _eventos(peticion: web.Request) -> web.StreamResponse:
         # El cliente se fue (pantalla apagada, túnel caído). No es un error.
         pass
     finally:
+        # Cancelar y **esperar** la tarea: sin el `await`, un latido que se
+        # quedara a medias de escribir soltaba una excepción sin nadie que la
+        # recogiera cuando el transporte ya estaba cerrado.
         tarea_latido.cancel()
+        with contextlib.suppress(
+            asyncio.CancelledError, ConnectionResetError, RuntimeError
+        ):
+            await tarea_latido
 
     return respuesta
 

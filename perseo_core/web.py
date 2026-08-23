@@ -27,6 +27,14 @@ DOS REGLAS DE SEGURIDAD, Y NINGUNA ES OPCIONAL
    núcleo, o cualquier cacharro de la red. El token no viajaría —esto no lo
    manda— pero el panel de un router sí contesta a un GET.
 
+   Y la comprobación **fija** las direcciones que se van a usar: sin eso, el
+   nombre se resolvía dos veces —una al comprobar y otra al conectar— y un
+   dominio hostil podía contestar la primera con una IP pública de mentira y
+   dejar la de verdad (`127.0.0.1`) para la petición. Es el *DNS rebinding* de
+   manual: el filtro mira una consulta y el socket hace otra. El resolvedor
+   `_DnsFijado` cierra esa ventana: la conexión solo puede ir a direcciones que
+   ya pasaron el filtro.
+
 Ver bitacora/05_PLAN_PERSEO_V2.md §7 y §8.
 """
 
@@ -125,7 +133,11 @@ def _resolver(anfitrion: str) -> list[str]:
     return sorted({info[4][0] for info in socket.getaddrinfo(anfitrion, None)})
 
 
-async def comprobar_url(url: str, permitir_local: bool = False) -> str:
+async def comprobar_url(
+    url: str,
+    permitir_local: bool = False,
+    fijar: dict[str, list[str]] | None = None,
+) -> str:
     """Devuelve la URL si se puede pedir, o lanza `UrlNoPermitida`.
 
     `permitir_local` existe **solo para las verificaciones**, que levantan un
@@ -133,6 +145,10 @@ async def comprobar_url(url: str, permitir_local: bool = False) -> str:
     abre únicamente el bucle local: la red privada, el enlace local y el tailnet
     siguen prohibidos, que es lo que permite comprobar de verdad el caso que
     importa — una redirección hacia dentro desde una URL aceptable.
+
+    `fijar` es el diccionario donde se anotan las direcciones ya comprobadas,
+    para que la conexión use exactamente esas y no vuelva a resolver por su
+    cuenta (ver `_DnsFijado`). Si no se pasa, solo se comprueba.
     """
     partes = urllib.parse.urlparse(url)
     if partes.scheme.lower() not in ESQUEMAS_PERMITIDOS:
@@ -163,7 +179,50 @@ async def comprobar_url(url: str, permitir_local: bool = False) -> str:
             raise UrlNoPermitida(
                 f"{partes.hostname!r} apunta a la red local o privada ({direccion})."
             )
+    if fijar is not None:
+        fijar[partes.hostname.lower()] = direcciones
     return url
+
+
+class _DnsFijado:
+    """Un resolvedor que solo contesta con direcciones **ya comprobadas**.
+
+    `comprobar_url` resuelve y filtra; si la petición volviera a resolver por su
+    cuenta, entre las dos consultas el dominio podía cambiar de respuesta — el
+    rebinding clásico. Este resolvedor se le pasa al `TCPConnector` de la sesión
+    y contesta únicamente con lo que el filtro dejó escrito en `fijadas`: la
+    conexión no puede ir a ningún sitio que no se haya visto bueno antes.
+
+    El SNI y la verificación del certificado TLS siguen usándose con el nombre
+    del dominio, no con la IP: aiohttp toma el `server_hostname` de la URL.
+    """
+
+    def __init__(self, fijadas: dict[str, list[str]]) -> None:
+        self._fijadas = fijadas
+
+    async def resolve(
+        self, host: str, port: int = 0, family: socket.AddressFamily = socket.AF_INET
+    ) -> list[Any]:
+        direcciones = self._fijadas.get((host or "").lower())
+        if not direcciones:
+            # No debería poder pasar: toda petición de esta sesión va precedida
+            # de un comprobar_url del mismo host. Si pasa, falla ruidoso — que
+            # es como tiene que fallar una pieza de seguridad confundida.
+            raise OSError(f"'{host}' no pasó por la comprobación de destino")
+        return [
+            aiohttp.resolver.ResolveResult(
+                hostname=host,
+                host=direccion,
+                port=port,
+                family=socket.AF_INET6 if ":" in direccion else socket.AF_INET,
+                proto=0,
+                flags=0,
+            )
+            for direccion in direcciones
+        ]
+
+    async def close(self) -> None:
+        return None
 
 
 # --------------------------------------------------------------------------- #
@@ -220,12 +279,16 @@ class NavegadorHttp:
     def __init__(self, cfg: almacen.Configuracion) -> None:
         self._cfg = cfg
         self._sesion: aiohttp.ClientSession | None = None
+        #: Lo que `comprobar_url` dio por bueno, por nombre. La sesión no
+        #: resuelve nunca por su cuenta: conecta solo contra esto.
+        self._fijadas: dict[str, list[str]] = {}
 
     async def abrir(self) -> None:
         if self._sesion is None:
             self._sesion = aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=self._cfg.web_tope_segundos),
                 headers={"User-Agent": self.AGENTE},
+                connector=aiohttp.TCPConnector(resolver=_DnsFijado(self._fijadas)),
             )
 
     async def cerrar(self) -> None:
@@ -236,15 +299,17 @@ class NavegadorHttp:
     async def _traer(self, url: str) -> tuple[str, str]:
         """Devuelve (url final, cuerpo). Sigue las redirecciones a mano.
 
-        A mano porque cada salto hay que comprobarlo: dejar que el cliente las
-        siga solo es exactamente el agujero que abre una redirección a
-        `127.0.0.1`.
+        A mano por dos razones y no una: cada salto hay que comprobarlo —dejar
+        que el cliente las siga solo es exactamente el agujero que abre una
+        redirección a `127.0.0.1`— y cada comprobación **fija** las direcciones
+        del siguiente salto, de modo que la conexión no pueda re-resolver por su
+        cuenta (ver `_DnsFijado`).
         """
         if self._sesion is None:
             await self.abrir()
         assert self._sesion is not None
 
-        actual = await comprobar_url(url, self._cfg.web_local)
+        actual = await comprobar_url(url, self._cfg.web_local, self._fijadas)
         for _ in range(MAX_SALTOS + 1):
             async with self._sesion.get(actual, allow_redirects=False) as respuesta:
                 if respuesta.status in (301, 302, 303, 307, 308):
@@ -252,7 +317,9 @@ class NavegadorHttp:
                     if not destino:
                         raise UrlNoPermitida("Redirección sin destino.")
                     actual = await comprobar_url(
-                        urllib.parse.urljoin(actual, destino), self._cfg.web_local
+                        urllib.parse.urljoin(actual, destino),
+                        self._cfg.web_local,
+                        self._fijadas,
                     )
                     continue
 

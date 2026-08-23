@@ -29,7 +29,24 @@ def test_lo_que_espera_un_si_siempre_se_manda() -> None:
     assert "Enviar el correo a Ana" in texto
     # El pie dice de quién y cuál: sin eso había que abrir la web para saberlo.
     assert "correo · #7" in texto
-    assert [b["callback_data"] for b in botones[0]] == ["aprobar:7", "rechazar:7"]
+
+
+def test_ningun_mensaje_lleva_botones_de_decision() -> None:
+    """Desde N-1 (2026-08-22) Telegram solo avisa: la decisión se da por voz en
+    una llamada o en las pantallas. Si algún día vuelve a aparecer aquí un
+    `callback_data`, es que alguien está devolviendo al canal lo que se quitó."""
+    casos = [
+        evento("trabajo.espera_confirmacion", confirmacion={"resumen": "pregunta"}),
+        evento("trabajo.fallido", error="x", peticion={"texto": "y"}),
+        evento("trabajo.hecho", resultado={"titular": "titular"}),
+    ]
+    for caso in casos:
+        mensaje = redactar(caso, URL)
+        if mensaje is None:
+            continue
+        planos = [b for fila in mensaje[1] for b in fila]
+        assert not any("callback_data" in b for b in planos), str(planos)
+        assert all(b.get("url", "").startswith("http") for b in planos), str(planos)
 
 
 def test_el_detalle_no_sale_por_telegram() -> None:

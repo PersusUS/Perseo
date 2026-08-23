@@ -54,6 +54,33 @@ def test_la_excepcion_de_pruebas_abre_solo_el_bucle_local() -> None:
         asyncio.run(web.comprobar_url("http://192.168.0.1/", permitir_local=True))
 
 
+def test_la_comprobacion_fija_las_direcciones() -> None:
+    """Lo comprobado se anota: la conexión no puede re-resolver por su cuenta."""
+    fijadas: dict[str, list[str]] = {}
+    asyncio.run(web.comprobar_url("http://127.0.0.1:9/x", permitir_local=True, fijar=fijadas))
+    assert fijadas == {"127.0.0.1": ["127.0.0.1"]}
+
+
+def test_el_resolvedor_fijado_contesta_lo_comprobado() -> None:
+    fijadas = {"ejemplo.test": ["203.0.113.7"]}
+    resolvedor = web._DnsFijado(fijadas)
+    respuesta = asyncio.run(resolvedor.resolve("Ejemplo.TEST", 443))
+    assert len(respuesta) == 1
+    # `ResolveResult` es un TypedDict en las versiones recientes de aiohttp y
+    # una NamedTuple en las viejas; lo que las dos comparten son las claves.
+    primero = respuesta[0]
+    assert primero["host"] == "203.0.113.7"
+    assert primero["hostname"] == "Ejemplo.TEST"
+    assert primero["port"] == 443
+
+
+def test_el_resolvedor_fijado_se_niega_a_lo_desconocido() -> None:
+    """Sin comprobación previa no hay conexión: falla ruidoso, no resuelve."""
+    resolvedor = web._DnsFijado({})
+    with pytest.raises(OSError):
+        asyncio.run(resolvedor.resolve("intruso.test", 80))
+
+
 def test_extraer_texto_tira_guiones_y_estilos() -> None:
     crudo = """<html><head><style>body{color:red}</style>
     <script>alert('no')</script></head><body><p>Hola</p></body></html>"""

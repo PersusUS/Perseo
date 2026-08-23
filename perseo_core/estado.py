@@ -307,7 +307,16 @@ def _telegram(cfg: almacen.Configuracion) -> Pieza:
             "en el móvil eso es el móvil.",
             "Arranca con PERSEO_CORE_HOST=tailscale.",
         )
-    return Pieza("telegram", "Telegram", OK, f"Avisos y aprobaciones desde {cfg.url_base}.")
+    return Pieza("telegram", "Telegram", OK, f"Avisos al móvil desde {cfg.url_base}. Solo avisa: la decisión se da por voz o en las pantallas.")
+
+
+def _mcp(cfg: almacen.Configuracion) -> Pieza:
+    from . import mcp as modulo_mcp
+
+    if not modulo_mcp.definiciones:
+        return Pieza("mcp", "MCP", APAGADO, "Sin servidores configurados.", f"Crea {cfg.directorio_datos / 'mcp.json'}.")
+    nombres = ", ".join(sorted(modulo_mcp.definiciones))
+    return Pieza("mcp", "MCP", OK, f"{len(modulo_mcp.definiciones)} servidor(es): {nombres}.")
 
 
 def _correo(cfg: almacen.Configuracion) -> Pieza:
@@ -636,6 +645,7 @@ async def reunir(cfg: almacen.Configuracion, router: Router) -> dict[str, Any]:
         *piezas,
         _suplente(cfg),
         _telegram(cfg),
+        _mcp(cfg),
         _correo(cfg),
         _agenda(cfg),
         _dev(cfg),

@@ -85,6 +85,10 @@ TABLA: dict[str, str] = {
     "pc.click_raton": LIBRE,
     "pc.escribir_teclado": IRREVERSIBLE,
     "pc.atajo_teclado": IRREVERSIBLE,
+    # El catálogo de servidores MCP es solo lectura; llamar a una herramienta
+    # de un servidor no está aquí a propósito: su nivel lo decide el servidor
+    # en mcp.json (ver el gancho de abajo).
+    "mcp.servidores": LIBRE,
 }
 
 #: Cuánto dura el modo confianza si no se dice otra cosa. Una sesión de trabajo,
@@ -95,6 +99,17 @@ MINUTOS_CONFIANZA = 60
 MAX_MINUTOS_CONFIANZA = 480
 
 _fichero: Path | None = None
+
+#: Quien tenga niveles propios —hoy, los servidores MCP— registra aquí una
+#: función que responde por su gente. Devuelve un nivel de `NIVELES` o `None`
+#: si la petición no es suya, y entonces manda la tabla y el camino de siempre:
+#: lo desconocido es irreversible.
+_extra_niveles = None
+
+
+def registrar_niveles(fn) -> None:
+    global _extra_niveles
+    _extra_niveles = fn
 
 
 def iniciar(directorio_datos: Path | str) -> None:
@@ -117,6 +132,12 @@ def nivel(agente: str, peticion: dict[str, Any] | None = None) -> str:
         return TABLA[f"{agente}.{accion}"]
     if agente in TABLA:
         return TABLA[agente]
+    if _extra_niveles is not None:
+        extra = _extra_niveles(agente, peticion)
+        if extra in NIVELES:
+            return extra
+        if extra is not None:
+            logger.warning("Un nivel raro (%r) llegó desde fuera; irreversible.", extra)
     # Lo desconocido pregunta. Ver la decisión 1 de la cabecera.
     return IRREVERSIBLE
 

@@ -21,7 +21,7 @@ import sys
 # tapa al otro. El sintoma es un AttributeError en `web.AppRunner` al arrancar.
 from aiohttp import web as servidor
 
-from . import agenda, almacen, api, correo, dev, memoria, pc, politica, web
+from . import agenda, almacen, api, correo, dev, mcp, memoria, pc, politica, web
 from .agentes import Router, Trabajador
 from .bus import Bus
 from .disparadores import Planificador
@@ -134,6 +134,10 @@ async def arrancar() -> None:
     # antes de que ninguno reclame nada.
     politica.iniciar(cfg.directorio_datos)
 
+    # Los servidores MCP no se arrancan aquí: se cargan sus definiciones y su
+    # nivel de política, y cada proceso nace la primera vez que se le usa.
+    await mcp.iniciar(cfg)
+
     bus = Bus()
     router = Router(cfg)
     await router.abrir()
@@ -151,6 +155,7 @@ async def arrancar() -> None:
     memoria.iniciar(cfg)
     dev.iniciar(cfg)
     web.iniciar(cfg)
+    agenda.iniciar(cfg)
 
     # Sin token configurado se retira sola tras avisar: es un canal más.
     telegram = Telegram(cfg, bus)
@@ -202,6 +207,8 @@ async def arrancar() -> None:
         await memoria.detener()
         dev.detener()
         await web.detener()
+        await agenda.detener()
+        await mcp.detener()
         almacen.cerrar()
         logger.info("Adiós.")
 

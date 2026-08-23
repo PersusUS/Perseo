@@ -222,6 +222,11 @@ class VaultRest:
         self._clave = clave
         self._tope = tope
         self._http: aiohttp.ClientSession | None = None
+        # Las anotaciones, una a la vez. El flujo "¿existe? → creo / añado" no
+        # es atómico en el plugin: dos `anotar` entrelazados podían verse ambos
+        # un 404 y el segundo PUT habría reemplazado la nota que acababa de
+        # crear el primero — exactamente la pérdida que prohíbe la regla 1.
+        self._cerrojo_escritura = asyncio.Lock()
 
     # -- transporte --------------------------------------------------------- #
 
@@ -321,28 +326,29 @@ class VaultRest:
         url = self._url("/vault/", relativa)
         momento = _momento()
 
-        estado, cuerpo = await self._pedir(
-            "GET", url, cabeceras={"Accept": "text/markdown"}
-        )
-        if estado == 404:
+        async with self._cerrojo_escritura:
             estado, cuerpo = await self._pedir(
-                "PUT",
-                url,
-                cuerpo=_nota_nueva(titulo, texto, momento),
-                cabeceras={"Content-Type": "text/markdown"},
+                "GET", url, cabeceras={"Accept": "text/markdown"}
             )
-        else:
-            # Un GET que falla por otra cosa —la clave, el plugin caído— no es
-            # "la nota no existe". Sin esta comprobación se contestaría creándola
-            # de cero, que es exactamente la pérdida que prohíbe la regla 1.
+            if estado == 404:
+                estado, cuerpo = await self._pedir(
+                    "PUT",
+                    url,
+                    cuerpo=_nota_nueva(titulo, texto, momento),
+                    cabeceras={"Content-Type": "text/markdown"},
+                )
+            else:
+                # Un GET que falla por otra cosa —la clave, el plugin caído— no es
+                # "la nota no existe". Sin esta comprobación se contestaría creándola
+                # de cero, que es exactamente la pérdida que prohíbe la regla 1.
+                self._comprobar(estado, cuerpo)
+                estado, cuerpo = await self._pedir(
+                    "POST",
+                    url,
+                    cuerpo=_seccion(texto, momento),
+                    cabeceras={"Content-Type": "text/markdown"},
+                )
             self._comprobar(estado, cuerpo)
-            estado, cuerpo = await self._pedir(
-                "POST",
-                url,
-                cuerpo=_seccion(texto, momento),
-                cabeceras={"Content-Type": "text/markdown"},
-            )
-        self._comprobar(estado, cuerpo)
         return relativa
 
     # -- diagnóstico -------------------------------------------------------- #

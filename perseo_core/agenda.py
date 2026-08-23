@@ -141,20 +141,88 @@ def abrir_calendario(cfg: almacen.Configuracion) -> Calendario | None:
 # El agente
 # --------------------------------------------------------------------------- #
 
+#: Horizonte por defecto de «qué hay próximo»: un día. Y el techo: una semana,
+#: porque «¿qué tengo este mes?» no cabe en una respuesta hablada.
+HORAS_POR_DEFECTO = 24
+HORAS_MAXIMAS = 24 * 7
+
+_cfg: almacen.Configuracion | None = None
+_calendario: Calendario | None = None
+
+
+def iniciar(cfg: almacen.Configuracion) -> None:
+    """Guarda la configuración para que el agente pueda abrir el calendario.
+
+    Lo mismo que hace `correo.iniciar` con su buzón: la cara que ejecuta
+    trabajos necesita saber de dónde tirar aunque el disparador no haya corrido
+    nunca — con `PERSEO_DISPARADORES` vacío, el agente sigue atendiendo.
+    """
+    global _cfg
+    _cfg = cfg
+
+
+async def detener() -> None:
+    global _cfg, _calendario
+    _cfg = None
+    _calendario = None
+
+
+def calendario() -> Calendario | None:
+    """El calendario configurado, abierto la primera vez y cacheado después.
+
+    Compartido por el agente y el disparador: dos conexiones al mismo sitio
+    sería otra cosa que mantener viva.
+    """
+    global _calendario
+    if _calendario is None:
+        if _cfg is None:
+            raise RuntimeError("El agente agenda no está iniciado; falta agenda.iniciar(cfg).")
+        _calendario = abrir_calendario(_cfg)
+    return _calendario
+
 
 @registrar("agenda")
 async def _agenda(trabajo: dict[str, Any]) -> dict[str, Any]:
-    """Prepara el aviso de lo que viene.
+    """Prepara el aviso de lo que viene, o lee lo próximo si se le pide.
 
     Solo lee y ordena: no crea ni mueve nada. Crear y mover son de la Fase E y
     pasarán por `NecesitaConfirmacion`, porque mover el evento equivocado en el
     calendario de alguien no tiene deshacer cómodo.
     """
     peticion = trabajo.get("peticion") or {}
+
+    if str(peticion.get("accion", "avisar")).strip().lower() == "proximos":
+        return await _proximos(peticion)
+
     crudos = peticion.get("eventos") or []
     eventos = [Evento.desde_dict(e) for e in crudos if isinstance(e, dict)]
     return {
         "accion": "avisar",
+        "eventos": [e.a_dict() for e in eventos],
+        "titular": titular(eventos),
+    }
+
+
+async def _proximos(peticion: dict[str, Any]) -> dict[str, Any]:
+    """Lo que empieza de aquí a `horas`, leído del calendario de verdad."""
+    calendario_activo = calendario()
+    if calendario_activo is None:
+        raise RuntimeError(
+            "No hay calendario configurado: hace falta PERSEO_AGENDA=google (o falso)."
+        )
+
+    try:
+        horas = float(peticion.get("horas") or HORAS_POR_DEFECTO)
+    except (TypeError, ValueError):
+        horas = HORAS_POR_DEFECTO
+    horas = max(1.0, min(horas, HORAS_MAXIMAS))
+
+    # Tope de lote como el disparador: una lista de veinte eventos tampoco se
+    # lee en voz alta.
+    eventos = (await calendario_activo.proximos(timedelta(hours=horas)))[:TOPE_LOTE]
+    return {
+        "accion": "proximos",
+        "horas": horas,
         "eventos": [e.a_dict() for e in eventos],
         "titular": titular(eventos),
     }
@@ -180,19 +248,18 @@ def titular(eventos: list[Evento]) -> str | None:
 # El disparador
 # --------------------------------------------------------------------------- #
 
-_calendario: Calendario | None = None
 _avisados: disparadores.Vistos | None = None
 
 
 @disparadores.registrar("agenda", intervalo=600)
 async def _vigilar_calendario(ctx: disparadores.Contexto) -> None:
     """Encola un aviso cuando algo se acerca, y solo una vez por evento."""
-    global _calendario, _avisados
+    global _avisados
 
-    if _calendario is None:
-        _calendario = abrir_calendario(ctx.cfg)
-        if _calendario is None:
-            raise disparadores.Retirarse("no hay calendario configurado")
+    iniciar(ctx.cfg)
+    if calendario() is None:
+        raise disparadores.Retirarse("no hay calendario configurado")
+    if _avisados is None:
         _avisados = disparadores.Vistos(
             ruta=Path(ctx.cfg.directorio_datos) / "agenda_avisados.json"
         ).cargar()

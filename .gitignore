@@ -145,3 +145,6 @@ venv.bak/
 
 # Configuracion local de Codex CLI: herramienta del equipo, no del proyecto.
 .codex/
+
+# Restos de sesion del servidor Playwright MCP (consolas y capturas de pagina).
+.playwright-mcp/

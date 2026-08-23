@@ -237,7 +237,12 @@ def abrir(directorio_datos: Path, id_proyecto: str) -> str:
         tipo, objetivo = pc.APLICACIONES_PERMITIDAS[proyecto.destino.lower()]
         if tipo != "exe":
             return f"Error: '{proyecto.destino}' no se puede abrir con una carpeta dentro."
-        argumentos = [objetivo]
+        # Con la ruta resuelta y no el nombre desnudo: `Popen(["chrome.exe"])`
+        # solo funciona si está en el PATH, y los navegadores no lo están — es
+        # exactamente lo que dice la cabecera de `pc.py`. Sin resolver, un
+        # proyecto "programa" de Chrome o Firefox fallaba al pulsarlo.
+        ruta = pc.resolver_ejecutable(objetivo)
+        argumentos = [ruta or objetivo]
         if proyecto.carpeta:
             carpeta = Path(proyecto.carpeta)
             if not carpeta.is_dir():

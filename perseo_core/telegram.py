@@ -1,4 +1,4 @@
-"""Telegram: notificaciones que llegan al bolsillo y aprobaciones desde el móvil.
+"""Telegram: avisos que llegan al bolsillo. Solo avisa, nunca pregunta ni escucha.
 
 Telegram está aquí por una limitación concreta: **Tailscale no da push**. iOS
 obliga a pasar por APNs, así que un núcleo que solo hable por el tailnet puede
@@ -8,20 +8,21 @@ A cambio, es un tercero. De ahí la regla que gobierna todo este módulo:
 
     **titular por Telegram, detalle por Tailscale.**
 
-Por Telegram sale lo justo para decidir —qué se pregunta y qué trabajo es— y un
-enlace. El cuerpo de un correo, el contenido de un fichero o cualquier resultado
-se leen en la web, que va cifrada por WireGuard y no pasa por servidores ajenos.
-Por eso se manda `resumen` y nunca `detalle` ni `resultado`.
+Por Telegram sale lo justo para saber que algo pasó —y un enlace para leerlo en
+la web, que va cifrada por WireGuard y no pasa por servidores ajenos. Por eso se
+manda `resumen` y nunca `detalle` ni `resultado`.
 
-Dos cosas más que no son opcionales:
+**Recortado el 2026-08-22 a notificador de una sola dirección** (encargo N-1 del
+señor Persus: «telegram no me está sirviendo de nada»). Fuera los botones de
+aprobar/rechazar, fuera el sondeo de `getUpdates` y con ellos el filtro de chat:
+un canal que solo escribe no tiene de quién defenderse. Lo que espera un sí se
+sigue anunciando —es lo único parado esperándote— pero la decisión se da donde
+hay una persona: **por voz durante una llamada**, o en el panel y la web.
 
-1. **Solo se atiende al chat configurado.** Un bot de Telegram es público: quien
-   sepa su nombre puede escribirle. Sin ese filtro, cualquiera podría aprobar
-   una acción irreversible pulsando un botón.
-2. **Sin token configurado, el núcleo arranca igual.** Telegram es un canal más,
-   no una pieza de la que dependa nada.
+Una cosa sigue sin ser opcional: **sin token configurado, el núcleo arranca
+igual.** Telegram es un canal más, no una pieza de la que dependa nada.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §5 y §7, y bitacora/06_HANDOFF.md §4.
+Ver bitacora/05_PLAN_PERSEO_V2.md §5 y §7, y bitacora/06_HANDOFF.md §4 y §12.
 """
 
 from __future__ import annotations
@@ -38,14 +39,10 @@ from .bus import Bus, Evento
 
 logger = logging.getLogger(__name__)
 
-#: Segundos que se deja abierta cada llamada a getUpdates. Long polling: el
-#: servidor de Telegram no contesta hasta que hay algo o se agota el plazo, así
-#: que esperar más es menos tráfico, no más lentitud.
+#: Segundos de margen sobre la espera del sondeo para el timeout total de la
+#: sesión HTTP. El nombre viene de cuando aquí había un `getUpdates` de sondeo
+#: largo; hoy solo fija cuánto se aguanta colgada una llamada a la API.
 ESPERA_SONDEO = 25
-
-#: Tras un error de red se espera esto antes de reintentar, para no castigar a
-#: la API cuando lo que se ha caído es el wifi.
-ESPERA_TRAS_FALLO = 5
 
 # -- qué se manda, y qué no ------------------------------------------------- #
 #
@@ -57,6 +54,8 @@ ESPERA_TRAS_FALLO = 5
 # Las reglas, en el orden en que se aplican:
 #
 #   1. **Lo que espera un sí, siempre.** Es lo único que está parado esperándote.
+#      Sin botones: la decisión se da por voz en una llamada, o en el panel y la
+#      web, donde el enlace de abajo lleva.
 #   2. **Lo que falla, siempre.** Un fallo cambia lo que vas a hacer, y encima
 #      llega con la primera línea del error, que suele bastar para saber si es
 #      la red o es el código.
@@ -112,7 +111,7 @@ def _pie(trabajo: dict[str, Any]) -> str:
     return " · ".join(partes)
 
 
-def redactar(evento: Evento, url_base: str) -> tuple[str, list[list[dict[str, Any]]] | None] | None:
+def redactar(evento: Evento, url_base: str) -> tuple[str, list[list[dict[str, Any]]]] | None:
     """El mensaje que sale al móvil, o `None` si este evento no merece molestar.
 
     Es una función pura a propósito: decidir qué se manda es lo que más se va a
@@ -128,16 +127,11 @@ def redactar(evento: Evento, url_base: str) -> tuple[str, list[list[dict[str, An
         confirmacion = trabajo.get("confirmacion") or {}
         resumen = confirmacion.get("resumen") or resumir_peticion(trabajo)
         # El `detalle` se queda deliberadamente fuera: para eso está el enlace,
-        # que va por el tailnet.
+        # que va por el tailnet. Y la decisión no se toma aquí: por voz en una
+        # llamada, o en la pantalla que abre el enlace.
         return (
             f"Perseo espera un sí\n\n{_recortar(resumen)}\n\n{_pie(trabajo)}",
-            [
-                [
-                    {"text": "Aprobar", "callback_data": f"aprobar:{trabajo['id']}"},
-                    {"text": "Rechazar", "callback_data": f"rechazar:{trabajo['id']}"},
-                ],
-                ver,
-            ],
+            [ver],
         )
 
     if evento.tipo == "trabajo.fallido":
@@ -169,22 +163,18 @@ def redactar(evento: Evento, url_base: str) -> tuple[str, list[list[dict[str, An
 
 
 class Telegram:
-    """Puente entre el bus del núcleo y un chat de Telegram."""
+    """Puente de solo salida entre el bus del núcleo y un chat de Telegram."""
 
     def __init__(self, cfg: almacen.Configuracion, bus: Bus) -> None:
         self._cfg = cfg
         self._bus = bus
         self._sesion: aiohttp.ClientSession | None = None
         self._parar = asyncio.Event()
-        #: Identificador de la última actualización procesada. Telegram las
-        #: reenvía hasta que se confirman con `offset`, así que esto es lo que
-        #: evita atender dos veces el mismo botón tras un reinicio.
-        self._offset: int | None = None
 
     # -- ciclo de vida ----------------------------------------------------- #
 
     async def ejecutar(self) -> None:
-        """Escucha el bus y el chat a la vez, hasta que se pida parar."""
+        """Escucha el bus y anuncia, hasta que se pida parar."""
         if not self._cfg.telegram_configurado:
             logger.info("Telegram no configurado; se sigue sin ese canal.")
             return
@@ -205,7 +195,7 @@ class Telegram:
                 self._cfg.url_base,
             )
         try:
-            await asyncio.gather(self._anunciar_eventos(), self._atender_respuestas())
+            await self._anunciar_eventos()
         finally:
             await self._sesion.close()
             self._sesion = None
@@ -261,99 +251,14 @@ class Telegram:
         texto, botones = mensaje
         await self._enviar(texto, botones=botones)
 
-    # -- del móvil al núcleo ------------------------------------------------ #
-
-    async def _atender_respuestas(self) -> None:
-        while not self._parar.is_set():
-            datos = await self._llamar(
-                "getUpdates", offset=self._offset, timeout=ESPERA_SONDEO
-            )
-            if datos is None:
-                # Puede ser la red, o que se esté cerrando. Si es lo segundo, la
-                # espera se corta sola.
-                try:
-                    await asyncio.wait_for(self._parar.wait(), timeout=ESPERA_TRAS_FALLO)
-                except asyncio.TimeoutError:
-                    pass
-                continue
-
-            for actualizacion in datos.get("result") or []:
-                # Se confirma siempre, incluso lo que se descarta: si no,
-                # Telegram reenviaría eternamente el mensaje de un desconocido.
-                self._offset = int(actualizacion["update_id"]) + 1
-                await self._procesar(actualizacion)
-
-    def _es_del_chat(self, chat: dict[str, Any] | None) -> bool:
-        return bool(chat) and str(chat.get("id")) == self._cfg.telegram_chat
-
-    async def _procesar(self, actualizacion: dict[str, Any]) -> None:
-        pulsacion = actualizacion.get("callback_query")
-        if pulsacion is None:
-            mensaje = actualizacion.get("message") or {}
-            if self._es_del_chat(mensaje.get("chat")):
-                await self._enviar(
-                    "Por aquí solo atiendo confirmaciones. "
-                    f"Para hablar con Perseo: {self._cfg.url_base}/"
-                )
-            return
-
-        chat = ((pulsacion.get("message") or {}).get("chat")) or {}
-        if not self._es_del_chat(chat):
-            # Un bot de Telegram es público. Sin este filtro, cualquiera que lo
-            # encontrara podría aprobar una acción irreversible.
-            logger.warning("Telegram: pulsación descartada, viene del chat %s.", chat.get("id"))
-            await self._llamar(
-                "answerCallbackQuery", callback_query_id=pulsacion["id"], text="No autorizado"
-            )
-            return
-
-        decision, _, crudo = str(pulsacion.get("data", "")).partition(":")
-        if decision not in ("aprobar", "rechazar") or not crudo.isdigit():
-            await self._llamar("answerCallbackQuery", callback_query_id=pulsacion["id"])
-            return
-
-        id_trabajo = int(crudo)
-        trabajo = await asyncio.to_thread(
-            almacen.resolver_confirmacion, id_trabajo, decision == "aprobar"
-        )
-
-        if trabajo is None:
-            # La web se adelantó, o el trabajo se canceló. No es un error.
-            await self._llamar(
-                "answerCallbackQuery",
-                callback_query_id=pulsacion["id"],
-                text="Ese trabajo ya estaba resuelto",
-            )
-            return
-
-        # Se publica en el bus para que la web se entere de lo que se decidió
-        # desde el móvil, igual que el móvil se entera de lo que se decide en la
-        # web.
-        self._bus.publicar(
-            "trabajo.aprobado" if decision == "aprobar" else "trabajo.rechazado", trabajo=trabajo
-        )
-        await self._llamar(
-            "answerCallbackQuery",
-            callback_query_id=pulsacion["id"],
-            text="Aprobado" if decision == "aprobar" else "Rechazado",
-        )
-        # Los botones ya no valen para nada: dejarlos invita a pulsarlos otra vez.
-        mensaje = pulsacion.get("message") or {}
-        if mensaje.get("message_id") is not None:
-            await self._llamar(
-                "editMessageReplyMarkup",
-                chat_id=self._cfg.telegram_chat,
-                message_id=mensaje["message_id"],
-                reply_markup={"inline_keyboard": []},
-            )
-
 
 # --------------------------------------------------------------------------- #
 # Puesta en marcha a mano
 #
 # Configurar el canal necesita dos datos y solo uno lo da @BotFather. El otro
 # —el `chat_id` propio— no se puede consultar en ninguna parte: aparece cuando
-# alguien le escribe al bot, y hay que sacarlo de ahí. Esto es eso.
+# alguien le escribe al bot, y hay que sacarlo de ahí. Esto es eso: el destino de
+# los avisos. Nada más se lee de Telegram jamás.
 # --------------------------------------------------------------------------- #
 
 #: De dónde puede salir un chat en una actualización. Un mensaje normal, uno
@@ -410,9 +315,9 @@ async def _pedir(cfg: almacen.Configuracion, metodo: str, **carga: Any) -> dict[
 def _sincrono() -> None:  # pragma: no cover - atajo para la línea de comandos
     """`python -m perseo_core.telegram`: descubre el `chat_id` y lo deja puesto.
 
-    **Con el núcleo parado.** Telegram solo deja un `getUpdates` a la vez: con el
-    núcleo sondeando, esto se lleva un 409 que habla de "otra petición" y no de
-    lo que de verdad pasa.
+    **Con el núcleo parado** para que nada más esté leyendo. Sin `chat_id` no hay
+    a quién enviar los avisos, y este dato no se puede consultar en ninguna
+    parte: aparece cuando alguien le escribe al bot.
     """
     import sys
 
@@ -428,9 +333,9 @@ def _sincrono() -> None:  # pragma: no cover - atajo para la línea de comandos
         yo = (await _pedir(cfg, "getMe")).get("result") or {}
         print(f"El bot es @{yo.get('username')} ({yo.get('first_name')}).")
 
-        # `timeout=0`: aquí se mira lo que hay y se sale. El sondeo largo es del
-        # núcleo. Y sin `offset` no se confirma nada, así que lo que llegue
-        # ahora lo seguirá viendo el núcleo cuando arranque.
+        # `timeout=0`: aquí se mira lo que hay y se sale. Es la única lectura
+        # que hace este módulo, y solo mientras se configura: el núcleo en marcha
+        # no lee nunca.
         chats = chats_vistos((await _pedir(cfg, "getUpdates", timeout=0)).get("result") or [])
 
         if cfg.telegram_chat:
@@ -438,7 +343,7 @@ def _sincrono() -> None:  # pragma: no cover - atajo para la línea de comandos
             if chats and cfg.telegram_chat not in dict(chats):
                 print(
                     "Aviso: quien ha escrito al bot no es ese chat "
-                    f"({', '.join(i for i, _ in chats)}). Solo se atiende al configurado."
+                    f"({', '.join(i for i, _ in chats)}). Los avisos van al configurado."
                 )
             return
 
