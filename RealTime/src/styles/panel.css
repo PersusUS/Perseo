@@ -649,3 +649,44 @@
    del hueco de la columna: 22 px donde el resto lleva 12, y el ojo lo nota
    aunque no sepa decir qué mira. */
 .pnl-cuerpo-scroll > .pnl-acciones { margin-top: 0; }
+
+/* Por dónde va un encargo vivo. Late despacio para que se note que es AHORA y
+   no una línea más del resultado; el punto de delante es el mismo lenguaje que
+   los estados de la pestaña Estado. */
+.pnl-progreso {
+  margin-top: var(--e2);
+  font-family: var(--mono);
+  font-size: var(--t-mini);
+  color: var(--fg-muted);
+  letter-spacing: .06em;
+  display: flex; align-items: center; gap: var(--e2);
+}
+.pnl-progreso::before {
+  content: ""; width: 5px; height: 5px; flex: none;
+  background: var(--fg); border-radius: 50%;
+  animation: pnl-late 1.6s ease-in-out infinite;
+}
+@keyframes pnl-late {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .25; }
+}
+
+/* ── Contraste (2026-08-24, mirando la maqueta) ──────────────────────────────
+   Con el panel delante se ve lo que no se veía leyendo el CSS: los TÍTULOS de
+   las tarjetas iban en el gris más apagado y el contenido en blanco, o sea la
+   jerarquía justo al revés. Y en los medidores, el porcentaje —el dato— era más
+   tenue que su etiqueta. */
+.pnl-cabeza { color: var(--fg-muted); }
+.pnl-medida-cabeza { color: var(--fg-muted); }
+/* En el medidor, la etiqueta va apagada y **el número, blanco**: el dato es el
+   número. Estaban los dos del mismo gris y la fila se leía como decoración. */
+.pnl-medida-cabeza > span:last-child { color: var(--fg); font-family: var(--mono); }
+
+/* Las cajas se distinguían del fondo solo por las esquinas. Un punto más de
+   filo y de superficie: siguen siendo negras, pero ahora son cajas. */
+.pnl-tarjeta { border-color: rgba(255, 255, 255, .2); }
+
+/* La línea de estado de arriba se partía en dos por columna estrecha teniendo
+   media pantalla vacía al lado. */
+.pnl-lectura { flex-wrap: wrap; column-gap: var(--e4); }
+.pnl-lectura > * { white-space: nowrap; }

@@ -52,6 +52,10 @@ type Trabajo = {
   resultado?: any;
   error?: string | null;
   confirmacion?: { resumen?: string; detalle?: string } | null;
+  /** Por dónde va un encargo de `dev` que sigue corriendo — «Editando api.py».
+   *  Solo llega mientras está en curso, y solo con el motor sobre el SDK: los
+   *  que hablan por consola no cuentan nada hasta el final. */
+  progreso?: string;
 };
 
 type Pieza = { id: string; nombre: string; estado: string; detalle: string; arreglo: string };
@@ -75,6 +79,18 @@ type Estado = {
 };
 
 const ESTADOS_ABIERTOS = new Set(['pendiente', 'en_curso', 'esperando']);
+
+/** Los estados como se leen. `en_curso` es el nombre que tiene en la base de
+ *  datos, con su guion bajo, y enseñarlo tal cual delataba la fontanería. */
+const ESTADO_LEGIBLE: Record<string, string> = {
+  pendiente: 'pendiente',
+  en_curso: 'en curso',
+  esperando: 'esperando',
+  hecho: 'hecho',
+  fallido: 'fallido',
+  cancelado: 'cancelado',
+  rechazado: 'rechazado',
+};
 
 /** Lo que se lee en la barra, que no tiene por qué ser el identificador
  *  interno: «agentes» no decía nada de qué va la pestaña. */
@@ -454,10 +470,14 @@ const TarjetaTrabajo: React.FC<{ t: Trabajo; onResponder: (id: number, d: string
   return (
     <div className="pnl-tarjeta">
       <div className="pnl-cabeza">
-        <span className={`pnl-etiqueta ${t.estado}`}>{t.estado}</span>
+        <span className={`pnl-etiqueta ${t.estado}`}>{ESTADO_LEGIBLE[t.estado] ?? t.estado}</span>
         {` #${t.id} · ${t.agente} · ${t.origen}`}
       </div>
       <div className="pnl-cuerpo">{resumirPeticion(t)}</div>
+
+      {/* Lo que está haciendo AHORA. Un encargo de código tarda minutos y sin
+          esto la tarjeta dice «en curso» y nada más durante todo ese rato. */}
+      {t.progreso && <div className="pnl-progreso">{t.progreso}</div>}
 
       {(t.resultado || t.error) && (
         <div className="pnl-resultado">
