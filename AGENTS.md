@@ -13,6 +13,14 @@ Lee `bitacora/06_HANDOFF.md` antes de tocar nada: manda lo último (§ numeradas
 sella la marca en `perseo_core/datos/version.json`, vacía la caché de
 WebView2 (trampa §6.16) y reabre la app. Tarda ~2 min.
 
+Para el ASPECTO del panel no hace falta pagar esos dos minutos por vuelta:
+la maqueta sirve el panel de verdad con datos de mentira y recarga al
+guardar.
+
+```
+node RealTime/node_modules/vite/bin/vite.js --config RealTime/vite.maqueta.config.ts
+```
+
 ## Verificaciones antes de dar algo por bueno
 
 - Python: `python -m pytest` (convención: `asyncio.run(...)` dentro de

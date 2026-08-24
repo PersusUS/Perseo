@@ -66,10 +66,10 @@ mañana otra, sin tocar el agente.
 | `correo` | Tría el entrante: ignorar / interesante / requiere acción / no seguro | Gmail, o un fichero JSON |
 | `agenda` | Avisa de lo que empieza pronto, una vez por evento | Google Calendar, o un fichero JSON |
 | `memoria` | Busca, lee y **añade** en el vault. No sobrescribe ni borra | Ficheros Markdown |
-| `dev` | Encarga tareas de código a Claude Code | `claude -p`, que entra en la suscripción |
+| `dev` | Encarga tareas de código a Claude Code, y **cuenta por dónde va** mientras trabaja | `claude-agent-sdk`, que entra en la suscripción; sin el paquete, `claude -p` |
 | `pc` | Abre apps, teclea, ratón. Lista blanca y sin shell | `pyautogui` (opcional) |
 | `web` | Lee páginas y busca. No alcanza la red de casa | HTTP, sin navegador |
-| `mcp` | Habla con los servidores MCP de `<datos>/mcp.json` — vault, navegador, subagentes, Windows, tiempo, correo triado | JSON-RPC por stdio, un proceso hijo por servidor |
+| `mcp` | Habla con los servidores MCP de `<datos>/mcp.json` — vault, navegador, subagentes, Windows, tiempo, correo triado | Los de casa, JSON-RPC por stdio con cliente propio; los **remotos** (`url` en vez de `comando`), por HTTP con el SDK oficial |
 | `chat` | Sostiene el chat escrito del panel y del móvil: piensa con Gemini, usa las herramientas de los demás y deja la conversación en la base | Gemini REST + function calling; cada herramienta es un trabajo para otro agente |
 
 **El triaje se hace en local, y no es una optimización.** El plan gratuito de Gemini da
