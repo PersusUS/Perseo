@@ -588,6 +588,26 @@
   @media (pointer: coarse) {
     input, textarea, select { font-size: 16px; }
   }
+
+  /* ── Remate (2026-08-24) ──────────────────────────────────────────────────
+     Lo mismo que se le hizo al panel de la app, para que las dos pantallas
+     sigan pareciéndose: cifras de ancho fijo en todas partes, una sola curva
+     para lo que se mueve, y una marca de foco para quien navegue con el
+     teclado (en el móvil no se ve, en el PC hacía falta). Ni una decisión de
+     estilo cambia: negro y blanco, versalitas, esquinas rectas. */
+  :root { --paso: .18s cubic-bezier(.4, 0, .2, 1); }
+
+  /* Una cifra que sube no debe recolocar la línea entera. Estaba puesto en
+     cuatro reglas sueltas; aquí vale para todo lo que se lea de un vistazo. */
+  body { font-variant-numeric: tabular-nums; }
+
+  button, summary, a { transition: color var(--paso), background var(--paso), border-color var(--paso), opacity var(--paso); }
+
+  :focus-visible { outline: 1px solid var(--texto); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  }
 </style>
 </head>
 <body>

@@ -23,6 +23,46 @@
   --mono: ui-monospace, 'Cascadia Mono', Consolas, 'Roboto Mono', monospace;
   /* Volumen instantáneo de la voz de Perseo, 0..1. Lo escribe App.tsx. */
   --vol: 0;
+
+  /* ── La escala ────────────────────────────────────────────────────────────
+     Los espacios se elegían uno a uno —7, 9, 11, 12, 14, 18— y el resultado
+     era que dos cajas iguales respiraban distinto sin que nadie supiera por
+     qué. Cuatro pasos y un múltiplo común de 4: el ritmo se ve aunque no se
+     mire, que es de lo que va esto. */
+  --e1: 4px;
+  --e2: 8px;
+  --e3: 12px;
+  --e4: 16px;
+  --e5: 24px;
+  --e6: 32px;
+
+  /* Y los tamaños de letra, por lo mismo. `--t-micro` es la línea en
+     versalitas —etiquetas, pestañas, unidades—; `--t-lectura` el texto que se
+     lee de verdad. */
+  --t-micro: 10px;
+  --t-mini: 11px;
+  --t-menor: 12px;
+  --t-lectura: 13px;
+  --t-cuerpo: 14px;
+  --t-cifra: 26px;
+
+  /* Una sola curva para todo lo que se mueve. Cosas que aparecen y desaparecen
+     a velocidades distintas dan sensación de sitio mal terminado. */
+  --paso: .18s cubic-bezier(.4, 0, .2, 1);
+}
+
+/* Las cifras en monoespaciada van en cifras de ancho fijo. Sin esto, un 1 mide
+   menos que un 8 y la línea entera baila cada vez que sube un contador — que
+   en un puesto de mando es cada segundo. */
+[class*="pnl-"], .mono, code, kbd {
+  font-variant-numeric: tabular-nums;
+}
+
+/* El teclado tiene que ver dónde está. `:focus-visible` y no `:focus`: el
+   ratón no deja marca, el tabulador sí. */
+:focus-visible {
+  outline: 1px solid var(--fg);
+  outline-offset: 2px;
 }
 
 * {

@@ -27,13 +27,16 @@
    sigue siendo la ventana entera. */
 
 .pnl-cabecera {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px max(18px, calc((100% - 880px) / 2));
+  display: flex; align-items: center; gap: var(--e3);
+  padding: var(--e4) max(18px, calc((100% - 880px) / 2)) var(--e3);
   border-bottom: 1px solid var(--border);
 }
 .pnl-cabecera h2 {
-  font-size: 14px; font-weight: 300;
+  font-size: var(--t-cuerpo); font-weight: 300;
   text-transform: uppercase; letter-spacing: .4em;
+  /* La versalita con mucho tracking deja un hueco muerto al final de la
+     palabra: se le quita para que el título quede a plomo con lo de abajo. */
+  margin-right: -.4em;
 }
 .pnl-cabecera button { margin-left: auto; }
 
@@ -47,15 +50,19 @@
 }
 .pnl-pestanas button {
   flex: 1; background: none; border: none; border-bottom: 1px solid transparent;
-  color: var(--fg-dim); padding: 11px 4px; font: inherit; font-family: var(--mono);
-  font-size: 10px; text-transform: uppercase; letter-spacing: .2em; cursor: pointer;
+  color: var(--fg-dim); padding: var(--e3) var(--e1); font: inherit; font-family: var(--mono);
+  font-size: var(--t-micro); text-transform: uppercase; letter-spacing: .2em; cursor: pointer;
+  transition: color var(--paso), border-color var(--paso), background var(--paso);
 }
+/* La pestaña que no está elegida también contesta al ratón: sin esto, media
+   barra parece deshabilitada. */
+.pnl-pestanas button:hover { color: var(--fg-muted); background: rgba(255, 255, 255, .03); }
 .pnl-pestanas button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--fg); }
 .pnl-cuenta { color: #fbbf24; letter-spacing: 0; }
 
 .pnl-cuerpo-scroll {
-  flex: 1; overflow-y: auto; padding: 16px;
-  display: flex; flex-direction: column; gap: 12px;
+  flex: 1; overflow-y: auto; padding: var(--e5) var(--e4);
+  display: flex; flex-direction: column; gap: var(--e3);
   /* Que la barra de scroll no baile: sin esto, entrar en una pestaña con
      scroll desplaza el contenido de las que no lo tienen. */
   scrollbar-gutter: stable;
@@ -66,8 +73,12 @@
    rectas y lo que marca la esquina son dos trazos (`.pnl-hud`). */
 .pnl-tarjeta {
   background: var(--surface); border: 1px solid var(--border);
-  padding: 12px 14px;
+  padding: var(--e3) var(--e4);
+  transition: border-color var(--paso), background var(--paso);
 }
+/* Un filo que se aclara al pasar por encima. No hay sombra ni elevación: en
+   una pantalla negra, la única profundidad honesta es el borde. */
+.pnl-tarjeta:hover { border-color: rgba(255, 255, 255, .28); }
 .pnl-piezas { display: flex; flex-direction: column; gap: 14px; }
 .pnl-cabeza {
   display: flex; align-items: center; gap: 8px;
@@ -151,9 +162,12 @@
 .pnl-filtros { display: flex; flex-wrap: wrap; gap: 6px; }
 .pnl-filtro {
   background: none; border: 1px solid var(--border); color: var(--fg-dim);
-  padding: 4px 11px; font: inherit; font-family: var(--mono); font-size: 10px;
+  padding: var(--e1) var(--e3); font: inherit; font-family: var(--mono);
+  font-size: var(--t-micro);
   text-transform: uppercase; letter-spacing: .14em; cursor: pointer;
+  transition: color var(--paso), background var(--paso), border-color var(--paso);
 }
+.pnl-filtro:hover { color: var(--fg); border-color: var(--fg-muted); }
 .pnl-filtro[aria-pressed="true"] { color: var(--bg); background: var(--fg); border-color: var(--fg); }
 
 .pnl-form { display: flex; gap: 10px; }
@@ -175,17 +189,29 @@
 }
 .pnl-form-alta button { align-self: flex-end; }
 
+/* Cuando no hay nada que enseñar. Antes era una línea en cursiva flotando en
+   el centro y parecía un error de carga; ahora es una caja con el filo de la
+   casa, que dice «aquí no hay nada» en vez de «aquí falló algo». */
 .pnl-nota {
-  align-self: center; text-align: center; font-size: 12px;
-  color: var(--fg-dim); font-style: italic;
+  align-self: center; text-align: center; font-size: var(--t-menor);
+  color: var(--fg-dim);
+  border: 1px dashed var(--border);
+  padding: var(--e5) var(--e4);
+  width: min(520px, 100%);
 }
 .pnl-mayus {
   text-transform: uppercase; letter-spacing: .18em;
   font-size: 11px; color: var(--fg-muted);
 }
-.pnl-cifras { display: flex; flex-wrap: wrap; gap: 18px; }
-.pnl-cifra { display: flex; flex-direction: column; gap: 2px; }
-.pnl-cifra b { font-size: 22px; font-weight: 200; }
+.pnl-cifras { display: flex; flex-wrap: wrap; gap: var(--e5); }
+.pnl-cifra { display: flex; flex-direction: column; gap: var(--e1); }
+/* Las cifras grandes, en monoespaciada y finas: es una lectura de instrumento,
+   no un titular. En proporcional, 214 y 999 medían distinto y la fila entera
+   se recolocaba sola cada vez que terminaba un trabajo. */
+.pnl-cifra b {
+  font-family: var(--mono); font-size: var(--t-cifra); font-weight: 200;
+  line-height: 1; letter-spacing: -.02em;
+}
 
 .pnl-pieza { display: flex; gap: 11px; align-items: flex-start; }
 .pnl-punto { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-dim); flex: none; margin-top: 7px; }
@@ -549,3 +575,77 @@
 
 .pnl-linea-punta { fill: var(--fg); }
 
+
+/* ═══════════════════════════════════════
+   REMATE (2026-08-24)
+   ═══════════════════════════════════════
+   Lo que faltaba para que esto pareciera terminado y no montado: una entrada
+   corta al cambiar de pestaña, los botones contestando todos igual, y las
+   lecturas de instrumento con el mismo tratamiento en todas partes. Nada de
+   esto cambia una sola decisión de §4.8 —negro y blanco, versalitas, esquinas
+   rectas, color solo en los puntos de estado—: son las mismas piezas, mejor
+   asentadas. */
+
+/* Al cambiar de pestaña, el contenido entra. Doce píxeles y ciento ochenta
+   milisegundos: lo justo para que el ojo siga el cambio sin esperarlo. */
+@keyframes pnl-entra {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.pnl-cuerpo-scroll > * { animation: pnl-entra var(--paso) both; }
+
+/* Quien prefiera que nada se mueva, que nada se mueva. */
+@media (prefers-reduced-motion: reduce) {
+  .pnl-cuerpo-scroll > *,
+  .pnl-relleno,
+  .pnl-tarjeta { animation: none; transition: none; }
+}
+
+/* Todo lo que se pulsa contesta con la misma curva. Antes unos botones tenían
+   transición, otros ninguna, y el conjunto se notaba desigual sin saber en qué. */
+.pnl button,
+.pnl summary {
+  transition: color var(--paso), background var(--paso), border-color var(--paso);
+}
+
+/* Las etiquetas de estado y las clases de correo comparten forma; que compartan
+   también el aire de dentro. */
+.pnl-etiqueta, .pnl-clase {
+  padding: 2px var(--e2);
+  line-height: 1.5;
+}
+
+/* La cabeza de cada tarjeta manda sobre lo de debajo: se separa un punto más
+   para que el bloque se lea como título + contenido y no como dos líneas. */
+.pnl-cabeza { gap: var(--e2); }
+.pnl-cuerpo { margin-top: var(--e2); }
+.pnl-resultado { margin-top: var(--e2); font-size: var(--t-lectura); }
+
+/* El detalle técnico —rutas, comandos, arreglos— en monoespaciada y con el
+   mismo gris. Estaba repartido en tres declaraciones con tres familias
+   distintas escritas a mano. */
+.pnl-arreglo, .pnl-ruta {
+  font-family: var(--mono);
+  font-size: var(--t-mini);
+  color: var(--fg-dim);
+}
+
+/* Los medidores de la máquina, un pelo más presentes: 4 px de raíl sobre negro
+   casi no se ven, y son la lectura que más se mira de un vistazo. */
+.pnl-carril { height: 5px; }
+.pnl-medida-cabeza { font-size: var(--t-menor); }
+
+/* El chat: la burbuja del señor Persus se lee mejor con la línea algo más
+   suelta, y la de Perseo necesita el filo completo cuando el texto es largo. */
+.pnl-burbuja { max-width: min(72ch, 100%); }
+.pnl-chat-hilo { padding: var(--e5) var(--e5) var(--e4); gap: var(--e4); }
+
+/* La barra de pestañas, pegada al borde de la ventana, quedaba a ras del texto
+   de la cabecera. Un pelo de aire y la línea se lee como separación, no como
+   subrayado del título. */
+.pnl-pestanas { margin-top: 0; }
+
+/* Los botones sueltos al final de una pestaña llevaban su propio margen además
+   del hueco de la columna: 22 px donde el resto lleva 12, y el ojo lo nota
+   aunque no sepa decir qué mira. */
+.pnl-cuerpo-scroll > .pnl-acciones { margin-top: 0; }
