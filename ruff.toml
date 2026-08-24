@@ -1,0 +1,18 @@
+# Configuración de ruff. Existe por una razón concreta: `ruff check .` decía
+# «77 errores» y los 77 estaban en un cuaderno de Colab —celdas con varios
+# importes en una línea, que es como se escriben los cuadernos—. Un linter que
+# siempre grita en rojo deja de leerse, y con él se pierden los avisos que sí
+# valían: el `pytest` sin importar de `test_agenda.py` llevaba semanas ahí.
+#
+#     ruff check .          lo que hay
+#     ruff check . --fix    lo que se arregla solo
+
+line-length = 100
+
+exclude = [
+    # Cuadernos: el estilo lo manda Colab, no nosotros.
+    "commands/modelos/*.ipynb",
+    # Lo que no escribimos.
+    "RealTime/src-tauri/target",
+    "node_modules",
+]
