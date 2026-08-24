@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Segundo cerebro · Grafo</title>
+<!--
+  El grafo del segundo cerebro, servido por el núcleo y dibujado a mano.
+
+  Encargo del señor Persus (2026-08-24): una ventana propia con el grafo del
+  vault de Obsidian, en el estilo de Perseo, que se actualice sola mientras se
+  habla — no Obsidian abierto, el cerebro como constelación.
+
+  Enmienda del mismo día: **pulsar un vértice abre su nota en Obsidian.** El
+  navegador de dentro de la corteza no puede lanzar URIs `obsidian://`, así
+  que el pulso va por POST a `/grafo/abrir` y lo abre el núcleo, que es quien
+  vive en la misma máquina que Obsidian. Por HTTP viaja cuál de las notas del
+  vault — nunca una orden — igual que en `proyectos`.
+
+  Escuela de la casa, la misma que la PWA: UN SOLO FICHERO, sin build, sin
+  dependencias de fuera (la CSP no las dejaría y no las quiere nadie). La
+  física del grafo es de la familia Fruchterman-Reingold: repulsión entre
+  nodos, muelles en los enlaces, gravedad al centro, y un `alfa` que se enfría
+  — se recalienta cuando llegan datos nuevos o alguien mueve un nodo.
+
+  La puesta en escena: al llegar la primera constelación la física corre unas
+  vueltas antes del primer cuadro — que se vea un cerebro ordenándose, no una
+  sopa explotando — y la cámara se encuadra sola. Doble clic en el fondo para
+  volverla a encuadrar; arriba hay un buscador que ilumina lo que coincide.
+
+  El token llega en `?t=` (lo puso la app al abrir la ventana) y solo se usa
+  para pedir `/grafo/datos` cada pocos segundos: tiempo real para un segundo
+  cerebro son segundos, no milisegundos.
+-->
+<style>
+  :root {
+    --bg: #000;
+    --fg: #e8e8e8;
+    --fg-muted: rgba(232, 232, 232, 0.45);
+    --border: rgba(255, 255, 255, 0.14);
+    --mono: "Cascadia Mono", "JetBrains Mono", Consolas, "Courier New", monospace;
+    --fina: "Segoe UI Light", "Segoe UI", system-ui, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--fina);
+  }
+  /* La ola de Hokusai, como en toda la casa: AL 7 % — es un fondo, no un
+     cuadro. A pantalla completa tapaba la constelación que era el motivo. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: url("/hokusai-bg.png") center / cover no-repeat;
+    opacity: 0.07;
+    pointer-events: none;
+  }
+
+  /* La lectura de arriba: qué es esto, si está vivo, y de cuándo es lo que se ve. */
+  .riel {
+    position: fixed;
+    top: 14px; left: 14px; right: 14px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 10px 16px;
+    border: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(10px);
+    z-index: 3;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+  }
+  .riel::before, .riel::after {
+    content: '';
+    position: absolute;
+    width: 10px; height: 10px;
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .riel::before { top: -1px; left: -1px; border-top: 1px solid var(--fg); border-left: 1px solid var(--fg); }
+  .riel::after { bottom: -1px; right: -1px; border-bottom: 1px solid var(--fg); border-right: 1px solid var(--fg); }
+  .riel .titulo { color: var(--fg); }
+  .riel .dato { color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+  .riel .hueco { flex: 1; }
+  .punto { width: 6px; height: 6px; border-radius: 50%; background: var(--fg); animation: latido 2.4s ease-in-out infinite; }
+  .punto.apagado { background: none; border: 1px solid rgba(255,255,255,0.4); animation: none; }
+  @keyframes latido { 0%,100% { opacity: 0.25; } 50% { opacity: 1; } }
+
+  /* El buscador vive en el riel: una línea, no una caja. Ilumina lo que
+     coincide mientras se escribe y Enter lleva hasta la mejor coincidencia. */
+  #buscar {
+    width: 170px;
+    padding: 3px 2px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid transparent;
+    outline: none;
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+  #buscar::placeholder { color: var(--fg-muted); }
+  #buscar:focus { border-bottom-color: var(--fg); }
+
+  #lienzo { position: fixed; inset: 0; width: 100%; height: 100%; cursor: grab; }
+  #lienzo.agarrando { cursor: grabbing; }
+  #lienzo.sobre-nodo { cursor: pointer; }
+
+  /* La ficha que sigue al cursor: qué es este nodo y con quién habla. */
+  #ficha {
+    position: fixed;
+    display: none;
+    pointer-events: none;
+    z-index: 4;
+    max-width: 320px;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.88);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    line-height: 1.6;
+  }
+  #ficha b { display: block; font-weight: 400; letter-spacing: 0.18em; text-transform: uppercase; }
+  #ficha span { color: var(--fg-muted); font-size: 9px; }
+  #ficha .pista { display: block; margin-top: 4px; opacity: 0.8; letter-spacing: 0.16em; text-transform: uppercase; }
+
+  /* Lo que contesta el núcleo al pulsar un nodo: una línea que se apaga sola.
+     Sin esto, abrir Obsidian no dice nada aquí — y un fallo se vería como un
+     grafo sordo. */
+  #mensaje {
+    position: fixed;
+    bottom: 46px; left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    max-width: 70vw;
+    padding: 7px 14px;
+    border: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--fg);
+    opacity: 0;
+    transition: opacity .25s ease, transform .25s ease;
+    pointer-events: none;
+    z-index: 5;
+  }
+  #mensaje.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #mensaje.malo { color: #fbbf24; }
+
+  #aviso {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    z-index: 2;
+    padding: 0 24px;
+    line-height: 2;
+  }
+
+  /* La ayuda de abajo: cómo se maneja una constelación con un ratón. */
+  .ayuda {
+    position: fixed;
+    bottom: 12px; left: 14px; right: 14px;
+    display: flex;
+    gap: 20px;
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    z-index: 3;
+  }
+</style>
+</head>
+<body>
+
+<div class="riel">
+  <span class="titulo">Segundo cerebro · Grafo</span>
+  <span class="punto" id="vivo"></span>
+  <input id="buscar" type="text" placeholder="buscar nota…" autocomplete="off" spellcheck="false">
+  <span class="dato" id="cifras">—</span>
+  <span class="hueco"></span>
+  <span class="dato" id="cuando">—</span>
+</div>
+
+<canvas id="lienzo"></canvas>
+<div id="ficha">
+  <b id="ficha-titulo"></b>
+  <span id="ficha-ruta"></span>
+  <span id="ficha-conexiones"></span>
+  <span class="pista">pulsa para abrirlo en Obsidian</span>
+</div>
+<div id="aviso"></div>
+<div id="mensaje"></div>
+
+<div class="ayuda">
+  <span>Pulsa un nodo para abrirlo en Obsidian</span>
+  <span>Arrástralo para ordenarlo</span>
+  <span>Doble clic en el fondo para encuadrar</span>
+  <span>Rueda para acercarte · arrastra el fondo para pasear</span>
+</div>
+
+<script>
+'use strict';
+
+const TOKEN = new URLSearchParams(location.search).get('t') || '';
+const CADA_SEGUNDOS = 5;
+
+const lienzo = document.getElementById('lienzo');
+const ctx = lienzo.getContext('2d');
+const ficha = document.getElementById('ficha');
+const fichaTitulo = document.getElementById('ficha-titulo');
+const fichaRuta = document.getElementById('ficha-ruta');
+const fichaConexiones = document.getElementById('ficha-conexiones');
+const aviso = document.getElementById('aviso');
+const mensaje = document.getElementById('mensaje');
+const elBuscar = document.getElementById('buscar');
+const elVivo = document.getElementById('vivo');
+const elCifras = document.getElementById('cifras');
+const elCuando = document.getElementById('cuando');
+
+// ── El mundo ────────────────────────────────────────────────────────────────
+// Los nodos viven en coordenadas del MUNDO; la cámara las lleva a pantalla
+// con un zoom y un desplazamiento, para que acercarse no mueva la física.
+const nodos = new Map();   // id -> {id, titulo, ruta, grado, x, y, vx, vy, fijado, nacido}
+const enlaces = [];
+let alfa = 0;              // la temperatura de la simulación: 0 = todo quieto
+
+const camara = { x: 0, y: 0, zoom: 1 };
+// A dónde quiere ir la cámara cuando nadie la empuña: un encuadre pedido
+// (al cargar, doble clic en el fondo, Enter en el buscador) se alcanza con
+// una marea suave y no de un salto. Cualquier mano sobre ella lo cancela.
+const destinoCamara = { x: null, y: null, zoom: null };
+
+// Los anillos que marcan «por aquí»: un nodo recién pulsado late una vez.
+const destellos = [];
+
+function redimensionar() {
+  lienzo.width = window.innerWidth * devicePixelRatio;
+  lienzo.height = window.innerHeight * devicePixelRatio;
+  lienzo.style.width = window.innerWidth + 'px';
+  lienzo.style.height = window.innerHeight + 'px';
+}
+window.addEventListener('resize', redimensionar);
+redimensionar();
+
+// ── La física ───────────────────────────────────────────────────────────────
+// Repulsión entre todos los pares (con cientos de nodos, O(n²) por cuadro va
+// de sobra), muelle en cada enlace, gravedad al origen, y freno al final.
+
+function paso() {
+  if (alfa < 0.003) return;
+  const lista = [...nodos.values()];
+  const n = lista.length;
+  if (!n) return;
+
+  const k = 2400 / Math.sqrt(n);          // cuánto se repelen, según cuántos son
+  // La distancia mínima de convivencia: dos notas no se pintan encima la una
+  // de la otra aunque las tire el mismo enjambre de enlaces.
+  const separacion = k * 0.42;
+  for (let i = 0; i < n; i++) {
+    const a = lista[i];
+    for (let j = i + 1; j < n; j++) {
+      const b = lista[j];
+      let dx = a.x - b.x, dy = a.y - b.y;
+      let d2 = dx * dx + dy * dy;
+      if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
+      if (d2 > 250000) continue;           // lejos de sobra: la repulsión ya no llega
+      const d = Math.sqrt(d2);
+      const f = (k * k) / d2 * alfa;
+      let fx = (dx / d) * f, fy = (dy / d) * f;
+      if (d < separacion) {
+        // Encima la una de la otra: un empuje extra, más fuerte cuanto peor.
+        const choque = (separacion - d) * 0.09 * alfa;
+        fx += (dx / d) * choque; fy += (dy / d) * choque;
+      }
+      a.vx += fx; a.vy += fy;
+      b.vx -= fx; b.vy -= fy;
+    }
+  }
+
+  for (const e of enlaces) {
+    const a = nodos.get(e.a), b = nodos.get(e.b);
+    if (!a || !b) continue;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const d = Math.sqrt(dx * dx + dy * dy) || 1;
+    const f = (d - 90) * 0.012 * alfa;     // el muelle: 90 px de descanso
+    const fx = (dx / d) * f, fy = (dy / d) * f;
+    a.vx += fx; a.vy += fy;
+    b.vx -= fx; b.vy -= fy;
+  }
+
+  for (const nodo of lista) {
+    nodo.vx -= nodo.x * 0.0035 * alfa;     // la gravedad: que no se vayan al infinito
+    nodo.vy -= nodo.y * 0.0035 * alfa;
+    if (nodo.fijado) { nodo.vx = nodo.vy = 0; continue; }
+    nodo.vx *= 0.86; nodo.vy *= 0.86;      // el freno: sin él, nunca se para
+    nodo.x += nodo.vx; nodo.y += nodo.vy;
+  }
+
+  alfa *= 0.994;
+}
+
+// ── El dibujo ───────────────────────────────────────────────────────────────
+
+let bajoCursor = null;
+
+function aPantalla(x, y) {
+  return [(x - camara.x) * camara.zoom + lienzo.width / 2,
+          (y - camara.y) * camara.zoom + lienzo.height / 2];
+}
+function aMundo(px, py) {
+  return [(px - lienzo.width / 2) / camara.zoom + camara.x,
+          (py - lienzo.height / 2) / camara.zoom + camara.y];
+}
+
+function dibujar() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, lienzo.width, lienzo.height);
+
+  const vecinos = new Set();
+  if (bajoCursor) {
+    vecinos.add(bajoCursor.id);
+    for (const e of enlaces) {
+      if (e.a === bajoCursor.id) vecinos.add(e.b);
+      if (e.b === bajoCursor.id) vecinos.add(e.a);
+    }
+  }
+
+  // Con una búsqueda en marcha, lo que no coincide se aparta más todavía:
+  // la constelación entera se aparta y quedan delante las coincidencias.
+  const buscando = consulta.length > 0;
+  const encendido = n => !buscando || n.coincide;
+
+  for (const e of enlaces) {
+    const a = nodos.get(e.a), b = nodos.get(e.b);
+    if (!a || !b) continue;
+    const encendida = bajoCursor && (e.a === bajoCursor.id || e.b === bajoCursor.id);
+    // Hilo fino no: a 1 px y con esa transparencia las aristas desaparecen
+    // contra la ola. Doble grosor y doble presencia; y muy lejos, un mínimo
+    // que no desaparezca con el redondeo de la cámara.
+    const trazo = Math.max(0.8, Math.min(1, camara.zoom));
+    ctx.lineWidth = (encendida ? 2.4 : 1.6) * trazo * devicePixelRatio;
+    ctx.strokeStyle = encendida ? 'rgba(232,232,232,0.65)'
+                    : encendido(a) && encendido(b) ? 'rgba(232,232,232,0.22)'
+                    : 'rgba(232,232,232,0.06)';
+    const [x1, y1] = aPantalla(a.x, a.y);
+    const [x2, y2] = aPantalla(b.x, b.y);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  }
+
+  const ahora = performance.now();
+  for (const nodo of nodos.values()) {
+    const [x, y] = aPantalla(nodo.x, nodo.y);
+    // Los recién llegados crecen hasta su tamaño: aparecer de golpe parece un
+    // fallo de render; nacer, lo que es, una nota nueva.
+    const vida = Math.min(1, (ahora - nodo.nacido) / 450);
+    const r = (3 + Math.sqrt(nodo.grado) * 1.9)
+      * camara.zoom * devicePixelRatio * (0.25 + 0.75 * vida * vida);
+    const apagado = (bajoCursor && !vecinos.has(nodo.id)) || !encendido(nodo);
+    const resaltado = nodo === bajoCursor || (buscando && nodo.coincide);
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(1.5, r), 0, Math.PI * 2);
+    // El halo va SOLO en el nodo señalado o buscado: un shadowBlur por cuadro
+    // en los quinientos sería pagar caro un brillo que nadie mira.
+    if (resaltado && vida > 0.5) {
+      ctx.shadowColor = 'rgba(255,255,255,0.75)';
+      ctx.shadowBlur = (buscando ? 16 : 11) * devicePixelRatio;
+    }
+    ctx.fillStyle = apagado ? 'rgba(232,232,232,0.10)'
+                  : resaltado ? '#fff'
+                  : 'rgba(232,232,232,0.82)';
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    nodo.radioPantalla = r;
+  }
+
+  // Los destellos: anillos que nacen donde alguien pulsó y mueren solos.
+  for (let i = destellos.length - 1; i >= 0; i--) {
+    const d = destellos[i];
+    const t = (ahora - d.inicio) / 700;
+    if (t >= 1 || !nodos.has(d.id)) { destellos.splice(i, 1); continue; }
+    const nodo = nodos.get(d.id);
+    const [x, y] = aPantalla(nodo.x, nodo.y);
+    ctx.beginPath();
+    ctx.arc(x, y, nodo.radioPantalla + t * t * 42 * devicePixelRatio, 0, Math.PI * 2);
+    ctx.lineWidth = 1.4 * devicePixelRatio;
+    ctx.strokeStyle = `rgba(255,255,255,${(1 - t) * 0.85})`;
+    ctx.stroke();
+  }
+
+  // Los rótulos: el nodo bajo el cursor y su vecindad, las encrucijadas y,
+  // si hay búsqueda, cada coincidencia. Pero el grafo manda: cada rótulo
+  // reserva su sitio antes de pintarse y el que chocaría con otro ya puesto
+  // se calla — primero hablan los que más se miran (buscados, señalados,
+  // encrucijadas), y los títulos largos se cortan, que una etiqueta de
+  // sesenta letras tapaba media constelación.
+  ctx.textAlign = 'center';
+  const fuente = `${10 * devicePixelRatio}px ${getComputedStyle(document.body).getPropertyValue('--mono')}`;
+  ctx.font = fuente;
+  const altoRenglon = 12 * devicePixelRatio;
+  // Zona útil de rótulos: fuera del riel de arriba y de la ayuda de abajo —
+  // ahí no se leen, quedan debajo del cristal.
+  const margenSup = 76 * devicePixelRatio, margenInf = 56 * devicePixelRatio;
+  const candidatos = [];
+  for (const nodo of nodos.values()) {
+    let prioridad;
+    if (buscando) prioridad = nodo.coincide ? 3 : -1;
+    else if (bajoCursor) prioridad = vecinos.has(nodo.id) ? 2 : -1;
+    else prioridad = nodo.grado >= 12 ? 2
+      : camara.zoom >= 0.9 && nodo.grado >= 7 ? 1
+      : camara.zoom >= 1.5 && nodo.grado >= 4 ? 0.5 : -1;
+    if (prioridad < 0) continue;
+    candidatos.push({ nodo, prioridad });
+  }
+  candidatos.sort((a, b) => b.prioridad - a.prioridad || b.nodo.grado - a.nodo.grado);
+  const ocupado = [];
+  for (const { nodo } of candidatos) {
+    const [x, y] = aPantalla(nodo.x, nodo.y);
+    let titulo = nodo.titulo;
+    if (titulo.length > 36) titulo = titulo.slice(0, 35).trimEnd() + '…';
+    const ancho = ctx.measureText(titulo).width;
+    const arriba = y - nodo.radioPantalla - 4 * devicePixelRatio;
+    const caja = {
+      x: x - ancho / 2 - 3 * devicePixelRatio,
+      y: arriba - altoRenglon,
+      w: ancho + 6 * devicePixelRatio,
+      h: altoRenglon + 2 * devicePixelRatio,
+    };
+    if (caja.y < margenSup || caja.y + caja.h > lienzo.height - margenInf) continue;
+    if (caja.x < 0 || caja.x + caja.w > lienzo.width) continue;
+    let choca = false;
+    for (const o of ocupado) {
+      if (caja.x < o.x + o.w && caja.x + caja.w > o.x &&
+          caja.y < o.y + o.h && caja.y + caja.h > o.y) { choca = true; break; }
+    }
+    if (choca) continue;
+    ocupado.push(caja);
+    // Contorno oscuro debajo: sin él, una etiqueta sobre tres aristas cruzadas
+    // era adivinanza, no texto.
+    ctx.lineWidth = 3 * devicePixelRatio;
+    ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+    ctx.strokeText(titulo, x, arriba);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fillText(titulo, x, arriba);
+  }
+}
+
+/** La cámara hacia donde la hayan pedido, con marea y no de salto. */
+function acercarCamara() {
+  if (destinoCamara.zoom === null) return;
+  camara.x += (destinoCamara.x - camara.x) * 0.14;
+  camara.y += (destinoCamara.y - camara.y) * 0.14;
+  camara.zoom += (destinoCamara.zoom - camara.zoom) * 0.14;
+  const quieto =
+    Math.abs(destinoCamara.x - camara.x) < 0.5 &&
+    Math.abs(destinoCamara.y - camara.y) < 0.5 &&
+    Math.abs(destinoCamara.zoom - camara.zoom) / destinoCamara.zoom < 0.002;
+  if (quieto) { destinoCamara.zoom = null; }
+}
+
+/** El rectángulo más pequeño que contiene la constelación, metido en pantalla.
+ *  `suave` false solo en la primera puesta en escena: ahí la cámara empieza
+ *  algo cerca y se abre sola, que es la entrada que hace entender «esto es
+ *  un mapa». */
+function encuadrar(suave = true, margen = 90) {
+  if (!nodos.size) return;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const nodo of nodos.values()) {
+    if (nodo.x < minX) minX = nodo.x;
+    if (nodo.x > maxX) maxX = nodo.x;
+    if (nodo.y < minY) minY = nodo.y;
+    if (nodo.y > maxY) maxY = nodo.y;
+  }
+  // Un margen en pantalla, no del mundo: da igual lo grande que sea el grafo.
+  const mx = margen * devicePixelRatio, my = margen * devicePixelRatio;
+  const anchoMundo = Math.max(1, maxX - minX), altoMundo = Math.max(1, maxY - minY);
+  const zoom = Math.min(
+    (lienzo.width - 2 * mx) / anchoMundo,
+    (lienzo.height - 2 * my) / altoMundo,
+    2.2,
+  );
+  const buena = Math.min(6, Math.max(0.15, zoom));
+  const centroX = (minX + maxX) / 2, centroY = (minY + maxY) / 2;
+  if (suave) {
+    destinoCamara.x = centroX; destinoCamara.y = centroY; destinoCamara.zoom = buena;
+  } else {
+    // Nacer cerca y abrirse: el mismo encuadre, contado como movimiento.
+    camara.x = centroX; camara.y = centroY; camara.zoom = buena * 0.55;
+    destinoCamara.x = centroX; destinoCamara.y = centroY; destinoCamara.zoom = buena;
+  }
+}
+
+function latir() {
+  paso();
+  acercarCamara();
+  dibujar();
+  requestAnimationFrame(latir);
+}
+requestAnimationFrame(latir);
+
+// ── Las manos: pulsar para abrir, arrastrar nodo, pasear, acercarse ─────────
+
+let agarre = null;   // {nodo, movido} si se agarra un nodo
+let paseo = null;
+
+/** Quién está bajo el puntero, si alguien. Radio un poco más grande del
+ *  dibujado: fallar de poco enfada menos que tener que clavar el píxel. */
+function nodoEn(mx, my) {
+  for (const nodo of nodos.values()) {
+    const [x, y] = aPantalla(nodo.x, nodo.y);
+    const r = (nodo.radioPantalla || 6) + 6;
+    if ((mx - x) ** 2 + (my - y) ** 2 <= r * r) return nodo;
+  }
+  return null;
+}
+
+function soltarCamara() { destinoCamara.zoom = null; }
+
+lienzo.addEventListener('pointerdown', e => {
+  const [mx, my] = [e.clientX * devicePixelRatio, e.clientY * devicePixelRatio];
+  const cogido = nodoEn(mx, my);
+  lienzo.setPointerCapture(e.pointerId);
+  lienzo.classList.add('agarrando');
+  soltarCamara();                       // a partir de aquí manda la mano
+  if (cogido) {
+    cogido.fijado = true;
+    const [px, py] = aPantalla(cogido.x, cogido.y);
+    agarre = { nodo: cogido, dx: mx - px, dy: my - py, movido: 0, ultimoX: mx, ultimoY: my };
+  } else {
+    paseo = { x: mx, y: my, camX: camara.x, camY: camara.y };
+  }
+});
+
+lienzo.addEventListener('pointermove', e => {
+  const [mx, my] = [e.clientX * devicePixelRatio, e.clientY * devicePixelRatio];
+  if (agarre) {
+    // Cuánto se ha movido el puntero desde que se agarró: es lo que separa
+    // «pulsar para abrir» de «arrastrar para ordenar».
+    agarre.movido += Math.abs(mx - agarre.ultimoX) + Math.abs(my - agarre.ultimoY);
+    agarre.ultimoX = mx; agarre.ultimoY = my;
+    const [wx, wy] = aMundo(mx - agarre.dx, my - agarre.dy);
+    agarre.nodo.x = wx; agarre.nodo.y = wy;
+    alfa = Math.max(alfa, 0.35);
+    return;
+  }
+  if (paseo) {
+    camara.x = paseo.camX - (mx - paseo.x) / camara.zoom;
+    camara.y = paseo.camY - (my - paseo.y) / camara.zoom;
+    return;
+  }
+  // Solo mirando: quién está debajo, para la ficha y para encender la vecindad.
+  const visto = nodoEn(mx, my);
+  lienzo.classList.toggle('sobre-nodo', !!visto);
+  if (visto !== bajoCursor) {
+    bajoCursor = visto;
+    if (visto) {
+      fichaTitulo.textContent = visto.titulo;
+      fichaRuta.textContent = visto.ruta || '';
+      fichaConexiones.textContent =
+        `${visto.grado} ${visto.grado === 1 ? 'conexión' : 'conexiones'}`;
+      ficha.style.display = 'block';
+    } else {
+      ficha.style.display = 'none';
+    }
+  }
+  if (visto) {
+    ficha.style.left = Math.min(e.clientX + 16, window.innerWidth - 340) + 'px';
+    ficha.style.top = (e.clientY + 16) + 'px';
+  }
+});
+
+function soltar() {
+  // Pulsar sin mover es abrir la nota en Obsidian: lo hace el núcleo, que es
+  // quien vive en la misma máquina. Arrastrar de verdad sigue siendo ordenar.
+  if (agarre && agarre.movido < 6 * devicePixelRatio) {
+    destellos.push({ id: agarre.nodo.id, inicio: performance.now() });
+    abrirEnObsidian(agarre.nodo);
+  }
+  if (agarre) { agarre.nodo.fijado = false; agarre = null; }
+  paseo = null;
+  lienzo.classList.remove('agarrando');
+}
+lienzo.addEventListener('pointerup', soltar);
+lienzo.addEventListener('pointercancel', soltar);
+lienzo.addEventListener('pointerleave', () => { if (!agarre && !paseo) { bajoCursor = null; ficha.style.display = 'none'; } });
+
+// Doble clic en el fondo: volver a verlo todo. Sobre un nodo no — ahí el clic
+// ya abrió Obsidian, y repetirlo dos veces son dos pestañas por un despiste.
+lienzo.addEventListener('dblclick', e => {
+  const [mx, my] = [e.clientX * devicePixelRatio, e.clientY * devicePixelRatio];
+  if (!nodoEn(mx, my)) encuadrar();
+});
+
+lienzo.addEventListener('wheel', e => {
+  e.preventDefault();
+  soltarCamara();
+  const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+  const nueva = Math.min(6, Math.max(0.15, camara.zoom * factor));
+  // Acercarse hacia donde apunta el ratón, no hacia el centro: es lo que
+  // hace que el zoom se sienta como acercarse a ALGO.
+  const [mx, my] = [e.clientX * devicePixelRatio, e.clientY * devicePixelRatio];
+  const [ax, ay] = [mx - lienzo.width / 2, my - lienzo.height / 2];
+  camara.x += ax / camara.zoom - ax / nueva;
+  camara.y += ay / camara.zoom - ay / nueva;
+  camara.zoom = nueva;
+}, { passive: false });
+
+// ── El pulso: pedir el grafo y fundirlo con lo que ya hay ───────────────────
+
+let primeraVez = true;
+
+/** Unas vueltas de física antes del primer cuadro. Sin esto la constelación
+ *  nacía en el centro amontonada y el espectador veía una explosión, no un
+ *  cerebro ordenándose: mejor que se ordene en secreto y entre ya peinado. */
+function precalentar(iteraciones) {
+  const guardado = alfa;
+  alfa = Math.max(alfa, 0.9);
+  for (let i = 0; i < iteraciones; i++) paso();
+  alfa = guardado;
+}
+
+function fundir(datos) {
+  const vistos = new Set();
+  for (const d of datos.nodos) {
+    vistos.add(d.id);
+    const ya = nodos.get(d.id);
+    if (ya) { ya.titulo = d.titulo; ya.ruta = d.ruta; ya.grado = d.grado; continue; }
+    // Los recién llegados nacen cerca del centro y la física los coloca.
+    nodos.set(d.id, {
+      id: d.id, titulo: d.titulo, ruta: d.ruta || '', grado: d.grado,
+      x: (Math.random() - 0.5) * 400, y: (Math.random() - 0.5) * 400,
+      vx: 0, vy: 0, fijado: false,
+      nacido: performance.now(), coincide: false,
+    });
+  }
+  for (const id of [...nodos.keys()]) {
+    if (!vistos.has(id)) nodos.delete(id);
+  }
+  enlaces.length = 0;
+  for (const e of datos.enlaces) enlaces.push(e);
+  alfa = Math.max(alfa, 0.5);   // llegaron noticias: la constelación se reordena
+
+  if (primeraVez) {
+    primeraVez = false;
+    precalentar(110);
+    encuadrar(false);
+  }
+
+  elCifras.textContent =
+    `${datos.nodos.length} notas · ${datos.enlaces.length} enlaces` +
+    (datos.apartadas ? ` · ${datos.apartadas} apartadas` : '') +
+    (datos.fantasmas ? ` · ${datos.fantasmas} sin crear` : '');
+  elCuando.textContent = 'hora del núcleo ' +
+    new Date(datos.generado * 1000).toLocaleTimeString('es-ES');
+}
+
+// ── Abrir una nota en Obsidian ──────────────────────────────────────────────
+// El URI `obsidian://` no lo puede lanzar esta página — vive dentro de la
+// corteza y nadie le deja salir a esquemas de fuera. Lo abre el núcleo por
+// POST, y por HTTP viaja cuál de las notas del vault, nunca otra cosa.
+
+let ultimoAbierto = { id: '', cuando: 0 };
+let avisoPendiente = null;
+
+function avisar(texto, malo = false) {
+  clearTimeout(avisoPendiente);
+  mensaje.textContent = texto;
+  mensaje.classList.toggle('malo', malo);
+  mensaje.classList.add('visible');
+  avisoPendiente = setTimeout(() => mensaje.classList.remove('visible'), malo ? 4200 : 2200);
+}
+
+async function abrirEnObsidian(nodo) {
+  // Un doble clic son dos pulsos: la segunda vez, si es la misma nota y acaba
+  // de abrirse, se calla — Obsidian ya está delante.
+  const ahora = performance.now();
+  if (nodo.id === ultimoAbierto.id && ahora - ultimoAbierto.cuando < 1500) return;
+  ultimoAbierto = { id: nodo.id, cuando: ahora };
+
+  try {
+    const r = await fetch(`/grafo/abrir?t=${encodeURIComponent(TOKEN)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: nodo.id }),
+    });
+    const datos = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      avisar(datos.error || `El núcleo contestó mal: ${r.status}`, true);
+      return;
+    }
+    avisar(datos.resultado || `Abriendo «${nodo.titulo}»…`);
+  } catch {
+    avisar('El núcleo no contesta: la nota no se pudo abrir.', true);
+  }
+}
+
+// ── El buscador del riel ────────────────────────────────────────────────────
+// Sin tildes ni mayúsculas de diferencia, como resuelve Obsidian: buscar
+// «agenda» tiene que encontrar «Agendá» sin ceremonia.
+
+function normalizar(texto) {
+  return texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+let consulta = '';
+
+elBuscar.addEventListener('input', () => {
+  consulta = normalizar(elBuscar.value.trim());
+  for (const nodo of nodos.values()) {
+    nodo.coincide = consulta.length > 0 &&
+      (normalizar(nodo.titulo).includes(consulta) ||
+       normalizar(nodo.ruta || '').includes(consulta));
+  }
+});
+
+elBuscar.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    elBuscar.value = '';
+    elBuscar.dispatchEvent(new Event('input'));
+    elBuscar.blur();
+    return;
+  }
+  if (e.key !== 'Enter') return;
+  let mejor = null;
+  for (const nodo of nodos.values()) {
+    if (!nodo.coincide) continue;
+    if (!mejor || nodo.grado > mejor.grado) mejor = nodo;
+  }
+  if (!mejor) { avisar('Ninguna nota coincide.'); return; }
+  soltarCamara();
+  destinoCamara.x = mejor.x;
+  destinoCamara.y = mejor.y;
+  destinoCamara.zoom = Math.max(camara.zoom, 1.6);
+  destellos.push({ id: mejor.id, inicio: performance.now() });
+  elBuscar.blur();
+});
+
+function apagar(texto) {
+  elVivo.classList.add('apagado');
+  aviso.textContent = texto;
+  aviso.style.display = 'flex';
+}
+function encender() {
+  elVivo.classList.remove('apagado');
+  aviso.style.display = 'none';
+}
+
+async function pulso() {
+  try {
+    const r = await fetch(`/grafo/datos?t=${encodeURIComponent(TOKEN)}`);
+    if (r.status === 401) { apagar('Sin señal: el token no vale. Cierra la ventana y vuelve a abrirla.'); return; }
+    if (!r.ok) { apagar('El núcleo contestó mal: ' + r.status); return; }
+    const datos = await r.json();
+    if (!datos.nodos.length) {
+      // Ya no es lo mismo un vault vacío que un vault de notas sueltas: con
+      // lo segundo el grafo no miente — dice qué falta para tener constelación.
+      apagar(datos.total_notas
+        ? `${datos.total_notas} nota${datos.total_notas === 1 ? '' : 's'} en el vault, ` +
+          `pero ninguna enlaza con otra. Enlaza dos y habrá grafo.`
+        : 'El vault está vacío o no se encuentra: sin notas que mirar.');
+      elCifras.textContent =
+        `${datos.total_notas || 0} notas` +
+        (datos.apartadas ? ` · ${datos.apartadas} apartadas` : '');
+      return;
+    }
+    encender();
+    fundir(datos);
+  } catch {
+    apagar('El núcleo no contesta. Volverá a preguntar.');
+  }
+}
+
+pulso();
+setInterval(pulso, CADA_SEGUNDOS * 1000);
+</script>
+</body>
+</html>
