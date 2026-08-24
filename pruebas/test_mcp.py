@@ -222,3 +222,66 @@ def test_sin_nada_configurado_se_contesta_con_gracia(cfg) -> None:
     asyncio.run(mcp.iniciar(cfg))
     resultado = asyncio.run(mcp._mcp({"peticion": {"accion": "servidores"}}))
     assert resultado["servidores"] == []
+
+
+# --------------------------------------------------------------------------- #
+# Servidores MCP remotos (2026-08-24)
+# --------------------------------------------------------------------------- #
+
+
+def _escribir_mcp(datos: Path, contenido: dict) -> dict:
+    (datos / "mcp.json").write_text(json.dumps(contenido), encoding="utf-8")
+    return mcp.cargar_servidores(datos)
+
+
+def test_un_servidor_con_url_vale(datos: Path) -> None:
+    """Lo de fuera también cuenta: GitHub, Notion y compañía viven en una URL."""
+    servidores = _escribir_mcp(datos, {"lejos": {"url": "https://mcp.ejemplo.com/mcp"}})
+    assert servidores["lejos"]["url"] == "https://mcp.ejemplo.com/mcp"
+    assert servidores["lejos"]["comando"] == []
+
+
+def test_un_remoto_abre_el_cliente_de_http(datos: Path) -> None:
+    servidores = _escribir_mcp(datos, {"lejos": {"url": "https://mcp.ejemplo.com/mcp"}})
+    servidor = mcp.abrir_servidor("lejos", servidores["lejos"])
+    assert isinstance(servidor, mcp.ServidorMcpRemoto)
+
+
+def test_lo_de_siempre_sigue_siendo_un_proceso_hijo(datos: Path) -> None:
+    servidores = _escribir_mcp(datos, {"cerca": {"comando": ["python", "servidor.py"]}})
+    servidor = mcp.abrir_servidor("cerca", servidores["cerca"])
+    assert isinstance(servidor, mcp.ServidorMcp)
+
+
+@pytest.mark.parametrize(
+    "url, vale",
+    [
+        ("https://mcp.ejemplo.com/mcp", True),
+        ("http://127.0.0.1:8912/mcp", True),
+        ("http://localhost:8912/mcp", True),
+        ("http://mcp.ejemplo.com/mcp", False),
+        ("ftp://mcp.ejemplo.com", False),
+        ("no-es-una-url", False),
+    ],
+)
+def test_en_claro_solo_contra_casa(url: str, vale: bool) -> None:
+    """Por ahí viajan argumentos que Perseo compone leyendo correos y pantallas."""
+    assert mcp._url_aceptable(url) is vale
+
+
+def test_un_remoto_en_claro_y_lejos_se_descarta(datos: Path) -> None:
+    servidores = _escribir_mcp(datos, {"malo": {"url": "http://mcp.ejemplo.com/mcp"}})
+    assert servidores == {}
+
+
+def test_las_cabeceras_del_testigo_se_conservan(datos: Path) -> None:
+    servidores = _escribir_mcp(
+        datos,
+        {"lejos": {"url": "https://mcp.ejemplo.com/mcp", "cabeceras": {"Authorization": "Bearer x"}}},
+    )
+    assert servidores["lejos"]["cabeceras"]["Authorization"] == "Bearer x"
+
+
+def test_un_remoto_sin_haber_saludado_no_esta_vivo(datos: Path) -> None:
+    servidores = _escribir_mcp(datos, {"lejos": {"url": "https://mcp.ejemplo.com/mcp"}})
+    assert mcp.abrir_servidor("lejos", servidores["lejos"]).vivo is False

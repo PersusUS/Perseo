@@ -31,6 +31,7 @@ Ver bitacora/06_HANDOFF.md §13.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -130,11 +131,26 @@ def cargar_servidores(directorio_datos: Path) -> dict[str, dict[str, Any]]:
         if not isinstance(entrada, dict):
             logger.warning("Servidor %r mal escrito; se ignora.", nombre)
             continue
+        url = str(entrada.get("url") or "").strip()
         comando = entrada.get("comando")
-        if not isinstance(comando, list) or not all(isinstance(p, str) for p in comando):
+        if url:
+            # Servidor REMOTO: no hay proceso hijo, hay una dirección. Se exige
+            # HTTPS salvo en el bucle local, porque por ahí van a viajar los
+            # argumentos que Perseo compone con lo que ve en pantalla.
+            if not _url_aceptable(url):
+                logger.warning(
+                    "Servidor %r con url %r: solo https:// (o http:// en "
+                    "127.0.0.1) ; se ignora.",
+                    nombre,
+                    url,
+                )
+                continue
+            comando = []
+        elif not isinstance(comando, list) or not all(isinstance(p, str) for p in comando):
             logger.warning(
-                "Servidor %r sin 'comando' como lista de argumentos; se ignora. "
-                "Una cadena nunca vale: por ahí entran las comillas y los &&.",
+                "Servidor %r sin 'comando' como lista de argumentos ni 'url'; se "
+                "ignora. Una cadena nunca vale como comando: por ahí entran las "
+                "comillas y los &&.",
                 nombre,
             )
             continue
@@ -152,14 +168,149 @@ def cargar_servidores(directorio_datos: Path) -> dict[str, dict[str, Any]]:
             tope = float(entrada.get("tope_segundos") or TOPE_POR_DEFECTO)
         except (TypeError, ValueError):
             tope = TOPE_POR_DEFECTO
+        cabeceras = entrada.get("cabeceras") or {}
+        if not isinstance(cabeceras, dict):
+            cabeceras = {}
         validos[str(nombre)] = {
             "comando": [str(p) for p in comando],
+            "url": url,
+            "cabeceras": {str(k): str(v) for k, v in cabeceras.items()},
             "nivel": nivel,
             "herramientas": herramientas,
             "env": {str(k): str(v) for k, v in entorno.items()},
             "tope_segundos": max(5.0, min(tope, 600.0)),
         }
     return validos
+
+
+def _url_aceptable(url: str) -> bool:
+    """Solo `https://`, o `http://` contra el bucle local.
+
+    Un servidor MCP remoto recibe los argumentos que compone Perseo, y esos
+    argumentos vienen de correos y de pantallas. En claro por una red que no es
+    la de casa, no.
+    """
+    from urllib.parse import urlparse
+
+    partes = urlparse(url)
+    if partes.scheme == "https":
+        return True
+    return partes.scheme == "http" and (partes.hostname or "") in ("127.0.0.1", "localhost", "::1")
+
+
+def _hay_sdk_mcp() -> bool:
+    """¿Está el SDK oficial de MCP? Solo hace falta para los remotos."""
+    import importlib.util
+
+    return importlib.util.find_spec("mcp") is not None
+
+
+class ServidorMcpRemoto:
+    """Un servidor MCP que vive en otra máquina, hablado por HTTP.
+
+    Aquí sí se usa el **SDK oficial** (`mcp`) y no el cliente de casa, y por un
+    motivo concreto: el de casa habla JSON-RPC por las tuberías de un proceso
+    hijo, que es un transporte entero distinto. Reimplementar *streamable HTTP*
+    —con su sesión, sus reintentos y su SSE— sería escribir por segunda vez
+    algo que ya está escrito y probado. Lo de stdio se queda como está: funciona
+    y lleva dentro decisiones nuestras (entorno recortado, cerrojo por
+    servidor) que no se regalan a cambio de nada.
+
+    **Una sesión por llamada**, a propósito. Mantenerla abierta obliga a entrar
+    y salir del contexto asíncrono desde la misma tarea, y aquí las llamadas
+    vienen del trabajador y el cierre viene del apagado — dos tareas. Pagar un
+    saludo por llamada es más barato que un cierre que revienta al apagar.
+    """
+
+    def __init__(self, nombre: str, definicion: dict[str, Any]) -> None:
+        self.nombre = nombre
+        self.url: str = definicion["url"]
+        self.cabeceras: dict[str, str] = definicion.get("cabeceras") or {}
+        self.tope = float(definicion["tope_segundos"])
+        self.definicion = definicion
+        self.herramientas: list[dict[str, Any]] = []
+        #: Un remoto no tiene proceso que se muera: se da por vivo en cuanto
+        #: se le ha preguntado una vez por sus herramientas.
+        self.vivo = False
+
+    def _permitidas(self) -> set[str]:
+        return {str(h) for h in (self.definicion.get("herramientas") or [])}
+
+    @contextlib.asynccontextmanager
+    async def _sesion(self):
+        """Una conversación abierta con el servidor remoto, y cerrada al salir.
+
+        Las cabeceras —el testigo del servidor, casi siempre— viajan en el
+        cliente HTTP, que es donde el SDK deja ponerlas.
+        """
+        import httpx2
+        from mcp import ClientSession
+        from mcp.client.streamable_http import streamable_http_client
+
+        async with httpx2.AsyncClient(
+            headers=self.cabeceras or None, timeout=self.tope
+        ) as http:
+            async with streamable_http_client(self.url, http_client=http) as (leer, escribir):
+                async with ClientSession(leer, escribir) as sesion:
+                    await sesion.initialize()
+                    yield sesion
+
+    async def arrancar(self) -> None:
+        """Saluda y se queda con el catálogo. Es lo único que hay que 'arrancar'."""
+        if not _hay_sdk_mcp():
+            raise ErrorMcp(
+                f"'{self.nombre}' es un servidor remoto y hace falta el SDK de "
+                "MCP para hablarlo: pip install mcp"
+            )
+        try:
+            async with asyncio.timeout(self.tope):
+                async with self._sesion() as sesion:
+                    catalogo = await sesion.list_tools()
+        except TimeoutError:
+            raise ErrorMcp(f"'{self.nombre}' no contestó en {self.tope:.0f} s.") from None
+        except Exception as e:  # noqa: BLE001 - la red falla de mil maneras
+            raise ErrorMcp(f"'{self.nombre}' no contestó ({recortar(str(e), 160)}).") from None
+
+        self.herramientas = [
+            {"name": h.name, "description": h.description or "", "inputSchema": h.input_schema}
+            for h in catalogo.tools
+        ]
+        self.vivo = True
+
+    async def detener(self) -> None:
+        """No hay nada que cerrar: cada llamada abrió y cerró lo suyo."""
+        self.vivo = False
+
+    async def llamar(self, herramienta: str, argumentos: dict[str, Any]) -> str:
+        permitidas = self._permitidas()
+        if herramienta not in {h.get("name") for h in self.herramientas}:
+            disponibles = ", ".join(sorted(str(h.get("name")) for h in self.herramientas))
+            raise ErrorMcp(
+                f"'{self.nombre}' no tiene ninguna herramienta '{herramienta}'. Tiene: {disponibles}"
+            )
+        if permitidas and herramienta not in permitidas:
+            raise ErrorMcp(
+                f"'{herramienta}' no está en la lista de '{self.nombre}' en {NOMBRE_FICHERO}."
+            )
+
+        try:
+            async with asyncio.timeout(self.tope):
+                async with self._sesion() as sesion:
+                    resultado = await sesion.call_tool(herramienta, argumentos)
+        except TimeoutError:
+            raise ErrorMcp(f"'{self.nombre}.{herramienta}' pasó de {self.tope:.0f} s.") from None
+
+        textos = [str(getattr(b, "text", "")) for b in (resultado.content or []) if getattr(b, "text", "")]
+        if resultado.is_error:
+            raise ErrorMcp(recortar(" ".join(textos)) or "el servidor devolvió un error")
+        return "\n".join(textos).strip()
+
+
+def abrir_servidor(nombre: str, definicion: dict[str, Any]):
+    """El servidor que toque: proceso hijo por stdio, o dirección por HTTP."""
+    if definicion.get("url"):
+        return ServidorMcpRemoto(nombre, definicion)
+    return ServidorMcp(nombre, definicion)
 
 
 # -- El cliente -------------------------------------------------------------- #
@@ -416,7 +567,7 @@ def _servidor(nombre: str) -> ServidorMcp:
             f"No hay ningún servidor MCP llamado '{nombre}'. Configurados: "
             + (", ".join(sorted(definiciones)) or "ninguno")
         )
-    nuevo = ServidorMcp(nombre, definicion)
+    nuevo = abrir_servidor(nombre, definicion)
     return nuevo  # lo arranca quien llama, que sabe esperar
 
 
@@ -471,7 +622,7 @@ async def _listar() -> dict[str, Any]:
         try:
             servidor = _activos.get(nombre)
             if servidor is None or not servidor.vivo:
-                servidor = ServidorMcp(nombre, definiciones[nombre])
+                servidor = abrir_servidor(nombre, definiciones[nombre])
                 await servidor.arrancar()
                 _activos[nombre] = servidor
         except (ErrorMcp, OSError) as e:

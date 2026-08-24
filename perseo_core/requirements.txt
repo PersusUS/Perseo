@@ -17,6 +17,23 @@ aiohttp>=3.9
 # pantalla enseña un hueco en vez de romperse.
 psutil>=5.9
 
+# El bucle de agente del agente `dev`, por el SDK oficial en vez de por la
+# consola. Es lo único que sabe contar POR DÓNDE VA un encargo mientras corre
+# —«Editando api.py»—, y el panel lo enseña. Pesa poco y no arrastra modelos:
+# habla con el mismo Claude Code que ya está instalado.
+#
+# Es opcional de verdad: sin él, `dev` cae solo al motor de consola y hace lo
+# mismo callado. Con él, el motor por defecto pasa a ser el SDK.
+claude-agent-sdk>=0.2
+
+# El SDK oficial de MCP, solo para los servidores MCP **remotos** (los que en
+# `<datos>/mcp.json` se declaran con `url` en vez de `comando`: GitHub, Notion,
+# los que ya usa en Claude Desktop). Los de casa siguen hablándose por stdio con
+# el cliente propio de `mcp.py`, que lleva dentro decisiones nuestras.
+#
+# Sin él, un servidor remoto lo dice al arrancar y los demás siguen igual.
+mcp>=2.0
+
 # Opcional, y a propósito fuera de la lista: `pyautogui`, que solo necesita el
 # agente `pc` para teclear y mover el ratón. Sin ella el núcleo arranca igual,
 # abrir aplicaciones y URLs sigue funcionando, y las acciones que la necesitan
