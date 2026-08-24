@@ -49,7 +49,7 @@ que permitirá mudarlo a una Raspberry Pi sin reescribir nada.
 |---|---|
 | `perseo_core/` | El núcleo: cola, bus, API, router local, agentes y política |
 | `RealTime/` | La app de escritorio (Tauri 2 + React + TypeScript): voz y pantalla |
-| `commands/` | El detector: dos aplausos y la palabra clave, en local |
+| `commands/` | El detector (dos aplausos y palabra clave) y los servidores MCP propios: `subagentes_mcp.py` y `correo_mcp.py` |
 | `obsidian_vault/` | La memoria. Fuera del repositorio: contiene datos personales |
 | `bitacora/` | Plan, hallazgos, sesiones y el documento de traspaso |
 
@@ -69,10 +69,38 @@ mañana otra, sin tocar el agente.
 | `dev` | Encarga tareas de código a Claude Code | `claude -p`, que entra en la suscripción |
 | `pc` | Abre apps, teclea, ratón. Lista blanca y sin shell | `pyautogui` (opcional) |
 | `web` | Lee páginas y busca. No alcanza la red de casa | HTTP, sin navegador |
+| `mcp` | Habla con los servidores MCP de `<datos>/mcp.json` — vault, navegador, subagentes, Windows, tiempo, correo triado | JSON-RPC por stdio, un proceso hijo por servidor |
+| `chat` | Sostiene el chat escrito del panel y del móvil: piensa con Gemini, usa las herramientas de los demás y deja la conversación en la base | Gemini REST + function calling; cada herramienta es un trabajo para otro agente |
 
 **El triaje se hace en local, y no es una optimización.** El plan gratuito de Gemini da
 250 peticiones al día; cada correo que clasifica el modelo local en la GPU es una petición
 que no se gasta.
+
+---
+
+## Reconocimiento de personas
+
+En llamada, Perseo puede poner **nombre a cada voz** —un chip dice quién habla—
+y **etiquetar las caras** que ve por la cámara. Y lo que no conoce, lo aprende
+solo: unos doce segundos de voz de un desconocido bastan para que se fije como
+perfil («Desconocido 1», renombrable desde Ajustes), y con las caras pasa otro
+tanto contando detecciones.
+
+Todo se decide en el núcleo (`perseo_core/biometria.py`) con modelos locales —
+ECAPA-TDNN para la voz, YuNet+SFace para caras— y todo se queda en el disco:
+los perfiles son solo vectores de números en `perseo_core/datos/perfiles.json`,
+fuera de git. Nada viaja a ningún servicio nuevo; Gemini ya veía ese micrófono
+y esa cámara antes de que esto existiera.
+
+Va apagado por defecto (Ajustes → «Reconocer quién habla») porque voz y cara
+son datos biométricos: se enciende a mano, y borrar un perfil borra sus números
+de verdad. Para los motores hace falta una instalación aparte y opcional:
+
+```bash
+pip install -r perseo_core/requirements-biometria.txt
+```
+
+Sin ella el núcleo arranca igual y Ajustes enseña qué falta, como con Ollama.
 
 ---
 
@@ -203,6 +231,8 @@ python perseo_core/verificar_web.py             # `web`, sin salir a internet
 python perseo_core/verificar_politica.py        # los niveles y el modo confianza
 python perseo_core/verificar_google.py          # Gmail y Calendar, sin cuenta de Google
 python perseo_core/verificar_estado.py          # la pantalla de estado y sus semáforos
+python perseo_core/verificar_correo_mcp.py      # el servidor MCP de correo, contra su base
+python perseo_core/verificar_biometria.py       # voces y caras: aprender, renombrar, borrar
 python commands/verificar_palabra_clave.py      # el detector, sin micrófono
 ```
 
