@@ -74,8 +74,12 @@ MEMORIA_LOCAL = 10
 MEMORIA_GOOGLE = 300
 
 #: Peticiones al día del plan gratuito, leídas en aistudio.google.com/rate-limit
-#: el 2026-08-16. **No salen de la documentación**: Google dejó de publicarlas, y
-#: la que había escrita estaba desfasada por un factor de doce. Se comparan por
+#: —comprobadas otra vez el 2026-08-24, tabla entera delante—. **No salen de la
+#: documentación**: Google dejó de publicarlas, y la que había escrita estaba
+#: desfasada por un factor de doce. Lo que enseñó la tabla de agosto: los Flash
+#: nuevos (3.6, 3.7) dan las mismas 20 al día que el 2.5, así que estrenarlos no
+#: compra nada; los `flash-lite` dan 500 **cada uno**, y la API en vivo no tiene
+#: tope diario. Se comparan por
 #: trozo del nombre porque la familia manda sobre la versión: cualquier Gemma
 #: tiene el tope de Gemma. El orden importa —`flash-lite` antes que `flash`— y
 #: lo que no encaje se queda sin tope, que se pinta como "sin tope conocido" en
@@ -371,7 +375,13 @@ def _chat(cfg: almacen.Configuracion) -> Pieza:
             f"Sin clave de Gemini no hay turnos ({modulo_chat.MODELO_POR_DEFECTO} es quien piensa).",
             "GEMINI_API_KEY, o <datos>/gemini.txt.",
         )
-    return Pieza("chat", "Chat escrito", OK, f"{modulo_chat._modelo()}, con herramientas.")
+    modelos = modulo_chat._modelos()
+    # El de reserva no es un adorno: cada modelo tiene su propio cubo de cuota
+    # diaria, así que decir cuál hay detrás es decir cuánto aguanta el chat.
+    detalle = f"{modelos[0]}, con herramientas."
+    if len(modelos) > 1:
+        detalle += f" De reserva, {', '.join(modelos[1:])} — cada uno con su cuota."
+    return Pieza("chat", "Chat escrito", OK, detalle)
 
 
 def _confianza() -> Pieza:

@@ -53,13 +53,42 @@ from .agentes import registrar
 
 logger = logging.getLogger(__name__)
 
-#: El modelo que sostiene la conversación. Flash Lite es rápido y el que más
-#: cuota diaria da del plan gratuito (500 peticiones al día frente a las 20 del
-#: Flash normal); para el tono de mayordomo basta con creces.
-MODELO_POR_DEFECTO = "gemini-3.5-flash-lite"
+#: Los modelos que sostienen la conversación, **en orden**. Flash Lite es rápido
+#: y el que más cuota diaria da del plan gratuito: 500 peticiones al día y 15 por
+#: minuto, frente a las 20 AL DÍA de cualquier Flash normal —incluidos los más
+#: nuevos, que por eso no están aquí—. Para el tono de mayordomo basta con creces.
+#:
+#: Y son dos a propósito. **Cada modelo tiene su propio cubo de cuota**: cuando
+#: el 3.5 dice 429 —sea por el minuto o por el día—, el 3.1 sigue entero. Son la
+#: misma familia y hablan igual, así que el turno continúa sin que se note, y el
+#: techo diario del chat pasa de 500 a 1.000 sin pagar nada. Leído en la tabla de
+#: aistudio.google.com/rate-limit el 2026-08-24.
+#:
+#: Gemma 4 31B da 14.400 al día y quedó fuera después de probarlo: contesta con
+#: su propio razonamiento en voz alta —«Input: … (Spanish)»— en vez de con lo que
+#: se le pide, que es justo lo que ya rompía el triaje («El suplente devolvió
+#: algo que no es JSON»).
+MODELOS_POR_DEFECTO: tuple[str, ...] = (
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+)
+
+#: El primero, para quien solo quiera nombrar «el modelo del chat».
+MODELO_POR_DEFECTO = MODELOS_POR_DEFECTO[0]
+
+
+def _modelos() -> tuple[str, ...]:
+    """Los modelos a probar, en orden. `PERSEO_CHAT_MODELO` acepta una lista
+    separada por comas; con uno solo, se comporta como antes."""
+    pedidos = os.environ.get("PERSEO_CHAT_MODELO", "").strip()
+    if not pedidos:
+        return MODELOS_POR_DEFECTO
+    return tuple(m.strip() for m in pedidos.split(",") if m.strip()) or MODELOS_POR_DEFECTO
+
 
 def _modelo() -> str:
-    return os.environ.get("PERSEO_CHAT_MODELO", MODELO_POR_DEFECTO)
+    """El primero de la lista. Es el que se nombra en las pantallas."""
+    return _modelos()[0]
 
 
 def _url_gemini() -> str:
@@ -758,68 +787,86 @@ async def _llamar_modelo(
     llamadas a herramientas que traiga la ronda. Apunta el uso aunque falle:
     la petición ya la contó Google.
 
-    Ante un 429 de cuota por minuto —el plan gratuito deja 20 peticiones/min
-    y un turno con herramientas se las gasta en dos— se espera y se reintenta:
-    la ventana se limpia sola en segundos, y rendirse a la primera acababa
-    entregando la conversación al modelo local de 4B, que saluda con el nombre
-    cortado (visto el 2026-08-24)."""
+    Ante un 429 hay dos salidas, y se usan en este orden:
+
+    1. **Cambiar de modelo.** Cada modelo del plan gratuito tiene su propio cubo
+       de cuota, así que el hermano de la lista sigue entero aunque el primero
+       esté agotado —por el minuto o por el día entero—. No cuesta espera.
+    2. **Esperar.** Solo si TODOS dicen 429, que es cuando de verdad se ha
+       llegado al límite del minuto. La ventana se limpia sola en segundos, y
+       rendirse a la primera acababa entregando la conversación al modelo local
+       de 4B, que saluda con el nombre cortado (visto el 2026-08-24)."""
     cuerpo = {
         "contents": contents,
         "tools": [{"functionDeclarations": _declaraciones()}],
         "systemInstruction": {"parts": [{"text": PROMPT_CHAT}]},
         "generationConfig": {"temperature": 0.4, "maxOutputTokens": 4096},
     }
-    url = f"{_url_gemini()}/v1beta/models/{_modelo()}:streamGenerateContent"
-
     INTENTOS_429 = 3
+    modelos = _modelos()
     texto = ""
     llamadas: list[dict[str, Any]] = []
     for intento in range(INTENTOS_429):
-        try:
-            async with sesion_http.post(url, params={"key": clave, "alt": "sse"}, json=cuerpo) as respuesta:
-                await asyncio.to_thread(almacen.apuntar_uso, _modelo())
-                if respuesta.status == 429 and intento < INTENTOS_429 - 1:
-                    espera = 20 * (intento + 1)
-                    logger.info(
-                        "Gemini sin cuota por minuto (429); reintento %d de %d en %d s.",
-                        intento + 1, INTENTOS_429 - 1, espera,
-                    )
-                    await asyncio.sleep(espera)
-                    continue
-                if respuesta.status != 200:
-                    detalle = await respuesta.text()
-                    try:
-                        mensaje = json.loads(detalle)["error"]["message"]
-                    except (json.JSONDecodeError, KeyError, TypeError):
-                        mensaje = detalle[:200]
-                    raise ErrorGemini(f"Gemini respondió {respuesta.status}: {mensaje}")
+        for modelo in modelos:
+            url = f"{_url_gemini()}/v1beta/models/{modelo}:streamGenerateContent"
+            texto, llamadas = "", []
+            try:
+                async with sesion_http.post(url, params={"key": clave, "alt": "sse"}, json=cuerpo) as respuesta:
+                    await asyncio.to_thread(almacen.apuntar_uso, modelo)
+                    if respuesta.status == 429:
+                        # El cubo de este modelo está vacío; el del siguiente, no.
+                        logger.info("%s sin cuota (429); se prueba con el siguiente.", modelo)
+                        continue
+                    if respuesta.status != 200:
+                        detalle = await respuesta.text()
+                        try:
+                            mensaje = json.loads(detalle)["error"]["message"]
+                        except (json.JSONDecodeError, KeyError, TypeError):
+                            mensaje = detalle[:200]
+                        raise ErrorGemini(f"Gemini respondió {respuesta.status}: {mensaje}")
 
-                async for linea in respuesta.content:
-                    fila = linea.decode("utf-8", errors="replace").strip()
-                    if not fila.startswith("data:"):
-                        continue
-                    try:
-                        trozo = json.loads(fila[5:].strip())
-                    except json.JSONDecodeError:
-                        continue
-                    candidatos = trozo.get("candidates") or []
-                    partes = ((candidatos[0] if candidatos else {}).get("content") or {}).get("parts") or []
-                    for parte in partes:
-                        delta = parte.get("text")
-                        if delta:
-                            texto += delta
-                            yield {"tipo": "texto", "delta": delta}
-                        if parte.get("functionCall"):
-                            llamada = parte["functionCall"]
-                            llamadas.append(
-                                {
-                                    "nombre": str(llamada.get("name", "")),
-                                    "argumentos": dict(llamada.get("args") or {}),
-                                }
-                            )
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            raise ErrorGemini(f"No se pudo hablar con Gemini: {e}") from e
-        break
+                    async for linea in respuesta.content:
+                        fila = linea.decode("utf-8", errors="replace").strip()
+                        if not fila.startswith("data:"):
+                            continue
+                        try:
+                            trozo = json.loads(fila[5:].strip())
+                        except json.JSONDecodeError:
+                            continue
+                        candidatos = trozo.get("candidates") or []
+                        partes = ((candidatos[0] if candidatos else {}).get("content") or {}).get("parts") or []
+                        for parte in partes:
+                            delta = parte.get("text")
+                            if delta:
+                                texto += delta
+                                yield {"tipo": "texto", "delta": delta}
+                            if parte.get("functionCall"):
+                                llamada = parte["functionCall"]
+                                llamadas.append(
+                                    {
+                                        "nombre": str(llamada.get("name", "")),
+                                        "argumentos": dict(llamada.get("args") or {}),
+                                    }
+                                )
+                break  # este modelo contestó: no hace falta probar el resto
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                raise ErrorGemini(f"No se pudo hablar con Gemini: {e}") from e
+        else:
+            # Ninguno contestó: los cubos están vacíos a la vez, que es lo que
+            # pasa cuando el límite es el del MINUTO. Ahí sí toca esperar.
+            if intento < INTENTOS_429 - 1:
+                espera = 20 * (intento + 1)
+                logger.info(
+                    "Sin cuota en ninguno (%s); otra vuelta en %d s (%d de %d).",
+                    ", ".join(modelos), espera, intento + 1, INTENTOS_429 - 1,
+                )
+                await asyncio.sleep(espera)
+                continue
+            raise ErrorGemini(
+                "Ningún modelo del chat tiene cuota ahora mismo: "
+                + ", ".join(modelos)
+            )
+        break  # la vuelta salió bien
 
     yield {"tipo": "fin", "texto": texto, "llamadas": llamadas}
 

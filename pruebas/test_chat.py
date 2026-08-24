@@ -278,3 +278,118 @@ def test_despacho_correo_lee_la_base_de_verdad(
 
     detalle = asyncio.run(chat._ejecutar_herramienta("detalle_correo", {"id_mensaje": "m-1"}))
     assert "cuerpo" in detalle
+
+
+# --------------------------------------------------------------------------- #
+# La cascada de modelos: cada uno tiene su propio cubo de cuota (2026-08-24)
+# --------------------------------------------------------------------------- #
+
+
+class _RespuestaFalsa:
+    """Lo justo de una respuesta de aiohttp para este camino."""
+
+    def __init__(self, status: int, lineas: list[bytes] | None = None) -> None:
+        self.status = status
+        self.content = _Cuerpo(lineas or [])
+
+    async def text(self) -> str:
+        return "{}"
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return False
+
+
+class _Cuerpo:
+    def __init__(self, lineas: list[bytes]) -> None:
+        self._lineas = lineas
+
+    def __aiter__(self):
+        async def gen():
+            for linea in self._lineas:
+                yield linea
+
+        return gen()
+
+
+class _SesionFalsa:
+    """Contesta 429 a los modelos que se le digan y 200 al resto, apuntando
+    a quién se llamó y en qué orden."""
+
+    def __init__(self, sin_cuota: set[str], respuesta: str = "ok") -> None:
+        self.sin_cuota = sin_cuota
+        self.respuesta = respuesta
+        self.llamados: list[str] = []
+
+    def post(self, url, params=None, json=None):
+        modelo = url.split("/models/")[1].split(":")[0]
+        self.llamados.append(modelo)
+        if modelo in self.sin_cuota:
+            return _RespuestaFalsa(429)
+        cuerpo = {"candidates": [{"content": {"parts": [{"text": self.respuesta}]}}]}
+        import json as _json
+
+        return _RespuestaFalsa(200, [b"data: " + _json.dumps(cuerpo).encode()])
+
+
+def _turno(sesion, monkeypatch) -> list[dict]:
+    monkeypatch.setattr(chat.almacen, "apuntar_uso", lambda *a, **k: None)
+
+    async def correr():
+        return [e async for e in chat._llamar_modelo(sesion, "clave", [])]
+
+    return asyncio.run(correr())
+
+
+def test_por_defecto_hay_dos_modelos_y_los_dos_dan_500_al_dia() -> None:
+    """Un cubo por modelo: dos hermanos son 1.000 peticiones al día, no 500."""
+    assert len(chat.MODELOS_POR_DEFECTO) >= 2
+    assert all("flash-lite" in m for m in chat.MODELOS_POR_DEFECTO)
+
+
+def test_si_el_primero_no_tiene_cuota_contesta_el_segundo(monkeypatch) -> None:
+    sesion = _SesionFalsa(sin_cuota={chat.MODELOS_POR_DEFECTO[0]})
+    eventos = _turno(sesion, monkeypatch)
+    assert sesion.llamados == list(chat.MODELOS_POR_DEFECTO[:2])
+    assert eventos[-1]["texto"] == "ok"
+
+
+def test_sin_429_no_se_molesta_al_segundo(monkeypatch) -> None:
+    sesion = _SesionFalsa(sin_cuota=set())
+    _turno(sesion, monkeypatch)
+    assert sesion.llamados == [chat.MODELOS_POR_DEFECTO[0]]
+
+
+def test_cambiar_de_modelo_no_hace_esperar(monkeypatch) -> None:
+    """La espera es para cuando NO queda ninguno; cambiar de cubo es gratis."""
+    dormido: list[float] = []
+
+    async def falso_sleep(segundos):
+        dormido.append(segundos)
+
+    monkeypatch.setattr(chat.asyncio, "sleep", falso_sleep)
+    _turno(_SesionFalsa(sin_cuota={chat.MODELOS_POR_DEFECTO[0]}), monkeypatch)
+    assert dormido == []
+
+
+def test_si_ninguno_tiene_cuota_se_dice_claro(monkeypatch) -> None:
+    async def falso_sleep(segundos):
+        return None
+
+    monkeypatch.setattr(chat.asyncio, "sleep", falso_sleep)
+    sesion = _SesionFalsa(sin_cuota=set(chat.MODELOS_POR_DEFECTO))
+    with pytest.raises(chat.ErrorGemini, match="cuota"):
+        _turno(sesion, monkeypatch)
+
+
+def test_la_variable_de_entorno_acepta_una_lista(monkeypatch) -> None:
+    monkeypatch.setenv("PERSEO_CHAT_MODELO", "uno, dos ,tres")
+    assert chat._modelos() == ("uno", "dos", "tres")
+
+
+def test_un_modelo_suelto_sigue_valiendo(monkeypatch) -> None:
+    monkeypatch.setenv("PERSEO_CHAT_MODELO", "solo-este")
+    assert chat._modelos() == ("solo-este",)
+    assert chat._modelo() == "solo-este"
