@@ -504,7 +504,15 @@ _vault: Vault | None = None
 
 
 def ruta_vault(cfg: almacen.Configuracion | None = None) -> Path:
-    """Dónde está el vault. Una sola variable para todo el sistema, ver H-22."""
+    """Dónde está el vault. Una sola variable para todo el sistema, ver H-22.
+
+    El respaldo —`<repositorio>/../obsidian_vault`— es para un clon recién
+    hecho, sin configurar: se crea al primer apunte y sirve para probar. **El
+    vault de verdad se dice en `OBSIDIAN_VAULT_PATH`** (en esta máquina,
+    `Documents/Persus`), y desde el 2026-08-24 Perseo escribe dentro de su
+    propia carpeta, `10_PERSEO/`. La carpeta de pruebas que había en el
+    repositorio se vació ese día: sus notas están en el vault grande (H-65).
+    """
     if cfg is not None and cfg.vault:
         return Path(cfg.vault)
     return Path(os.environ.get("OBSIDIAN_VAULT_PATH", almacen.RAIZ.parent / "obsidian_vault"))
