@@ -41,7 +41,7 @@ from typing import Any
 
 from aiohttp import web
 
-from . import almacen, biometria, estado, grafo, politica, proyectos
+from . import almacen, biometria, dev, estado, grafo, politica, proyectos
 from .agentes import REGISTRO, Router
 from .bus import Bus
 
@@ -421,7 +421,7 @@ async def _listar_trabajos(peticion: web.Request) -> web.Response:
     except ValueError:
         limite = 50
     trabajos = await asyncio.to_thread(almacen.listar, estado, limite)
-    return web.json_response({"trabajos": trabajos})
+    return web.json_response({"trabajos": [_con_progreso(t) for t in trabajos]})
 
 
 def _id_de_ruta(peticion: web.Request) -> int:
@@ -441,7 +441,22 @@ async def _ver_trabajo(peticion: web.Request) -> web.Response:
             text=json.dumps({"error": "No existe ese trabajo"}),
             content_type="application/json",
         )
-    return web.json_response(trabajo)
+    return web.json_response(_con_progreso(trabajo))
+
+
+def _con_progreso(trabajo: dict[str, Any]) -> dict[str, Any]:
+    """Añade por dónde va el encargo, si es uno de código y sigue vivo.
+
+    Un encargo de `dev` tarda minutos. Sin esto, la pantalla enseña «en curso»
+    y nada más durante todo ese rato; con esto dice «Editando api.py». El dato
+    vive en memoria del núcleo y solo lo sabe el motor sobre el SDK: los que
+    hablan por consola no cuentan nada hasta el final, y entonces el campo no
+    aparece — que es distinto de aparecer vacío.
+    """
+    if trabajo.get("agente") != "dev" or trabajo.get("estado") != almacen.EN_CURSO:
+        return trabajo
+    paso = dev.progreso_de(int(trabajo["id"]))
+    return {**trabajo, "progreso": paso} if paso else trabajo
 
 
 async def _cancelar_trabajo(peticion: web.Request) -> web.Response:
@@ -747,8 +762,25 @@ async def _biometria_renombrar(peticion: web.Request) -> web.Response:
         peticion.app[CLAVE_BUS].publicar(
             "biometria.perfil", nombre=resultado.get("nombre"), via="renombrado"
         )
+        # Ponerle nombre a un «Desconocido 3» es el momento en que esa voz pasa
+        # a ser alguien. Los vectores no dicen nada a un humano; la nota sí, y
+        # se puede corregir a mano. No bloquea la respuesta ni la tumba: si el
+        # vault no está, se apunta y se sigue.
+        asyncio.create_task(
+            _anotar_persona(str(peticion.match_info["nombre"]), str(resultado["nombre"]))
+        )
     estado_http = 200 if resultado.get("ok") else 400
     return web.json_response(resultado, status=estado_http)
+
+
+async def _anotar_persona(antes: str, ahora: str) -> None:
+    """Deja en `10_PERSEO/Personas/` que esta voz o esta cara ya tiene nombre."""
+    from . import memoria
+
+    try:
+        await memoria.anotar_persona(antes, ahora)
+    except Exception as e:  # noqa: BLE001 - un apunte que falla no rompe nada
+        logger.warning("No se pudo anotar a %s en el vault: %s", ahora, e)
 
 
 async def _biometria_borrar(peticion: web.Request) -> web.Response:

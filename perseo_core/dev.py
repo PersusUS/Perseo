@@ -41,6 +41,7 @@ Ver bitacora/05_PLAN_PERSEO_V2.md §3, §7 y §9 (Fase E).
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 import logging
 import os
@@ -48,6 +49,7 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, Protocol
 
 from . import almacen, proyectos
@@ -104,11 +106,22 @@ class Resultado:
     sesion: str = ""
 
 
+#: Cómo avisa un motor de por dónde va. Solo el motor sobre el SDK sabe
+#: rellenarlo —los que hablan por línea de órdenes no dicen nada hasta el
+#: final—, y quien no lo use no paga nada por tenerlo.
+Aviso = Callable[[str], None]
+
+
 class Motor(Protocol):
     """Quién ejecuta de verdad el encargo."""
 
     async def ejecutar(
-        self, instruccion: str, raiz: Path, tope: float, sesion: str = ""
+        self,
+        instruccion: str,
+        raiz: Path,
+        tope: float,
+        sesion: str = "",
+        avisar: Aviso | None = None,
     ) -> Resultado: ...
 
 
@@ -124,7 +137,12 @@ class MotorClaude:
         self._ejecutable = ejecutable
 
     async def ejecutar(
-        self, instruccion: str, raiz: Path, tope: float, sesion: str = ""
+        self,
+        instruccion: str,
+        raiz: Path,
+        tope: float,
+        sesion: str = "",
+        avisar: Aviso | None = None,
     ) -> Resultado:
         argumentos = [
             self._ejecutable,
@@ -224,7 +242,12 @@ class MotorOpencode:
         self._ejecutable = ejecutable
 
     async def ejecutar(
-        self, instruccion: str, raiz: Path, tope: float, sesion: str = ""
+        self,
+        instruccion: str,
+        raiz: Path,
+        tope: float,
+        sesion: str = "",
+        avisar: Aviso | None = None,
     ) -> Resultado:
         # `--auto` no es una comodidad: sin él, `opencode run` pide permiso para
         # escribir, nadie contesta porque esto no es interactivo, y el propio
@@ -266,6 +289,116 @@ class MotorOpencode:
         return Resultado(texto=texto[:4000])
 
 
+class MotorSdk:
+    """Claude por el **Agent SDK oficial** (`claude-agent-sdk`), no por la consola.
+
+    Es el mismo bucle de agente que `MotorClaude`, con la diferencia que se
+    nota usándolo: los mensajes llegan **según pasan**, así que se puede contar
+    por dónde va el encargo en vez de enseñar una barra girando durante seis
+    minutos. Lo que se cuenta es la herramienta que acaba de usar —«Editando
+    api.py», «Ejecutando pytest»—, que es la pregunta que uno se hace mirando.
+
+    Lo demás es lo mismo y a propósito: las mismas listas de herramientas
+    permitidas y denegadas, el mismo tope de vueltas y el mismo cerco de
+    directorios resuelto antes de arrancar. El SDK no relaja ninguna decisión
+    de seguridad; solo cambia por dónde se habla con el agente.
+
+    `setting_sources=["project"]`: el encargo hereda el `CLAUDE.md` del
+    proyecto donde trabaja —que es contexto útil— pero **no** los ajustes ni
+    los hooks globales del usuario. Un agente que corre solo, de madrugada y
+    sin nadie mirando no debe arrastrar la configuración de una sesión humana.
+    """
+
+    def __init__(self) -> None:
+        # Se importa aquí y no arriba: el paquete es opcional (§18) y sin él
+        # el núcleo tiene que arrancar igual, con el motor de consola.
+        from claude_agent_sdk import ClaudeAgentOptions, query
+
+        self._query = query
+        self._Opciones = ClaudeAgentOptions
+
+    async def ejecutar(
+        self,
+        instruccion: str,
+        raiz: Path,
+        tope: float,
+        sesion: str = "",
+        avisar: Aviso | None = None,
+    ) -> Resultado:
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolUseBlock
+
+        opciones = self._Opciones(
+            cwd=str(raiz),
+            permission_mode="acceptEdits",
+            max_turns=MAX_VUELTAS,
+            allowed_tools=list(HERRAMIENTAS_PERMITIDAS),
+            disallowed_tools=list(HERRAMIENTAS_DENEGADAS),
+            setting_sources=["project"],
+            resume=sesion or None,
+            # NO es un adorno. Sin el preset, el SDK arranca al agente SIN el
+            # preámbulo de Claude Code —el que le dice en qué directorio está
+            # trabajando— y el modelo se inventa rutas absolutas: el mismo
+            # encargo escribió en `C:\Users\<usuario>`, en `C:\Users\jp` y en la
+            # raíz del repositorio, tres veces seguidas y ninguna donde tocaba.
+            # Con el preset, el fichero cae exactamente en `cwd` (H-67).
+            system_prompt={"type": "preset", "preset": "claude_code"},
+        )
+
+        texto_suelto: list[str] = []
+        final: Any = None
+        try:
+            async with asyncio.timeout(tope):
+                async for mensaje in self._query(prompt=instruccion, options=opciones):
+                    if isinstance(mensaje, AssistantMessage):
+                        for bloque in mensaje.content:
+                            if isinstance(bloque, ToolUseBlock) and avisar is not None:
+                                avisar(_contar_herramienta(bloque.name, bloque.input))
+                            elif isinstance(bloque, TextBlock):
+                                texto_suelto.append(bloque.text)
+                    elif isinstance(mensaje, ResultMessage):
+                        final = mensaje
+        except TimeoutError:
+            raise TimeoutError(f"El encargo pasó de {tope:.0f} s y se cortó.") from None
+
+        if final is None:
+            # El SDK terminó sin dar resultado: pasa si el proceso muere solo.
+            unido = "\n".join(texto_suelto).strip()
+            return Resultado(texto=unido or "El agente terminó sin decir nada.", ok=bool(unido))
+
+        return Resultado(
+            texto=str(final.result or "\n".join(texto_suelto))[:4000],
+            ok=not final.is_error,
+            vueltas=int(final.num_turns or 0),
+            sesion=str(final.session_id or ""),
+        )
+
+
+#: Cómo se cuenta cada herramienta mientras el encargo corre. Se dice qué está
+#: pasando, no el JSON de la llamada: quien mira quiere saber si avanza.
+_COMO_SE_CUENTA = {
+    "Read": "Leyendo",
+    "Write": "Escribiendo",
+    "Edit": "Editando",
+    "Glob": "Buscando ficheros",
+    "Grep": "Buscando",
+    "Bash": "Ejecutando",
+    "TodoWrite": "Ordenando el trabajo",
+    "Task": "Repartiendo a un subagente",
+}
+
+
+def _contar_herramienta(nombre: str, entrada: dict[str, Any]) -> str:
+    """Una línea corta y en cristiano de lo que el agente acaba de hacer."""
+    verbo = _COMO_SE_CUENTA.get(nombre, nombre)
+    detalle = ""
+    for clave in ("file_path", "path", "pattern", "command", "description"):
+        valor = entrada.get(clave) if isinstance(entrada, dict) else None
+        if valor:
+            detalle = Path(str(valor)).name if clave in ("file_path", "path") else str(valor)
+            break
+    return f"{verbo} {detalle}".strip()[:120]
+
+
 class MotorFalso:
     """Motor de mentira, para verificar el circuito sin gastar suscripción.
 
@@ -279,7 +412,12 @@ class MotorFalso:
         self.encargos: list[str] = []
 
     async def ejecutar(
-        self, instruccion: str, raiz: Path, tope: float, sesion: str = ""
+        self,
+        instruccion: str,
+        raiz: Path,
+        tope: float,
+        sesion: str = "",
+        avisar: Aviso | None = None,
     ) -> Resultado:
         self.encargos.append(instruccion)
         if self.tardanza:
@@ -287,10 +425,33 @@ class MotorFalso:
         return Resultado(texto=f"(simulado) {instruccion}", vueltas=1, sesion="falsa")
 
 
+def hay_sdk() -> bool:
+    """¿Está instalado el Agent SDK? Es opcional: sin él se habla por consola."""
+    return importlib.util.find_spec("claude_agent_sdk") is not None
+
+
 def abrir_motor(cfg: almacen.Configuracion) -> Motor | None:
-    """Devuelve el motor configurado, o `None` si no hay ninguno utilizable."""
+    """Devuelve el motor configurado, o `None` si no hay ninguno utilizable.
+
+    Sin `PERSEO_DEV_MOTOR` manda el **SDK** si está instalado, porque es el
+    único que sabe contar por dónde va el encargo mientras corre; si no está,
+    la consola de Claude, que hace lo mismo callada.
+    """
     if cfg.dev_motor == "falso":
         return MotorFalso(tardanza=float(cfg.dev_tardanza_falsa))
+
+    if cfg.dev_motor == "sdk":
+        if not hay_sdk():
+            logger.warning(
+                "PERSEO_DEV_MOTOR=sdk pero no está `claude-agent-sdk` en el "
+                "entorno; se sigue con la consola de Claude. `pip install "
+                "claude-agent-sdk`."
+            )
+        else:
+            return MotorSdk()
+
+    if not cfg.dev_motor and hay_sdk():
+        return MotorSdk()
 
     if cfg.dev_motor == "opencode":
         ejecutable = shutil.which("opencode")
@@ -450,6 +611,17 @@ _datos: Path | None = None
 #: `iniciar` para que la elección POR ENCARGO (peticion.motor) lo respete.
 _ejecutable_claude: str = "claude"
 
+#: Por dónde va cada encargo vivo, para que el panel enseñe algo mejor que una
+#: barra girando. En memoria a propósito: un encargo en curso no sobrevive a un
+#: reinicio del núcleo —`recuperar_huerfanos` lo devuelve a la cola—, así que
+#: guardar esto en disco sería conservar una frase que ya no es verdad.
+_progreso: dict[int, str] = {}
+
+
+def progreso_de(id_trabajo: int) -> str:
+    """Lo último que se sabe de un encargo en curso. Vacío si no hay nada."""
+    return _progreso.get(int(id_trabajo), "")
+
 
 def iniciar(cfg: almacen.Configuracion) -> Motor | None:
     global _motor, _raiz, _raices, _tope, _datos, _ejecutable_claude
@@ -470,6 +642,7 @@ def detener() -> None:
     _motor = None
     _raices = ()
     _datos = None
+    _progreso.clear()
 
 
 def _motor_de(nombre: str) -> Motor | None:
@@ -481,6 +654,8 @@ def _motor_de(nombre: str) -> Motor | None:
     nombre = nombre.strip().lower()
     if nombre == "falso":
         return MotorFalso()
+    if nombre == "sdk":
+        return MotorSdk() if hay_sdk() else None
     if nombre == "opencode":
         ejecutable = shutil.which("opencode")
         return MotorOpencode(ejecutable) if ejecutable else None
@@ -562,7 +737,16 @@ async def _dev(trabajo: dict[str, Any]) -> dict[str, Any]:
         raiz,
         instruccion,
     )
-    resultado = await motor.ejecutar(instruccion, raiz, _tope, sesion)
+    id_trabajo = int(trabajo.get("id") or 0)
+
+    def contar(paso: str) -> None:
+        if id_trabajo:
+            _progreso[id_trabajo] = paso
+
+    try:
+        resultado = await motor.ejecutar(instruccion, raiz, _tope, sesion, avisar=contar)
+    finally:
+        _progreso.pop(id_trabajo, None)
 
     if not resultado.ok:
         raise RuntimeError(resultado.texto or "El encargo falló.")

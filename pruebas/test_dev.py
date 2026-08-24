@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from dataclasses import replace
+
 from perseo_core import almacen, dev
 
 #: Ruta absoluta fuera de la raíz permitida, en cualquiera de los dos sistemas
@@ -119,7 +121,7 @@ def test_sin_motor_el_encargo_falla_con_un_error_util(dev_falso, monkeypatch) ->
 
 def test_un_resultado_fallido_del_motor_falla_el_trabajo(dev_falso, monkeypatch) -> None:
     class MotorQueFalla:
-        async def ejecutar(self, instruccion, raiz, tope, sesion=""):
+        async def ejecutar(self, instruccion, raiz, tope, sesion="", avisar=None):
             return dev.Resultado(texto="no pude", ok=False)
 
     monkeypatch.setattr(dev, "_motor", MotorQueFalla())
@@ -134,7 +136,7 @@ def test_la_eleccion_por_encargo_manda(dev_falso, monkeypatch) -> None:
     lanzados = []
 
     class MotorQueAnota:
-        async def ejecutar(self, instruccion, raiz, tope, sesion=""):
+        async def ejecutar(self, instruccion, raiz, tope, sesion="", avisar=None):
             lanzados.append(self)
             return dev.Resultado(texto="hecho", vueltas=1)
 
@@ -292,3 +294,57 @@ def test_una_salida_normal_sigue_siendo_exito(monkeypatch) -> None:
     monkeypatch.setattr(asyncio, "create_subprocess_exec", falso_exec)
     resultado = asyncio.run(dev.MotorOpencode("opencode").ejecutar("x", Path.cwd(), 30.0))
     assert resultado.ok
+
+
+# --------------------------------------------------------------------------- #
+# El motor sobre el Agent SDK oficial
+# --------------------------------------------------------------------------- #
+
+
+def test_el_sdk_manda_cuando_esta_instalado(cfg, monkeypatch) -> None:
+    """Es el único que sabe contar por dónde va: sin motor pedido, gana él."""
+    monkeypatch.setattr(dev, "hay_sdk", lambda: True)
+    monkeypatch.setattr(dev, "MotorSdk", lambda: "el-sdk")
+    assert dev.abrir_motor(replace(cfg, dev_motor="")) == "el-sdk"
+
+
+def test_sin_sdk_se_sigue_por_consola(cfg, monkeypatch) -> None:
+    """El paquete es opcional de verdad: sin él, `dev` no se queda sin motor."""
+    monkeypatch.setattr(dev, "hay_sdk", lambda: False)
+    monkeypatch.setattr(dev.shutil, "which", lambda nombre: "/bin/claude")
+    assert isinstance(dev.abrir_motor(replace(cfg, dev_motor="")), dev.MotorClaude)
+
+
+def test_pedir_el_sdk_sin_tenerlo_no_deja_sin_motor(cfg, monkeypatch) -> None:
+    monkeypatch.setattr(dev, "hay_sdk", lambda: False)
+    monkeypatch.setattr(dev.shutil, "which", lambda nombre: "/bin/claude")
+    assert isinstance(dev.abrir_motor(replace(cfg, dev_motor="sdk")), dev.MotorClaude)
+
+
+@pytest.mark.parametrize(
+    "herramienta, entrada, espera",
+    [
+        ("Edit", {"file_path": "C:\\Users\\x\\api.py"}, "Editando api.py"),
+        ("Bash", {"command": "python -m pytest"}, "Ejecutando python -m pytest"),
+        ("Grep", {"pattern": "def iniciar"}, "Buscando def iniciar"),
+        ("LoQueSea", {}, "LoQueSea"),
+    ],
+)
+def test_el_progreso_se_cuenta_en_cristiano(herramienta, entrada, espera) -> None:
+    """Quien mira quiere saber si avanza, no ver el JSON de la llamada."""
+    assert dev._contar_herramienta(herramienta, entrada) == espera
+
+
+def test_el_progreso_de_un_encargo_vivo_se_puede_consultar(dev_falso) -> None:
+    dev._progreso[7] = "Editando api.py"
+    try:
+        assert dev.progreso_de(7) == "Editando api.py"
+        assert dev.progreso_de(8) == ""
+    finally:
+        dev._progreso.clear()
+
+
+def test_al_acabar_el_encargo_no_queda_progreso(dev_falso) -> None:
+    """Si no se limpiara, el panel enseñaría para siempre el último paso."""
+    asyncio.run(dev._dev({"id": 12, "peticion": {"texto": "algo"}}))
+    assert dev.progreso_de(12) == ""
