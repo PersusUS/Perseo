@@ -152,6 +152,16 @@ async def _preguntar_ollama(
     return decision
 
 
+def acepta_esquema(modelo: str) -> bool:
+    """¿Se le puede exigir la forma de la respuesta, o hay que pedirla por favor?
+
+    Los `gemini-*` aceptan `responseSchema`; Gemma no. Se mira por el nombre
+    porque es lo único que se sabe del modelo antes de llamarlo, y el coste de
+    equivocarse es una petición perdida, no un fallo silencioso.
+    """
+    return "gemma" not in modelo.lower()
+
+
 async def preguntar_suplente(
     sesion: aiohttp.ClientSession,
     suplente: Suplente,
@@ -159,37 +169,55 @@ async def preguntar_suplente(
     sistema: str,
     usuario: str,
 ) -> dict[str, Any] | None:
-    """Lo mismo, pero contra Gemma por la API de Gemini.
+    """Lo mismo, pero contra la API de Gemini.
 
-    Dos diferencias con Ollama que no son opcionales:
+    Hay **dos formas de pedirlo** y se elige según el modelo, porque no todos
+    aceptan lo mismo:
 
-    1. **No hay gramática.** Gemma por esta API no acepta `responseSchema`, así
-       que el esquema viaja dentro del texto y la respuesta se lee con tolerancia
-       —un modelo grande la envuelve en ```json más veces de las que uno espera—.
-       Por eso la forma se comprueba después: aquí sí puede llegar cualquier cosa.
-    2. **No hay `systemInstruction`.** Gemma tampoco lo acepta, así que las
-       instrucciones van pegadas delante de la pregunta.
+    1. **Con esquema, si el modelo lo acepta** (los `gemini-*`): `responseSchema`
+       y `responseMimeType` obligan a que la respuesta SEA el objeto pedido, y
+       las instrucciones van en `systemInstruction`, su sitio. Es lo más
+       parecido a la gramática de Ollama que da esta API.
+    2. **Con el esquema escrito dentro del texto** (Gemma, que no acepta ni una
+       cosa ni la otra). La respuesta se lee entonces con tolerancia —un modelo
+       grande la envuelve en ```json más veces de las que uno espera— y la forma
+       se comprueba después.
+
+    La diferencia no es cosmética: con Gemma, el 2026-08-24, el registro se
+    llenó de «El suplente devolvió algo que no es JSON» seguido del razonamiento
+    del modelo en voz alta. Un `flash-lite` con esquema no puede hacer eso.
     """
     url = f"{_url_gemini()}/v1beta/models/{suplente.modelo}:generateContent"
-    cuerpo = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [
-                    {
-                        "text": (
-                            f"{sistema}\n\n"
-                            "Responde SOLO con un objeto JSON que cumpla este esquema, "
-                            "sin texto alrededor ni explicaciones:\n"
-                            f"{json.dumps(esquema, ensure_ascii=False)}\n\n"
-                            f"{usuario}"
-                        )
-                    }
-                ],
-            }
-        ],
-        "generationConfig": {"temperature": 0},
-    }
+    if acepta_esquema(suplente.modelo):
+        cuerpo = {
+            "contents": [{"role": "user", "parts": [{"text": usuario}]}],
+            "systemInstruction": {"parts": [{"text": sistema}]},
+            "generationConfig": {
+                "temperature": 0,
+                "responseMimeType": "application/json",
+                "responseSchema": esquema,
+            },
+        }
+    else:
+        cuerpo = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": (
+                                f"{sistema}\n\n"
+                                "Responde SOLO con un objeto JSON que cumpla este esquema, "
+                                "sin texto alrededor ni explicaciones:\n"
+                                f"{json.dumps(esquema, ensure_ascii=False)}\n\n"
+                                f"{usuario}"
+                            )
+                        }
+                    ],
+                }
+            ],
+            "generationConfig": {"temperature": 0},
+        }
 
     try:
         async with sesion.post(
