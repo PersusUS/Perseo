@@ -89,6 +89,11 @@ TABLA: dict[str, str] = {
     # de un servidor no está aquí a propósito: su nivel lo decide el servidor
     # en mcp.json (ver el gancho de abajo).
     "mcp.servidores": LIBRE,
+    # El chat escrito es conversación, no manos: lo irreversible que pueda hacer
+    # pasa por los agentes de abajo (pc.escribir_teclado, dev…), que ya tienen
+    # aquí su nivel y piden su sí por el camino de siempre. Parar el turno del
+    # chat entero sería preguntar dos veces por lo mismo.
+    "chat": LIBRE,
 }
 
 #: Cuánto dura el modo confianza si no se dice otra cosa. Una sesión de trabajo,

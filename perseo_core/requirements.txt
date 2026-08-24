@@ -24,6 +24,12 @@ psutil>=5.9
 #
 #     pip install pyautogui
 
+# Reconocimiento de personas por voz y cara (biometria). Tambien opcional y
+# por el mismo motivo que pyautogui: torch y opencv pesan cientos de megas.
+# Sin ellos el nucleo arranca igual y las rutas /biometria dicen que falta.
+#
+#     pip install -r perseo_core/requirements-biometria.txt
+
 # Y para las pruebas unitarias de `pruebas/`, que tampoco es del nucleo:
 #
 #     pip install pytest

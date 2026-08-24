@@ -41,7 +41,7 @@ from typing import Any
 
 from aiohttp import web
 
-from . import almacen, estado, politica, proyectos
+from . import almacen, biometria, estado, grafo, politica, proyectos
 from .agentes import REGISTRO, Router
 from .bus import Bus
 
@@ -101,7 +101,13 @@ def _token_de_peticion(peticion: web.Request) -> str:
     cabecera = peticion.headers.get("Authorization", "")
     if cabecera.startswith("Bearer "):
         return cabecera[7:].strip()
-    return peticion.cookies.get(COOKIE_SESION, "")
+    en_cookie = peticion.cookies.get(COOKIE_SESION, "")
+    if en_cookie:
+        return en_cookie
+    # La ventana del grafo no puede mandar cabecera en su primera carga y no
+    # lleva sesión canjeada: el token viaja en `?t=`, igual que la PWA canjea
+    # el suyo por cookie. Sigue SIENDO token — quien no lo tenga, 401.
+    return peticion.query.get("t", "")
 
 
 @web.middleware
@@ -180,6 +186,56 @@ async def _indice(peticion: web.Request) -> web.FileResponse:
         DIRECTORIO_WEB / "index.html",
         headers={"Cache-Control": "no-cache"},
     )
+
+
+async def _pagina_grafo(peticion: web.Request) -> web.FileResponse:
+    """La ventana del grafo del segundo cerebro: el vault como constelación.
+
+    Un solo fichero, sin build — la misma escuela que la PWA. El token llegó
+    en `?t=` (el middleware ya lo validó) y la página lo reusa para pedir los
+    datos; no se guarda en ningún sitio.
+    """
+    return web.FileResponse(
+        DIRECTORIO_WEB / "grafo.html",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+async def _datos_grafo(peticion: web.Request) -> web.Response:
+    """El grafo del vault: notas como nodos, enlaces `[[...]]` como aristas."""
+    from . import memoria  # perezoso, como en `estado`: nada de cargarlo por defecto
+
+    cfg = peticion.app[CLAVE_CFG]
+    datos = await asyncio.to_thread(grafo.construir, memoria.ruta_vault(cfg))
+    return web.json_response(datos)
+
+
+async def _abrir_nota_grafo(peticion: web.Request) -> web.Response:
+    """Abre en Obsidian la nota de un nodo del grafo.
+
+    Por aquí llega **cuál** de las notas del vault y nada más — el id se busca
+    entre los ficheros reales y lo que se abre es su URI `obsidian://`, igual
+    que `proyectos` solo abre lo que ya vive escrito en su fichero del disco.
+    """
+    try:
+        cuerpo = await peticion.json()
+        id_nota = str(cuerpo.get("id", ""))
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "Cuerpo inválido"}), content_type="application/json"
+        )
+
+    from . import memoria
+
+    cfg = peticion.app[CLAVE_CFG]
+    resultado = await asyncio.to_thread(
+        grafo.abrir_nota, memoria.ruta_vault(cfg), id_nota
+    )
+    if resultado.startswith("Error:"):
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": resultado}), content_type="application/json"
+        )
+    return web.json_response({"resultado": resultado})
 
 
 #: Manifiesto de PWA, en línea para no depender de un fichero más. Los iconos
@@ -472,6 +528,243 @@ async def _marcar_correo(peticion: web.Request) -> web.Response:
     return web.json_response(marcado)
 
 
+# --------------------------------------------------------------------------- #
+# El chat escrito
+# --------------------------------------------------------------------------- #
+
+
+async def _chat_sesiones(peticion: web.Request) -> web.Response:
+    return web.json_response(
+        {"sesiones": await asyncio.to_thread(almacen.sesiones_chat)}
+    )
+
+
+async def _crear_sesion_chat(peticion: web.Request) -> web.Response:
+    datos = await _cuerpo_json(peticion)
+    sesion = await asyncio.to_thread(almacen.crear_sesion_chat, str(datos.get("titulo", "")))
+    peticion.app[CLAVE_BUS].publicar("chat.sesion", sesion=sesion)
+    return web.json_response(sesion, status=201)
+
+
+async def _ver_sesion_chat(peticion: web.Request) -> web.Response:
+    """Una conversación, con su semáforo. Es lo que sondean las caras mientras
+    `turno` está `ocupado`: el texto de la respuesta va creciendo en el último
+    mensaje, que llega con estado `escribiendo` hasta que se cierra el turno."""
+    id_sesion = _id_de_ruta(peticion)
+    sesion = await asyncio.to_thread(almacen.obtener_sesion_chat, id_sesion)
+    if sesion is None:
+        raise web.HTTPNotFound(
+            text=json.dumps({"error": "No existe esa conversación"}),
+            content_type="application/json",
+        )
+    mensajes = await asyncio.to_thread(almacen.mensajes_chat, id_sesion)
+    return web.json_response({**sesion, "mensajes": mensajes})
+
+
+async def _borrar_sesion_chat(peticion: web.Request) -> web.Response:
+    id_sesion = _id_de_ruta(peticion)
+    try:
+        borrada = await asyncio.to_thread(almacen.borrar_sesion_chat, id_sesion)
+    except ValueError as e:
+        raise web.HTTPConflict(
+            text=json.dumps({"error": str(e)}), content_type="application/json"
+        )
+    if not borrada:
+        raise web.HTTPNotFound(
+            text=json.dumps({"error": "No existe esa conversación"}),
+            content_type="application/json",
+        )
+    peticion.app[CLAVE_BUS].publicar("chat.borrado", sesion={"id": id_sesion})
+    return web.json_response({"ok": True})
+
+
+async def _hablar_chat(peticion: web.Request) -> web.Response:
+    """Encola un turno de conversación y contesta al momento.
+
+    La cara queda sondeando `GET /chat/{id}`; aquí solo se apuntan los dos
+    mensajes —el del usuario y el de Perseo, vacío y `escribiendo`— y se pone
+    el trabajo en la cola, como todo lo demás.
+    """
+    id_sesion = _id_de_ruta(peticion)
+    datos = await _cuerpo_json(peticion)
+    texto = str(datos.get("texto", "")).strip()
+    if not texto:
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "Falta 'texto'"}), content_type="application/json"
+        )
+
+    sesion = await asyncio.to_thread(almacen.obtener_sesion_chat, id_sesion)
+    if sesion is None:
+        raise web.HTTPNotFound(
+            text=json.dumps({"error": "No existe esa conversación"}),
+            content_type="application/json",
+        )
+
+    try:
+        await asyncio.to_thread(almacen.marcar_turno_chat, id_sesion, "ocupado")
+    except ValueError as e:
+        raise web.HTTPConflict(
+            text=json.dumps({"error": str(e)}), content_type="application/json"
+        )
+
+    try:
+        id_usuario = await asyncio.to_thread(almacen.anadir_mensaje_chat, id_sesion, "usuario", texto)
+        id_perseo = await asyncio.to_thread(
+            almacen.anadir_mensaje_chat, id_sesion, "perseo", "", "escribiendo"
+        )
+        trabajo = await asyncio.to_thread(
+            almacen.encolar,
+            "chat",
+            {"sesion": id_sesion, "mensaje": id_perseo, "texto": texto},
+            "texto",
+        )
+    except Exception:
+        # Sin turno no hay respuesta: si encolar falla, hay que devolver el
+        # semáforo o la sesión quedaría ocupada para siempre.
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(almacen.marcar_turno_chat, id_sesion, "libre")
+        raise
+
+    peticion.app[CLAVE_BUS].publicar("trabajo.encolado", trabajo=trabajo)
+    return web.json_response(
+        {
+            "sesion": id_sesion,
+            "mensaje_usuario": id_usuario,
+            "mensaje_id": id_perseo,
+            "trabajo_id": trabajo["id"],
+        },
+        status=202,
+    )
+
+
+async def _biometria_estado(peticion: web.Request) -> web.Response:
+    """Perfiles, progreso de aprendizaje y qué motores hay hoy.
+
+    Va autenticado como todo: los nombres de los perfiles son gente real, y la
+    lista de quién conoces no se le enseña a nadie sin token.
+    """
+    cfg = peticion.app[CLAVE_CFG]
+    return web.json_response(
+        await asyncio.to_thread(biometria.estado_completo, cfg.directorio_datos)
+    )
+
+
+async def _biometria_voz(peticion: web.Request) -> web.Response:
+    """Un trozo de PCM 16k mono (base64) entra, un nombre o un progreso sale.
+
+    Es la ruta que llama la app de voz con el mismo micrófono que ya alimenta
+    a Gemini. Cuando aquí nace un perfil nuevo —un desconocido que por fin
+    acumuló voz suficiente— se publica al bus, para que quien escuche sepa que
+    hay alguien nuevo en la casa.
+    """
+    cuerpo = await _cuerpo_json(peticion)
+    audio = str(cuerpo.get("audio", ""))
+    if not audio:
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "Falta 'audio'"}), content_type="application/json"
+        )
+
+    cfg = peticion.app[CLAVE_CFG]
+    resultado = await asyncio.to_thread(
+        biometria.identificar_voz, cfg.directorio_datos, audio
+    )
+    if resultado.get("aprendido"):
+        peticion.app[CLAVE_BUS].publicar(
+            "biometria.perfil",
+            nombre=resultado.get("nombre"),
+            via="voz",
+        )
+    return web.json_response(resultado)
+
+
+async def _biometria_cara(peticion: web.Request) -> web.Response:
+    """Un JPEG (base64) entra; caras con nombre y caja salen.
+
+    Igual que la voz: cuando una cara desconocida se fija como perfil, evento.
+    """
+    cuerpo = await _cuerpo_json(peticion)
+    imagen = str(cuerpo.get("imagen", ""))
+    if not imagen:
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "Falta 'imagen'"}), content_type="application/json"
+        )
+
+    cfg = peticion.app[CLAVE_CFG]
+    resultado = await asyncio.to_thread(
+        biometria.identificar_cara, cfg.directorio_datos, imagen
+    )
+    for cara in resultado.get("caras", []):
+        if cara.get("aprendido"):
+            peticion.app[CLAVE_BUS].publicar(
+                "biometria.perfil", nombre=cara.get("nombre"), via="cara"
+            )
+    return web.json_response(resultado)
+
+
+async def _biometria_enrolar(peticion: web.Request) -> web.Response:
+    """Crea o refuerza un perfil con una muestra traída a propósito."""
+    cuerpo = await _cuerpo_json(peticion)
+    nombre = str(cuerpo.get("nombre", ""))
+    audio = cuerpo.get("audio")
+    imagen = cuerpo.get("imagen")
+    if not nombre:
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "Falta 'nombre'"}), content_type="application/json"
+        )
+    if not audio and not imagen:
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "Hace falta 'audio' o 'imagen'"}),
+            content_type="application/json",
+        )
+
+    cfg = peticion.app[CLAVE_CFG]
+    resultado = await asyncio.to_thread(
+        biometria.enrolar,
+        cfg.directorio_datos,
+        nombre,
+        str(audio) if audio else None,
+        str(imagen) if imagen else None,
+    )
+    if resultado.get("ok") and resultado.get("añadido"):
+        peticion.app[CLAVE_BUS].publicar(
+            "biometria.perfil", nombre=nombre, via="+".join(resultado["añadido"])
+        )
+    estado_http = 200 if resultado.get("ok") else 400
+    return web.json_response(resultado, status=estado_http)
+
+
+async def _biometria_renombrar(peticion: web.Request) -> web.Response:
+    """Le pone nombre real a un «Desconocido N»."""
+    cuerpo = await _cuerpo_json(peticion)
+    cfg = peticion.app[CLAVE_CFG]
+    resultado = await asyncio.to_thread(
+        biometria.renombrar,
+        cfg.directorio_datos,
+        peticion.match_info["nombre"],
+        str(cuerpo.get("nuevo_nombre", "")),
+    )
+    if resultado.get("ok"):
+        peticion.app[CLAVE_BUS].publicar(
+            "biometria.perfil", nombre=resultado.get("nombre"), via="renombrado"
+        )
+    estado_http = 200 if resultado.get("ok") else 400
+    return web.json_response(resultado, status=estado_http)
+
+
+async def _biometria_borrar(peticion: web.Request) -> web.Response:
+    """Borra el perfil y sus vectores. No hay copia: eso es lo pedido."""
+    cfg = peticion.app[CLAVE_CFG]
+    resultado = await asyncio.to_thread(
+        biometria.borrar, cfg.directorio_datos, peticion.match_info["nombre"]
+    )
+    if resultado.get("ok"):
+        peticion.app[CLAVE_BUS].publicar(
+            "biometria.perfil", nombre=peticion.match_info["nombre"], via="borrado"
+        )
+    estado_http = 200 if resultado.get("ok") else 400
+    return web.json_response(resultado, status=estado_http)
+
+
 # La ruta `/clave-voz` vivía aquí y se fue con la pestaña Voz del móvil
 # (T-9, 2026-08-21). Entregaba la clave de Gemini por la red para que el
 # navegador del teléfono hablara directamente con el modelo, y estaba escrito
@@ -481,13 +774,29 @@ async def _marcar_correo(peticion: web.Request) -> web.Response:
 # escritorio, que lee su clave del disco por Rust.
 
 
+def _carga_proyectos(directorio_datos):
+    """La lista para la pantalla, con el estado vivo de cada servicio.
+
+    Una ficha que dijera «LANZAR» de una app ya en marcha mentiría, así que a
+    cada proyecto de modo `servicio` se le pregunta si su puerto respira. Va
+    todo dentro del hilo de trabajo: son sondeos locales de décimas.
+    """
+    salida = []
+    for proyecto in proyectos.listar(directorio_datos):
+        datos = proyecto.a_dict()
+        if proyecto.modo == "servicio":
+            datos["vivo"] = proyectos.puerto_responde(proyecto.destino)
+        salida.append(datos)
+    return salida
+
+
 async def _listar_proyectos(peticion: web.Request) -> web.Response:
     """Los otros proyectos que se pueden abrir desde el panel."""
     cfg = peticion.app[CLAVE_CFG]
-    lista = await asyncio.to_thread(proyectos.listar, cfg.directorio_datos)
+    carga = await asyncio.to_thread(_carga_proyectos, cfg.directorio_datos)
     return web.json_response(
         {
-            "proyectos": [p.a_dict() for p in lista],
+            "proyectos": carga,
             # Sin fichero no hay proyectos, y no es un fallo: la pantalla enseña
             # dónde se crea en vez de un hueco sin explicación.
             "fichero": str(cfg.directorio_datos / proyectos.NOMBRE_FICHERO),
@@ -583,10 +892,24 @@ def crear_app(cfg: almacen.Configuracion, bus: Bus, router: Router) -> web.Appli
             web.post("/trabajos/{id}/{decision:aprobar|rechazar}", _responder_confirmacion),
             web.get("/correos", _listar_correos),
             web.post("/correos/{id}/estado", _marcar_correo),
+            web.get("/chat", _chat_sesiones),
+            web.post("/chat", _crear_sesion_chat),
+            web.get("/chat/{id}", _ver_sesion_chat),
+            web.delete("/chat/{id}", _borrar_sesion_chat),
+            web.post("/chat/{id}/hablar", _hablar_chat),
             web.get("/proyectos", _listar_proyectos),
             web.post("/proyectos/{id}/abrir", _abrir_proyecto),
+            web.get("/grafo", _pagina_grafo),
+            web.get("/grafo/datos", _datos_grafo),
+            web.post("/grafo/abrir", _abrir_nota_grafo),
             web.get("/confianza", _ver_confianza),
             web.post("/confianza", _cambiar_confianza),
+            web.get("/biometria", _biometria_estado),
+            web.post("/biometria/voz", _biometria_voz),
+            web.post("/biometria/cara", _biometria_cara),
+            web.post("/biometria/perfiles", _biometria_enrolar),
+            web.post("/biometria/perfiles/{nombre}", _biometria_renombrar),
+            web.delete("/biometria/perfiles/{nombre}", _biometria_borrar),
             web.get("/eventos", _eventos),
         ]
     )

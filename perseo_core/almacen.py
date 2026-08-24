@@ -100,6 +100,32 @@ CREATE TABLE IF NOT EXISTS correos (
     estado          TEXT NOT NULL,
     actualizado_en  TEXT NOT NULL
 );
+
+-- El chat escrito. La conversación vive aquí y no en la cara por la misma
+-- razón que la cola: un turno de chat puede tardar minutos (herramientas,
+-- web, encargos) y sobrevivir a que se cierre la pantalla es la regla R10
+-- otra vez. `turno` es el semáforo de una conversación a la vez: mientras está
+-- `ocupado`, otra petición para la misma sesión recibe un 409 en vez de
+-- entrelazar dos respuestas.
+CREATE TABLE IF NOT EXISTS chat_sesiones (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    titulo          TEXT    NOT NULL DEFAULT '',
+    turno           TEXT    NOT NULL DEFAULT 'libre',
+    creado_en       TEXT    NOT NULL,
+    actualizado_en  TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chat_mensajes (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    sesion          INTEGER NOT NULL,
+    rol             TEXT    NOT NULL,
+    texto           TEXT    NOT NULL DEFAULT '',
+    herramientas    TEXT    NOT NULL DEFAULT '[]',
+    estado          TEXT    NOT NULL DEFAULT 'hecho',
+    momento         TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_mensajes ON chat_mensajes (sesion, id);
 """
 
 #: Columnas añadidas después de que hubiera bases de datos por ahí. `CREATE
@@ -966,3 +992,171 @@ def uso_de_hoy() -> dict[str, int]:
             "SELECT servicio, contador FROM uso WHERE dia = ?", (dia_de_cuota(),)
         ).fetchall()
     return {f["servicio"]: int(f["contador"]) for f in filas}
+
+
+# --------------------------------------------------------------------------- #
+# El chat escrito: sesiones y mensajes
+# --------------------------------------------------------------------------- #
+
+
+def crear_sesion_chat(titulo: str = "") -> dict[str, Any]:
+    """Una conversación nueva. El título lo pone el primer mensaje si no viene."""
+    ahora = _ahora()
+    with _cerrojo:
+        cursor = _db().execute(
+            "INSERT INTO chat_sesiones (titulo, turno, creado_en, actualizado_en) "
+            "VALUES (?, 'libre', ?, ?)",
+            (titulo.strip(), ahora, ahora),
+        )
+        _db().commit()
+        id_sesion = int(cursor.lastrowid)
+    return {"id": id_sesion, "titulo": titulo.strip(), "turno": "libre", "creado_en": ahora}
+
+
+def sesiones_chat() -> list[dict[str, Any]]:
+    """Las conversaciones, la más reciente primero."""
+    with _cerrojo:
+        filas = _db().execute(
+            "SELECT id, titulo, turno, creado_en, actualizado_en FROM chat_sesiones "
+            "ORDER BY actualizado_en DESC"
+        ).fetchall()
+    return [dict(f) for f in filas]
+
+
+def obtener_sesion_chat(id_sesion: int) -> dict[str, Any] | None:
+    with _cerrojo:
+        fila = _db().execute(
+            "SELECT id, titulo, turno, creado_en, actualizado_en FROM chat_sesiones WHERE id = ?",
+            (id_sesion,),
+        ).fetchone()
+    return dict(fila) if fila else None
+
+
+def borrar_sesion_chat(id_sesion: int) -> bool:
+    """Borra la sesión y sus mensajes. Solo si está libre: no se corta un turno."""
+    with _cerrojo:
+        fila = _db().execute(
+            "SELECT turno FROM chat_sesiones WHERE id = ?", (id_sesion,)
+        ).fetchone()
+        if fila is None:
+            return False
+        if fila["turno"] == "ocupado":
+            raise ValueError("La conversación está ocupada; espera a que termine el turno.")
+        _db().execute("DELETE FROM chat_mensajes WHERE sesion = ?", (id_sesion,))
+        _db().execute("DELETE FROM chat_sesiones WHERE id = ?", (id_sesion,))
+        _db().commit()
+    return True
+
+
+def anadir_mensaje_chat(sesion: int, rol: str, texto: str, estado: str = "hecho") -> int:
+    """Un mensaje en una conversación. `escribiendo` es el estado inicial del
+    mensaje de Perseo: el texto llega por trozos y la cara lo lee sondeando.
+
+    El primer mensaje de usuario nombra la conversación — ahí y no al cerrar el
+    turno, porque un turno puede fallar y el título no depende de él.
+    """
+    ahora = _ahora()
+    with _cerrojo:
+        cursor = _db().execute(
+            "INSERT INTO chat_mensajes (sesion, rol, texto, herramientas, estado, momento) "
+            "VALUES (?, ?, ?, '[]', ?, ?)",
+            (sesion, rol, texto, estado, ahora),
+        )
+        if rol == "usuario":
+            recortado = " ".join(texto.split())[:60]
+            _db().execute(
+                "UPDATE chat_sesiones SET titulo = ? "
+                "WHERE id = ? AND (titulo = '' OR titulo IS NULL)",
+                (recortado, sesion),
+            )
+        _db().execute(
+            "UPDATE chat_sesiones SET actualizado_en = ? WHERE id = ?", (ahora, sesion)
+        )
+        _db().commit()
+        return int(cursor.lastrowid)
+
+
+def actualizar_mensaje_chat(
+    id_mensaje: int,
+    texto: str | None = None,
+    estado: str | None = None,
+    herramientas: list[str] | None = None,
+) -> None:
+    """El avance de un mensaje de Perseo. Cada campo es opcional a propósito:
+    el streaming solo toca `texto`, y las herramientas llegan al final."""
+    cambios: list[tuple[Any, str]] = []
+    if texto is not None:
+        cambios.append((texto, "texto"))
+    if estado is not None:
+        cambios.append((estado, "estado"))
+    if herramientas is not None:
+        cambios.append((json.dumps(herramientas, ensure_ascii=False), "herramientas"))
+    if not cambios:
+        return
+    with _cerrojo:
+        _db().execute(
+            f"UPDATE chat_mensajes SET {', '.join(f'{c} = ?' for _, c in cambios)} WHERE id = ?",
+            (*[v for v, _ in cambios], id_mensaje),
+        )
+        _db().commit()
+
+
+def mensajes_chat(id_sesion: int, tope: int = 200) -> list[dict[str, Any]]:
+    """Los mensajes de una conversación, los últimos `tope`.
+
+    Las herramientas viajan decodificadas —la cara no debería tener que saber
+    que en disco es JSON— y los mensajes sin texto aún (`escribiendo` recién
+    nacido) también salen: es la burbuja vacía que enseña «está en ello».
+    """
+    with _cerrojo:
+        filas = _db().execute(
+            "SELECT id, rol, texto, herramientas, estado, momento FROM chat_mensajes "
+            "WHERE sesion = ? ORDER BY id DESC LIMIT ?",
+            (id_sesion, tope),
+        ).fetchall()
+    salida = []
+    for f in reversed(filas):
+        try:
+            herramientas = json.loads(f["herramientas"] or "[]")
+        except json.JSONDecodeError:
+            herramientas = []
+        salida.append({**dict(f), "herramientas": herramientas})
+    return salida
+
+
+def marcar_turno_chat(id_sesion: int, turno: str) -> None:
+    """Abre o cierra el semáforo de una conversación.
+
+    Ocupar lo que ya está ocupado levanta `ValueError` — es exactamente el 409
+    que contesta la API cuando otra pantalla está a mitad de turno. Liberar,
+    en cambio, es idempotente: dos caminos soltando el mismo semáforo no se
+    estorban.
+    """
+    with _cerrojo:
+        cursor = _db().execute(
+            "UPDATE chat_sesiones SET turno = ?, actualizado_en = ? WHERE id = ? AND turno != ?",
+            (turno, _ahora(), id_sesion, turno),
+        )
+        _db().commit()
+        if cursor.rowcount:
+            return
+        fila = _db().execute(
+            "SELECT turno FROM chat_sesiones WHERE id = ?", (id_sesion,)
+        ).fetchone()
+        if fila is None:
+            raise ValueError("No existe esa conversación.")
+        if turno == "ocupado":
+            raise ValueError(f"La conversación está {fila['turno']}.")
+
+
+def reiniciar_turnos_chat() -> None:
+    """Al arrancar, ninguna conversación está a mitad de turno.
+
+    El semáforo vive en la base para que dos pantallas se respeten, pero un
+    apagón lo dejaría en `ocupado` para siempre. Al abrir, todo libre: si había
+    un turno en marcha, su trabajo vuelve a la cola por `recuperar_huerfanos`
+    y el mensaje a medias se retoma cuando el trabajo se reclame otra vez.
+    """
+    with _cerrojo:
+        _db().execute("UPDATE chat_sesiones SET turno = 'libre' WHERE turno != 'libre'")
+        _db().commit()

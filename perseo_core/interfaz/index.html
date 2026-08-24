@@ -128,6 +128,18 @@
   nav .cuenta { color: var(--aviso); letter-spacing: 0; }
 
   main { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  /* La barra de scroll, de la casa: la de por defecto es un ladrillo claro
+     sobre una pantalla negra y delata el descuido antes que nada. */
+  main, .nota-vault .contenido {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, .18) transparent;
+  }
+  main::-webkit-scrollbar, .nota-vault .contenido::-webkit-scrollbar { width: 10px; }
+  main::-webkit-scrollbar-track, .nota-vault .contenido::-webkit-scrollbar-track { background: transparent; }
+  main::-webkit-scrollbar-thumb, .nota-vault .contenido::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, .16);
+    border: 3px solid var(--fondo);
+  }
   section[hidden] { display: none; }
   section { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 
@@ -135,20 +147,41 @@
   /* Chat                                                                */
   /* ------------------------------------------------------------------ */
 
+  /* La conversación vive en un hilo propio dentro de la sección. Repintarla
+     entera en cada sondeo reanimaba TODAS las burbujas — la entrada de abajo
+     saltaba otra vez cada 700 ms mientras Perseo escribía— y el chat parecía
+     un parpadeo. Ahora cada mensaje es un nodo que se actualiza en su sitio,
+     y la entrada solo se anima cuando el mensaje es nuevo de verdad. */
+  .hilo { display: flex; flex-direction: column; gap: 18px; }
+  .mensaje { display: flex; flex-direction: column; gap: 7px; }
+  .mensaje.mio { align-items: flex-end; }
+  .mensaje.suyo { align-items: flex-start; }
+  .mensaje.nuevo { animation: subir .25s ease; }
+
+  /* El ancho de lectura manda: 85 % en el móvil es mucho para un monitor. */
   .burbuja {
-    max-width: 85%;
-    padding: 10px 14px;
+    max-width: min(85%, 68ch);
+    padding: 12px 16px;
+    line-height: 1.6;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    animation: subir .25s ease;
   }
+  /* Lo suyo, relleno y con una sola firma: la esquina cortada del lado por el
+     que sale del diálogo. Sin borde ni marcos añadidos: el contraste ya dice
+     quién es quién. */
   .mio {
-    align-self: flex-end; background: var(--texto); color: var(--fondo); font-weight: 400;
+    background: var(--texto);
+    color: var(--fondo);
+    font-weight: 400;
     clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
   }
+  /* Lo de Perseo, quieto pero reconocible de un vistazo: superficie algo más
+     presente y un filo blanco a la izquierda — el acento monocromo que dice
+     «esto lo dice la máquina» sin traicionar el negro general. */
   .suyo {
-    align-self: flex-start; background: var(--superficie); border: 1px solid var(--borde);
-    clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px);
+    background: rgba(255, 255, 255, .07);
+    border: 1px solid var(--borde);
+    border-left: 3px solid var(--texto);
   }
   .nota {
     align-self: center; text-align: center;
@@ -157,24 +190,14 @@
 
   /* El turno de palabra, encima de cada burbuja. Es lo que convierte una lista
      de globos en una transcripción: se sabe quién habla sin fijarse en de qué
-     lado está, y la hora dice si esto es de ahora o de anteayer. */
+     lado está, y la hora dice si esto es de ahora o de anteayer. Iba a 9,5 px
+     y apagado: ilegible a la primera. */
   .turno {
     display: flex; align-items: baseline; gap: 8px;
-    font-size: 9.5px; text-transform: uppercase; letter-spacing: .16em;
-    color: var(--apagado); margin-bottom: -6px;
+    font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em;
+    color: var(--texto); opacity: .85; padding: 0 2px;
   }
-  .turno.mio { align-self: flex-end; }
-  .turno.suyo { align-self: flex-start; }
-  .turno .hora { font-variant-numeric: tabular-nums; opacity: .65; }
-
-  /* Perseo habla con marco de mira, como las tarjetas del tablero (T-7). */
-  .burbuja.suyo { position: relative; }
-  .burbuja.suyo::before, .burbuja.suyo::after {
-    content: ""; position: absolute; width: 8px; height: 8px;
-    pointer-events: none; opacity: .45;
-  }
-  .burbuja.suyo::before { top: 5px; left: 5px; border-top: 1px solid var(--texto); border-left: 1px solid var(--texto); }
-  .burbuja.suyo::after { right: 5px; bottom: 5px; border-right: 1px solid var(--texto); border-bottom: 1px solid var(--texto); }
+  .turno .hora { color: var(--tenue); font-variant-numeric: tabular-nums; letter-spacing: .06em; }
 
   /* Pensando: tres puntos que laten por turnos. Sin esto, mandar un mensaje y
      esperar cuatro segundos se ve exactamente igual que una app rota. */
@@ -202,14 +225,38 @@
     animation: latido 2.4s ease-in-out infinite;
   }
   #chat-lectura button {
-    margin-left: auto; background: none; border: none; color: var(--apagado);
+    background: none; border: none; color: var(--apagado);
     font: inherit; text-transform: uppercase; letter-spacing: .16em;
     cursor: pointer; padding: 2px 0;
   }
   #chat-lectura button:hover { color: var(--texto); }
+  /* El selector de conversaciones. Hereda la versalitas del resto de la línea
+     para que no parezca un elemento ajeno incrustado en la cabecera. */
+  #chat-sesiones {
+    margin-left: auto; max-width: 42vw;
+    background: none; border: 1px solid var(--borde); color: var(--tenue);
+    font-family: var(--mono); font-size: 10px;
+    text-transform: uppercase; letter-spacing: .1em;
+    padding: 3px 6px;
+  }
+  #chat-sesiones:focus { outline: none; border-color: rgba(255,255,255,.35); }
   @keyframes subir {
     from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: none; }
+  }
+
+  /* Las herramientas que Perseo usó en un turno, debajo de su respuesta: es la
+     diferencia entre «te lo digo yo» y «lo he comprobado». Van apagadas a
+     propósito: son una nota al pie, no el titular. */
+  .herramientas { display: flex; flex-wrap: wrap; gap: 6px; }
+  .herramientas .ficha { font-size: 9px; padding: 2px 9px; letter-spacing: .1em; color: var(--apagado); }
+
+  /* El texto sigue llegando mientras miras: un cursor que late al final del
+     último trozo, que desaparece solo cuando el turno se cierra. */
+  .cursor {
+    display: inline-block; width: 7px; height: 13px;
+    background: var(--texto); margin-left: 5px; vertical-align: text-bottom;
+    animation: latido 1.1s ease-in-out infinite;
   }
 
   /* ------------------------------------------------------------------ */
@@ -334,6 +381,16 @@
     resize: vertical; min-height: 90px;
   }
   textarea:focus { outline: none; border-color: rgba(255, 255, 255, .35); }
+
+  /* Los encargos de código. El formulario es una columna quieta —no un render
+     que se repinta con el estado— y la lista de encargos va debajo. */
+  form.columna { display: flex; flex-direction: column; border-top: none; padding: 0; }
+  select {
+    font: inherit; border: 1px solid var(--borde);
+    background: var(--superficie); color: var(--texto); padding: 11px 14px;
+  }
+  select:focus { outline: none; border-color: rgba(255,255,255,.35); }
+  #encargos { display: flex; flex-direction: column; gap: 12px; }
   #anotar-memoria button { align-self: flex-end; }
   #notas { display: flex; flex-direction: column; gap: 10px; }
   .nota-vault summary {
@@ -462,20 +519,22 @@
   }
   input, form button {
     font: inherit;
-    border-radius: 12px;
+    border-radius: 3px;
     border: 1px solid var(--borde);
     background: var(--superficie);
     color: var(--texto);
-    padding: 11px 14px;
+    padding: 12px 15px;
+    transition: border-color .2s;
   }
   input { flex: 1; min-width: 0; }
-  input:focus { outline: none; border-color: rgba(255, 255, 255, .35); }
+  input:focus { outline: none; border-color: rgba(255, 255, 255, .45); background: rgba(255, 255, 255, .08); }
   form button {
     background: var(--texto); color: var(--fondo); border-color: var(--texto);
-    font-weight: 400; text-transform: uppercase; letter-spacing: .12em;
-    font-size: 12px; cursor: pointer;
+    font-weight: 400; text-transform: uppercase; letter-spacing: .14em;
+    font-size: 11px; cursor: pointer;
   }
-  form button:disabled { opacity: .5; }
+  form button:hover:not(:disabled) { background: #e6e6e6; border-color: #e6e6e6; }
+  form button:disabled { opacity: .5; cursor: default; }
 
   #puerta {
     position: fixed; inset: 0; z-index: 10; background: var(--fondo);
@@ -527,7 +586,7 @@
      remedio que circula: quita el zoom del sitio entero, incluido el de quien
      lo necesita para leer. */
   @media (pointer: coarse) {
-    input, textarea { font-size: 16px; }
+    input, textarea, select { font-size: 16px; }
   }
 </style>
 </head>
@@ -546,6 +605,7 @@
   <button id="pestana-cola" aria-selected="false">Cola <span class="cuenta" id="contador"></span></button>
   <button id="pestana-correo" aria-selected="false">Correo</button>
   <button id="pestana-memoria" aria-selected="false">Memoria</button>
+  <button id="pestana-agentes" aria-selected="false">Agentes</button>
   <button id="pestana-estado" aria-selected="false">Estado <span class="cuenta" id="alertas"></span></button>
 </nav>
 
@@ -553,7 +613,13 @@
   <section id="chat">
     <div id="chat-lectura">
       <span class="latido"></span>
-      <span>Perseo · canal de texto</span>
+      <span>Perseo · texto</span>
+      <!-- La marca de construcción, a la vista. «Se sigue viendo igual» casi
+           siempre era una pestaña vieja en memoria: así se sabe de un vistazo
+           qué versión está delante. -->
+      <span class="mayus" id="version-chat"></span>
+      <select id="chat-sesiones" title="Conversaciones"></select>
+      <button id="nueva-sesion" type="button" title="Nueva conversación">Nueva</button>
       <button id="borrar-chat" type="button" title="Borrar esta conversación">Borrar</button>
     </div>
   </section>
@@ -574,6 +640,23 @@
       <button type="submit">Anotar</button>
     </form>
     <div id="notas"></div>
+  </section>
+  <!-- Los encargos de código. El formulario es HTML quieto y no un render
+       que se repinta: perder lo escrito en la tarea cada veinte segundos
+       porque el estado se refresca sería la peor forma de estrenar esto. -->
+  <section id="agentes" hidden>
+    <form id="lanzar-agente" class="tarjeta columna">
+      <div class="cabeza">Lanzar un agente de código</div>
+      <select id="agente-proyecto">
+        <option value="">Raíz de Perseo</option>
+      </select>
+      <textarea id="agente-tarea" rows="5"
+        placeholder="Qué tiene que hacer. Completa y autocontenida: «arregla el fallo X haciendo Y»."
+        enterkeyhint="send"></textarea>
+      <button type="submit" class="pildora aprobar">Lanzar agente</button>
+      <div class="motivo" id="agente-aviso"></div>
+    </form>
+    <div id="encargos"></div>
   </section>
   <section id="estado" hidden></section>
 </main>
@@ -685,7 +768,7 @@ $("entrar").addEventListener("submit", async (e) => {
 // Pestañas
 // --------------------------------------------------------------------- //
 
-const SECCIONES = { chat, cola, correo, memoria: $("memoria"), estado: panel };
+const SECCIONES = { chat, cola, correo, memoria: $("memoria"), agentes: $("agentes"), estado: panel };
 
 function mostrar(cual) {
   pestana = cual;
@@ -705,6 +788,8 @@ function mostrar(cual) {
     cargarCola();
   } else if (cual === "memoria") {
     modoMemoria($("anotar-memoria").hidden ? "buscar" : "anotar", false);
+  } else if (cual === "agentes") {
+    cargarAgentes();
   }
 }
 for (const nombre of Object.keys(SECCIONES)) {
@@ -715,225 +800,236 @@ for (const nombre of Object.keys(SECCIONES)) {
 // Chat
 // --------------------------------------------------------------------- //
 
-//: Dónde se guarda la conversación entre visitas, y cuánta.
-const CHAT_GUARDADO = "perseo.chat";
-const MENSAJES_GUARDADOS = 60;
+// El chat escrito vive en el NÚCLEO: cada turno es un trabajo del agente
+// `chat`, que piensa con Gemini y usa las mismas herramientas que la voz
+// (agenda, buzón triado, memoria, web, PC, MCP, subagentes). Aquí solo hay
+// sondeo y pintura. Y tampoco guarda nada local: la conversación sobrevive a
+// cerrar la pestaña porque nunca vivió aquí — vive donde sobrevive a todo,
+// que es la base de datos.
 
-//: Cada cuánto se pregunta por un trabajo encolado, y cuánto se espera antes de
-//: darlo por largo y dejar de mirar. Diez minutos: lo que tarda el agente `dev`
-//: en lo suyo. Pasado eso, el trabajo sigue vivo en la Cola; lo que se acaba es
-//: la vigilancia desde aquí.
-const MS_ENTRE_SONDEOS = 2000;
-const MS_ESPERANDO_TRABAJO = 10 * 60 * 1000;
+let sesionId = null;
+let sesionesChat = [];
+let turnoOcupado = false;
+let sondeando = false;
 
-//: Un mensaje que tarde más que esto es un mensaje que no va a llegar. Sin
-//: plazo, un `fetch` colgado deja la burbuja de «pensando» girando para siempre.
-const MS_TOPE_ENVIO = 45000;
-
-let conversacion = [];
-
-function guardarConversacion() {
-  try {
-    localStorage.setItem(CHAT_GUARDADO, JSON.stringify(conversacion.slice(-MENSAJES_GUARDADOS)));
-  } catch (e) {
-    // Modo privado, cuota llena: perder el historial no puede romper el chat.
-  }
-}
+// El hilo persistente y lo último pintado. Con ellos, un sondeo que no trae
+// nada nuevo no toca el DOM: ni parpadeo, ni selección perdida, ni scrollbar
+// que salta.
+let hilo = null;
+let firmaPintada = "";
 
 function hora(momento) {
   return new Date(momento ?? Date.now()).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
 }
 
-/** Pinta un mensaje. `recordar` es falso al restaurar, o se guardaría dos veces. */
-function decir(texto, clase, opciones = {}) {
-  const { momento = Date.now(), recordar = true } = opciones;
-  const esBurbuja = clase.startsWith("burbuja");
-
-  if (esBurbuja) {
-    const lado = clase.includes("mio") ? "mio" : "suyo";
-    const turno = crear("div", "turno " + lado);
-    turno.appendChild(crear("span", null, lado === "mio" ? "Señor Persus" : "Perseo"));
-    turno.appendChild(crear("span", "hora", hora(momento)));
-    chat.appendChild(turno);
-  }
-
-  const div = crear("div", clase, texto);
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
-
-  if (recordar) {
-    conversacion.push({ texto, clase, momento });
-    guardarConversacion();
-  }
-  return div;
+/** Quien de verdad scrollea es MAIN (la sección crece con el contenido y su
+ *  propio scrollTop siempre es cero): llevar la conversación abajo era un
+ *  `scrollTop` sobre un elemento que nunca se desborda, y por eso lo nuevo
+ *  quedaba debajo, fuera de la vista. */
+function desplazarAlFinal(forzar = false) {
+  const contenedor = chat.parentElement;
+  if (!contenedor) return;
+  const hueco = contenedor.scrollHeight - contenedor.scrollTop - contenedor.clientHeight;
+  // Si ha subido a leer, no se le arrastra: solo se sigue al final cuando ya
+  // estaba cerca de él o cuando llega algo que obliga (su propio envío).
+  if (!forzar && hueco > 140) return;
+  contenedor.scrollTop = contenedor.scrollHeight;
 }
 
-/** Restaura lo que se dijo la última vez.
- *
- *  Antes, cerrar la pestaña era perder la conversación entera: las burbujas
- *  vivían en el DOM y en ningún otro sitio. Guardarlo en el navegador y no en el
- *  núcleo es a propósito — el chat del móvil es una libreta, no un expediente—,
- *  y por eso hay un botón para borrarlo. */
-function restaurarConversacion() {
-  try {
-    conversacion = JSON.parse(localStorage.getItem(CHAT_GUARDADO) ?? "[]");
-  } catch (e) {
-    conversacion = [];
-  }
-  if (!Array.isArray(conversacion)) conversacion = [];
+/** Una línea centrada y gris: avisos del canal que no son respuesta de nadie.
+ *  Dentro del hilo: si quedara suelta bajo la conversación, un repintado la
+ *  dejaría flotando fuera de sitio para siempre. */
+function notaChat(texto) {
+  const div = crear("div", "nota", texto);
+  if (hilo) hilo.appendChild(div); else chat.appendChild(div);
+  desplazarAlFinal(true);
+}
 
-  for (const m of conversacion) {
-    decir(m.texto, m.clase, { momento: m.momento, recordar: false });
+function pintarSelectorSesiones() {
+  const selector = $("chat-sesiones");
+  selector.replaceChildren();
+  if (!sesionesChat.length) {
+    const vacio = crear("option", null, "—");
+    vacio.value = "";
+    selector.appendChild(vacio);
+    return;
   }
-  if (conversacion.length) {
-    decir("— arriba, lo de antes —", "nota", { recordar: false });
+  for (const s of sesionesChat) {
+    const opcion = crear("option", null, s.titulo || "Conversación");
+    opcion.value = String(s.id);
+    if (s.id === sesionId) opcion.selected = true;
+    selector.appendChild(opcion);
   }
 }
 
-/** Los tres puntos mientras Perseo piensa. Devuelve cómo quitarlos. */
-function pensando() {
-  const caja = crear("div", "burbuja suyo pensando");
-  for (let i = 0; i < 3; i++) caja.appendChild(crear("span"));
-  chat.appendChild(caja);
-  chat.scrollTop = chat.scrollHeight;
-  return () => caja.remove();
-}
-
-/** Un `fetch` con plazo. Sin esto, una petición que no vuelve deja la burbuja de
- *  «pensando» girando hasta que alguien recarga. */
-async function conPlazo(url, opciones, ms) {
-  const corte = new AbortController();
-  const reloj = setTimeout(() => corte.abort(), ms);
-  try {
-    return await fetch(url, { ...opciones, signal: corte.signal });
-  } finally {
-    clearTimeout(reloj);
+/** Pinta la conversación desde lo que dice el núcleo, REUTILIZANDO los nodos
+ *  que ya están: un mensaje que no cambió ni se toca, uno que crece (el que
+ *  Perseo está escribiendo) se actualiza en su sitio sin reanimar la entrada,
+ *  y solo lo nuevo de verdad se anima. Lo único local es la espera: tres
+ *  puntos mientras piensa y un cursor mientras su texto crece en la base. */
+function pintarMensajes(mensajes, ocupado) {
+  if (!hilo) {
+    hilo = crear("div", "hilo");
+    chat.appendChild(hilo);
   }
-}
 
-/** El resultado de un trabajo, en una línea que se pueda leer en una burbuja.
- *
- *  Las mismas reglas que en la cola, y por el mismo motivo (H-36): una nota
- *  entera son doce mil caracteres para decir que se leyó un fichero, y un
- *  triaje volcado en JSON es ilegible justo donde se mira con prisa. */
-function resumirResultado(resultado) {
-  if (resultado == null) return "Hecho.";
-  if (typeof resultado === "string") return resultado;
-  if (typeof resultado.contenido === "string") {
-    return `Leída ${resultado.ruta ?? ""} — ${resultado.contenido.length} caracteres`;
-  }
-  if (Array.isArray(resultado.notas)) {
-    const titular = resultado.titular ?? `${resultado.notas.length} nota(s)`;
-    return `${titular} — se leen en Memoria`;
-  }
-  if (Array.isArray(resultado.clasificados)) {
-    return resultado.titular ?? `${resultado.clasificados.length} correos triados`;
-  }
-  if (resultado.titular || resultado.texto) return resultado.titular ?? resultado.texto;
-  // Lo que no se sepa resumir sale como pares, nunca como JSON en crudo: es la
-  // misma decisión que tomó el panel del PC (H-52).
-  const pares = Object.entries(resultado)
-    .filter(([, v]) => v !== null && typeof v !== "object")
-    .map(([k, v]) => `${k}: ${v}`);
-  return pares.length ? pares.join(" · ") : "Hecho.";
-}
+  // La sesión va en la firma: cambiar de conversación debe repintar aunque el
+  // contenido coincida por casualidad.
+  const firma = JSON.stringify([
+    sesionId,
+    ocupado,
+    mensajes.map((m) => [m.rol, m.texto || "", m.estado ?? "", (m.herramientas ?? []).join("\u0001")]),
+  ]);
+  if (firma !== firmaPintada) {
+    firmaPintada = firma;
 
-//: Los trabajos que el chat está siguiendo por su cuenta. El flujo de eventos
-//: avisa de todo lo que termina, y para estos ya se ha escrito la respuesta
-//: entera: sin esto, cada pregunta dejaba la contestación y, debajo, un
-//: «Trabajo #N terminado» que no añadía nada.
-const siguiendo = new Set();
+    const pensandoVieja = hilo.querySelector(".pensando");
+    if (pensandoVieja) pensandoVieja.remove();
 
-/** Sigue un trabajo encolado y trae su respuesta **al chat**.
- *
- *  Antes esto se quedaba en «Encargado — trabajo #N» y la respuesta aparecía
- *  solo en la pestaña Cola, así que preguntar algo que daba trabajo y leer la
- *  contestación eran dos pantallas distintas. Se sigue encolando igual —la cara
- *  no piensa— pero el resultado vuelve a donde se preguntó. */
-async function seguirTrabajo(id) {
-  const hasta = Date.now() + MS_ESPERANDO_TRABAJO;
-  const quitar = pensando();
-  siguiendo.add(id);
-  try {
-    while (Date.now() < hasta) {
-      await new Promise(r => setTimeout(r, MS_ENTRE_SONDEOS));
-      let t;
-      try {
-        const r = await fetch(`/trabajos/${id}`);
-        if (r.status === 401) { puerta.style.display = "flex"; return; }
-        if (!r.ok) continue;
-        t = await r.json();
-      } catch (e) {
-        continue;  // un corte de red no cancela el trabajo, que vive en el núcleo
+    const yaPintados = hilo.querySelectorAll("[data-indice]").length;
+    mensajes.forEach((m, i) => {
+      const lado = m.rol === "usuario" ? "mio" : "suyo";
+      const contenido = [m.rol, m.texto || "", m.estado ?? "", (m.herramientas ?? []).join("\u0001")].join("\u0002");
+      let caja = hilo.querySelector(`[data-indice="${i}"]`);
+      if (caja && caja.dataset.contenido === contenido) return;
+
+      if (!caja) {
+        caja = crear("div", null);
+        caja.dataset.indice = String(i);
+        hilo.appendChild(caja);
       }
+      // La clase va completa cada vez: al cambiar de conversación, un mismo
+      // índice puede cambiar de lado sin dejar de ser el nodo i.
+      caja.className = "mensaje " + lado + (i >= yaPintados ? " nuevo" : "");
+      caja.dataset.contenido = contenido;
+      caja.replaceChildren();
 
-      if (t.estado === "hecho") {
-        decir(resumirResultado(t.resultado), "burbuja suyo");
-        cargarCola();
-        return;
+      const cabecera = crear("div", "turno");
+      cabecera.appendChild(crear("span", null, lado === "mio" ? "Señor Persus" : "Perseo"));
+      cabecera.appendChild(crear("span", "hora", hora(m.momento)));
+      caja.appendChild(cabecera);
+
+      const burbuja = crear("div", "burbuja " + lado);
+      burbuja.textContent = m.texto || "";
+      if (m.estado === "escribiendo" && m.texto) burbuja.appendChild(crear("span", "cursor"));
+      caja.appendChild(burbuja);
+
+      // Las herramientas que usó el turno, debajo de su respuesta: la prueba
+      // de que lo contado viene de verdad y no de memoria.
+      if ((m.herramientas ?? []).length) {
+        const fila = crear("div", "herramientas");
+        for (const h of m.herramientas) fila.appendChild(crear("span", "ficha", h));
+        caja.appendChild(fila);
       }
-      if (t.estado === "fallido" || t.estado === "cancelado" || t.estado === "rechazado") {
-        decir(`El trabajo #${id} acabó ${t.estado}: ${t.error ?? "sin detalle"}`, "nota");
-        cargarCola();
-        return;
-      }
-      if (t.estado === "esperando") {
-        decir(`El trabajo #${id} espera un sí. Se aprueba en la Cola.`, "nota");
-        cargarCola();
-        return;
-      }
+    });
+
+    // Sobrantes al final: una conversación más corta que la pintada.
+    for (const nodo of [...hilo.querySelectorAll("[data-indice]")]) {
+      if (Number(nodo.dataset.indice) >= mensajes.length) nodo.remove();
     }
-    decir(`El trabajo #${id} sigue en marcha. Se ve en la Cola.`, "nota");
-  } finally {
-    quitar();
-    // Se deja de seguir aquí y no antes: mientras se siga, el flujo de eventos
-    // calla, y si se soltara al primer aviso volverían los dos mensajes.
-    siguiendo.delete(id);
+
+    if (ocupado && (!mensajes.length || mensajes[mensajes.length - 1].estado === "escribiendo")) {
+      const caja = crear("div", "burbuja suyo pensando");
+      for (let i = 0; i < 3; i++) caja.appendChild(crear("span"));
+      hilo.appendChild(caja);
+    }
+  }
+  desplazarAlFinal(false);
+}
+
+async function pedirSesion() {
+  if (!sesionId) { pintarMensajes([], false); return "libre"; }
+  try {
+    const r = await fetch("/chat/" + sesionId);
+    if (r.status === 401) { puerta.style.display = "flex"; return "libre"; }
+    const datos = await r.json();
+    pintarMensajes(datos.mensajes ?? [], datos.turno === "ocupado");
+    return datos.turno ?? "libre";
+  } catch (e) {
+    return turnoOcupado ? "ocupado" : "libre";  // un corte de red no cierra el turno
   }
 }
+
+/** Mientras Perseo está escribiendo, pregunta cada poco más de medio segundo.
+ *  El texto crece en el núcleo; aquí se ve crecer en pantalla. */
+async function sondearTurno() {
+  if (sondeando) return;
+  sondeando = true;
+  try {
+    while (turnoOcupado) {
+      await new Promise((r) => setTimeout(r, 700));
+      turnoOcupado = (await pedirSesion()) === "ocupado";
+    }
+  } finally {
+    sondeando = false;
+  }
+}
+
+async function iniciarChat() {
+  try {
+    const r = await fetch("/chat");
+    if (r.status === 401) { puerta.style.display = "flex"; return; }
+    sesionesChat = ((await r.json()).sesiones ?? []);
+  } catch (e) {
+    sesionesChat = [];
+  }
+  if (!sesionesChat.some((s) => s.id === sesionId)) {
+    sesionId = sesionesChat[0]?.id ?? null;
+  }
+  pintarSelectorSesiones();
+  turnoOcupado = (await pedirSesion()) === "ocupado";
+}
+
+$("chat-sesiones").addEventListener("change", async (e) => {
+  const id = Number(e.target.value);
+  if (!id) return;
+  sesionId = id;
+  turnoOcupado = (await pedirSesion()) === "ocupado";
+});
+
+$("nueva-sesion").addEventListener("click", async () => {
+  try {
+    const r = await fetch("/chat", { method: "POST" });
+    if (!r.ok) return;
+    sesionId = (await r.json()).id;
+    await iniciarChat();
+  } catch {}
+});
+
+$("borrar-chat").addEventListener("click", async () => {
+  if (!sesionId) return;
+  await fetch("/chat/" + sesionId, { method: "DELETE" });
+  sesionId = null;
+  await iniciarChat();
+});
 
 $("escribir").addEventListener("submit", async (e) => {
   e.preventDefault();
   const entrada = $("entrada");
   const texto = entrada.value.trim();
-  if (!texto) return;
+  if (!texto || !sesionId || turnoOcupado) return;
   entrada.value = "";
-  decir(texto, "burbuja mio");
-
-  const quitar = pensando();
   try {
-    const r = await conPlazo("/mensaje", {
+    const r = await fetch(`/chat/${sesionId}/hablar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ texto, origen: "texto" }),
-    }, MS_TOPE_ENVIO);
+      body: JSON.stringify({ texto }),
+    });
     if (r.status === 401) { puerta.style.display = "flex"; return; }
-    const datos = await r.json();
-    if (datos.destino === "responder") {
-      decir(datos.respuesta || "(sin respuesta)", "burbuja suyo");
-    } else {
-      // Se encola, como siempre —la cara no piensa—, pero desde aquí se mira
-      // hasta que termine y la respuesta vuelve a esta misma pantalla.
-      decir(`Encargado — trabajo #${datos.trabajo.id} (${datos.trabajo.agente})`, "nota");
-      cargarCola();
-      seguirTrabajo(datos.trabajo.id);
+    if (r.status === 409) {
+      // Otra pantalla está a mitad de turno con esta misma conversación.
+      notaChat("Perseo ya está escribiendo en esta conversación.");
+      entrada.value = texto;  // lo que escribiste no se tira
+      return;
     }
+    turnoOcupado = true;
+    await pedirSesion();
+    sondearTurno();
+    // Lo que acabas de mandar se ve SIEMPRE, aunque estuvieras leyendo arriba.
+    desplazarAlFinal(true);
   } catch (err) {
-    const motivo = err.name === "AbortError"
-      ? `Perseo no contestó en ${Math.round(MS_TOPE_ENVIO / 1000)}s. Mira la Cola o inténtalo otra vez.`
-      : "No se pudo enviar: " + err.message;
-    decir(motivo, "nota");
-  } finally {
-    quitar();
-  }
-});
-
-$("borrar-chat").addEventListener("click", () => {
-  conversacion = [];
-  guardarConversacion();
-  // La cabecera se queda: es parte de la pantalla, no de la conversación.
-  for (const nodo of [...chat.children]) {
-    if (nodo.id !== "chat-lectura") nodo.remove();
+    notaChat("No se pudo enviar: " + err.message);
+    entrada.value = texto;
   }
 });
 
@@ -947,7 +1043,7 @@ if (window.visualViewport) {
   const ajustar = () => {
     const tapado = Math.max(0, window.innerHeight - visualViewport.height - visualViewport.offsetTop);
     document.documentElement.style.setProperty("--teclado", `${Math.round(tapado)}px`);
-    if (tapado > 0) chat.scrollTop = chat.scrollHeight;
+    if (tapado > 0) desplazarAlFinal(true);
   };
   visualViewport.addEventListener("resize", ajustar);
   visualViewport.addEventListener("scroll", ajustar);
@@ -1108,7 +1204,8 @@ function pintarTrabajo(t) {
     const responder = async (ruta) => {
       for (const otro of acciones.children) otro.disabled = true;
       const r = await fetch(`/trabajos/${t.id}/${ruta}`, { method: "POST" });
-      if (r.status === 409) decir(`El trabajo #${t.id} ya estaba resuelto.`, "nota");
+      // Contestado desde otra pantalla a la vez es normal: el núcleo resuelve
+      // el empate (409) y aquí basta con recargar para ver lo que quedó.
       cargarCola();
     };
 
@@ -1392,6 +1489,71 @@ $("buscar-memoria").addEventListener("submit", async (e) => {
     for (const n of notas) destino.appendChild(pintarNota(n));
   } catch (err) {
     destino.replaceChildren(crear("div", "nota", "No se pudo buscar: " + err.message));
+  }
+});
+
+// --------------------------------------------------------------------- //
+// Agentes
+// --------------------------------------------------------------------- //
+
+/** Los encargos de código lanzados desde aquí. La lista sale de la cola — es
+ *  la misma fuente que la pestaña de Cola— filtrada por su agente. */
+function pintarEncargos(trabajos) {
+  const destino = $("encargos");
+  destino.replaceChildren();
+  const dev = trabajos.filter((t) => t.agente === "dev");
+  if (!dev.length) {
+    destino.appendChild(crear("div", "nota", "Ningún encargo todavía."));
+    return;
+  }
+  for (const t of dev) {
+    const tarjeta = pintarTrabajo(t);
+    destino.appendChild(tarjeta);
+  }
+}
+
+async function cargarAgentes() {
+  if (!proyectosConocidos) await cargarProyectos();
+  const selector = $("agente-proyecto");
+  if (selector.options.length <= 1 && proyectosConocidos.proyectos.length) {
+    for (const p of proyectosConocidos.proyectos) {
+      const opcion = crear("option", null, p.nombre);
+      opcion.value = p.destino ?? "";
+      opcion.title = p.descripcion || p.destino || "";
+      selector.appendChild(opcion);
+    }
+  }
+
+  try {
+    const r = await fetch("/trabajos?limite=50");
+    if (r.status === 401) { puerta.style.display = "flex"; return; }
+    pintarEncargos(((await r.json()).trabajos ?? []));
+  } catch {}
+}
+
+$("lanzar-agente").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const texto = $("agente-tarea").value.trim();
+  const aviso = $("agente-aviso");
+  if (!texto) { aviso.textContent = "Escribe primero qué tiene que hacer."; return; }
+  aviso.textContent = "Lanzando…";
+  try {
+    const r = await fetch("/trabajos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agente: "dev",
+        origen: "texto",
+        peticion: { texto, directorio: $("agente-proyecto").value },
+      }),
+    });
+    if (r.status === 401) { puerta.style.display = "flex"; return; }
+    if (!r.ok) throw new Error((await r.json()).error ?? r.status);
+    $("agente-tarea").value = "";
+    aviso.textContent = "En marcha. Abajo, lo que va haciendo.";
+    cargarAgentes();
+  } catch (err) {
+    aviso.textContent = "No se pudo lanzar: " + err.message;
   }
 });
 
@@ -1791,33 +1953,20 @@ function conectarEventos() {
     let evento;
     try { evento = JSON.parse(e.data); } catch { return; }
 
-    if (evento.tipo === "mensaje.respondido") return;  // ya pintado al enviar
+    if (evento.tipo === "mensaje.respondido") return;  // el chat escrito ya no pasa por aquí
+    if (evento.tipo === "chat.sesion" || evento.tipo === "chat.borrado") {
+      iniciarChat();
+      return;
+    }
     if (evento.tipo === "confianza.cambiada" && pestana === "estado") {
       cargarEstado();
       return;
     }
     if (evento.tipo?.startsWith("trabajo.")) {
       cargarCola();
-      const t = evento.datos?.trabajo;
-      if (!t) return;
-      // De lo que el chat está siguiendo se calla: ya escribe la respuesta
-      // entera, y debajo un «terminado» a secas sobra.
-      if (siguiendo.has(t.id)) return;
-      if (evento.tipo === "trabajo.hecho") {
-        decir(`Trabajo #${t.id} terminado.`, "nota");
-      } else if (evento.tipo === "trabajo.fallido") {
-        decir(`Trabajo #${t.id} falló: ${t.error ?? ""}`, "nota");
-      } else if (evento.tipo === "trabajo.espera_confirmacion") {
-        // El aviso lleva a la cola, que es donde están los botones. Aprobar
-        // desde el chat obligaría a duplicar el estado en dos sitios.
-        decir(`El trabajo #${t.id} pide confirmación — míralo en Cola.`, "nota");
-        $("pestana-cola").animate(
-          [{ opacity: 1 }, { opacity: .35 }, { opacity: 1 }],
-          { duration: 600, iterations: 3 }
-        );
-      } else if (evento.tipo === "trabajo.rechazado") {
-        decir(`Trabajo #${t.id} rechazado.`, "nota");
-      }
+      // Un encargo lanzado desde Agentes cambia de estado: la lista se pinta
+      // otra vez para que se vea sin cambiar de pestaña.
+      if (pestana === "agentes") cargarAgentes();
     }
   };
 }
@@ -1828,11 +1977,19 @@ function conectarEventos() {
 
 function empezar() {
   puerta.style.display = "none";
-  restaurarConversacion();
+  iniciarChat();
   cargarCola();
   cargarEstado();
   conectarEventos();
   $("entrada").focus();
+  // La marca de construcción junto al título del chat: si no está, la página
+  // que tienes delante es anterior a esta función.
+  fetch("/estado")
+    .then((r) => r.json())
+    .then((datos) => {
+      if (datos.version?.marca) $("version-chat").textContent = datos.version.marca;
+    })
+    .catch(() => {});
 }
 
 // Con la pantalla apagada o la app en segundo plano no se sondea nada: iOS

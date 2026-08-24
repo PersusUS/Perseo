@@ -32,6 +32,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 import urllib.parse
 import webbrowser
 from pathlib import Path
@@ -95,6 +96,36 @@ _TECLAS_PERMITIDAS = _MODIFICADORES | _TECLAS_SIMPLES
 
 MAX_TECLAS_ATAJO = 4
 MAX_LONGITUD_TEXTO = 500
+
+#: Segundos que se le dan a una aplicación recién abierta para arrancar y tomar
+#: el foco antes del primer teclado. En la llamada del 2026-08-24 el ctrl+l de
+#: la búsqueda en Spotify salió antes de que la ventana estuviera lista y el
+#: atajo se perdió.
+ESPERA_TRAS_ABRIR_APP = 3.0
+
+#: Cuándo se abrió la última aplicación. `None` es "hace tanto que no cuenta".
+_instante_ultimo_abrir: float | None = None
+
+
+def _apuntar_apertura() -> None:
+    global _instante_ultimo_abrir
+    _instante_ultimo_abrir = time.monotonic()
+
+
+def _esperar_tras_abrir_app(minimo: float = 0.0) -> None:
+    """Duerme lo que falte para que la app recién abierta tenga el foco.
+
+    El plazo se cuenta desde que `abrir_app` terminó y se paga UNA sola vez:
+    el primer teclado tras abrir cubre el resto del plazo, y los pasos
+    siguientes no repiten la pausa.
+    """
+    global _instante_ultimo_abrir
+    if _instante_ultimo_abrir is not None:
+        restante = ESPERA_TRAS_ABRIR_APP - (time.monotonic() - _instante_ultimo_abrir)
+        minimo = max(minimo, restante)
+        _instante_ultimo_abrir = None
+    if minimo > 0:
+        time.sleep(minimo)
 
 
 # ─── Utilidades internas ───────────────────────────────────────────────────
@@ -304,6 +335,7 @@ def controlar(accion: str, parametro: str = "") -> str:
                 # encuentra. Que lo diga así y no "error del sistema": es lo
                 # único que el usuario puede arreglar.
                 return f"Error: '{clave}' está permitida pero no se encuentra instalada."
+            _apuntar_apertura()
             return f"Éxito: se ha abierto '{clave}'."
 
         if accion == "escribir_teclado":
@@ -315,13 +347,13 @@ def controlar(accion: str, parametro: str = "") -> str:
                 return "Error: no queda texto imprimible que teclear."
 
             try:
-                import time
-
                 pyautogui = _pyautogui()
             except ImportError:
                 return "Error: la librería 'pyautogui' no está instalada."
 
-            time.sleep(1)  # cortesía: la ventana destino puede estar abriéndose
+            # Cortesía: la ventana destino puede estar abriéndose; y si acaba
+            # de abrirse una app, se le da su plazo completo antes de teclear.
+            _esperar_tras_abrir_app(minimo=1.0)
             pyautogui.write(texto, interval=0.01)
             return f"Éxito: se ha tecleado el texto '{texto}' en la ventana actual."
 
@@ -345,6 +377,9 @@ def controlar(accion: str, parametro: str = "") -> str:
             except ImportError:
                 return "Error: la librería 'pyautogui' no está instalada."
 
+            # Si la app acaba de abrirse, que tenga el foco antes del atajo:
+            # si no, el atajo cae en la ventana que hubiera antes.
+            _esperar_tras_abrir_app()
             pyautogui.hotkey(*teclas)
             return f"Éxito: se ha ejecutado el atajo '{'+'.join(teclas)}'."
 
