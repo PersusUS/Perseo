@@ -13,8 +13,14 @@
  * segundo en lugar de discutirse.
  */
 
-/** La marca de esta construcción: `AAAAMMDD-HHMM` más la revisión de git. */
-export const CONSTRUCCION: string = __PERSEO_BUILD__;
+/** La marca de esta construcción: `AAAAMMDD-HHMM` más la revisión de git.
+ *
+ *  El `typeof` no sobra: si alguien sirve esta interfaz con una configuración
+ *  de Vite que no declare `__PERSEO_BUILD__`, la constante lanzaría al cargar
+ *  el módulo y la pantalla entera se quedaría en blanco por un dato que solo
+ *  sirve para un pie de página. Una marca desconocida es «?», no una caída. */
+export const CONSTRUCCION: string =
+  typeof __PERSEO_BUILD__ === 'undefined' ? 'dev' : __PERSEO_BUILD__;
 
 /** `true` cuando esto corre desde el servidor de desarrollo y no de un binario
  *  construido: ahí la marca no significa nada y conviene decirlo. */

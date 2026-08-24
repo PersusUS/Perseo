@@ -4,8 +4,24 @@
     {
       "name": "live-maquetas",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["RealTime/node_modules/vite/bin/vite.js", "RealTime", "--port", "1420", "--strictPort"],
+      "runtimeArgs": [
+        "RealTime/node_modules/vite/bin/vite.js",
+        "RealTime",
+        "--port",
+        "1420",
+        "--strictPort"
+      ],
       "port": 1420
+    },
+    {
+      "name": "panel-maqueta",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "RealTime/node_modules/vite/bin/vite.js",
+        "--config",
+        "RealTime/vite.maqueta.config.ts"
+      ],
+      "port": 1421
     }
   ]
 }
