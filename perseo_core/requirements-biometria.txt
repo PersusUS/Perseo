@@ -1,0 +1,25 @@
+# Dependencias del reconocimiento de personas (biometría): voz y cara.
+#
+# OPCIONAL, y fuera de requirements.txt a propósito: torch y opencv pesan
+# cientos de megas y el núcleo arranca perfectamente sin ellos — las rutas de
+# biometría contestan entonces con un motivo claro, igual que el agente `pc`
+# vive sin pyautogui. Instalar solo si se quiere que Perseo reconozca voces y
+# caras:
+#
+#     pip install -r perseo_core/requirements-biometria.txt
+#
+# Qué aporta cada uno:
+#
+#   speechbrain + torch  ECAPA-TDNN: el vector de la voz (192 números). El
+#                        modelo preentrenado (~80 MB) baja solo de HuggingFace
+#                        al primer uso y queda en cache en <datos>/modelos/.
+#   opencv-python        YuNet (detectar caras) y SFace (vector por cara,
+#                        128 números). Los dos modelos ONNX (~37 MB juntos)
+#                        bajan al primer uso desde el zoo oficial de OpenCV y
+#                        corren dentro de cv2.dnn: sin GPU y sin onnxruntime.
+#
+# La CPU basta para todo: la GPU queda para Ollama.
+
+speechbrain>=1.0
+torch>=2.2
+opencv-python>=4.8
