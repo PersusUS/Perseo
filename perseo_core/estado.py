@@ -198,8 +198,13 @@ def _suplente(cfg: almacen.Configuracion) -> Pieza:
             "Modelo suplente",
             APAGADO,
             "Apagado: si Ollama no está, no se clasifica nada.",
-            "PERSEO_MODELO_SUPLENTE=gemma-4-31b-it. Es lo único que manda a un "
-            "tercero el texto que se clasifica.",
+            # Gemma daba 14.400 al día y era la recomendación de aquí; se probó
+            # el 2026-08-24 y contesta con su razonamiento en voz alta en vez de
+            # con el JSON que se le pide — el mismo fallo que ya salía en el
+            # registro («El suplente devolvió algo que no es JSON»). El que sí
+            # obedece es un flash-lite, aunque su cuota sea más corta.
+            "PERSEO_MODELO_SUPLENTE=gemini-3.1-flash-lite. Es lo único que manda "
+            "a un tercero el texto que se clasifica.",
         )
     if not cfg.gemini_clave:
         return Pieza(
