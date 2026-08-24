@@ -51,7 +51,11 @@ def comprobar_en_proceso() -> None:
     #    el mismo motivo: un encargo puede venir de un correo.
     raiz = Path(cfg.dev_raiz).resolve()
     comprobar("Sin directorio, el encargo va a la raiz", dev.resolver_raiz("") == raiz, str(raiz))
-    for intento in ("..", "../..", "C:\\Windows"):
+    # El cerco creció el 2026-08-24: la raíz, el perfil del usuario y el
+    # Escritorio. Subir un escalón desde el repositorio YA VALE —es el
+    # perfil—, así que aquí se comprueba lo que sigue estando fuera.
+    fuera_del_perfil = str(Path.home().resolve().parent)
+    for intento in (fuera_del_perfil, "../../..", "C:\\Windows"):
         try:
             dev.resolver_raiz(intento)
             comprobar(f"Se niega a trabajar en {intento!r}", False, "no se nego")
