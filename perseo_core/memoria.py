@@ -61,8 +61,18 @@ logger = logging.getLogger(__name__)
 
 #: Carpetas del vault. Son las que ya usaba la herramienta de memoria de v1: la
 #: estructura del vault no se toca, se envuelve (R7).
-CARPETA_MEMORIAS = "Memorias_Sistema"
-CARPETA_CONVERSACIONES = "Conversaciones"
+#: Perseo tiene carpeta propia dentro del vault desde el 2026-08-24, igual que
+#: `06_CLAUDE/`. Antes escribía en la raíz, mezclado con las carpetas numeradas
+#: del señor Persus. Mover una nota en Obsidian no rompe nada: los `[[enlaces]]`
+#: van por nombre, no por ruta.
+CARPETA_PERSEO = "10_PERSEO"
+CARPETA_MEMORIAS = f"{CARPETA_PERSEO}/Memorias"
+CARPETA_CONVERSACIONES = f"{CARPETA_PERSEO}/Conversaciones"
+
+#: Quién es quién. La escribe el reconocimiento de personas y la lee cualquiera:
+#: es la parte del reconocimiento que se puede leer y corregir a mano, frente a
+#: los vectores de `datos/perfiles.json`, que no dicen nada a un humano.
+CARPETA_PERSONAS = f"{CARPETA_PERSEO}/Personas"
 
 #: Cuánto se lee de un fichero al buscar. Una nota normal no llega ni de lejos, y
 #: el tope evita que un adjunto pegado dentro del vault pare la búsqueda.
@@ -661,6 +671,27 @@ async def buscar_con_reintentos(
     usados = [termino for termino, halladas in ordenadas if halladas][:1] or [consulta]
     notas = [c[3] for c in sorted(mejores.values(), key=lambda c: c[:3])][:limite]
     return notas, ", ".join(usados)
+
+
+async def anotar_persona(antes: str, ahora: str) -> str:
+    """Apunta en `Personas/` que un perfil anónimo pasó a tener nombre.
+
+    Lo escribe el reconocimiento de personas cuando el señor Persus renombra un
+    «Desconocido N». Es la mitad legible de ese reconocimiento: los vectores de
+    `datos/perfiles.json` no le dicen nada a nadie, y esta nota sí — y se puede
+    corregir a mano, que es lo que hace que sirva.
+
+    Como todo lo de este módulo, **añade**: si la persona ya tenía nota, el
+    apunte se apila debajo y no pisa lo que hubiera escrito antes.
+    """
+    if _vault is None:
+        raise RuntimeError("La memoria no está iniciada; falta memoria.iniciar(cfg).")
+    texto = (
+        f"Reconocido por voz o cara. Antes figuraba como «{antes}».\n"
+        "\nLo que se sepa de esta persona va debajo, escrito a mano o dicho en "
+        "llamada: Perseo lo respeta y apila lo nuevo al final."
+    )
+    return await _vault.anotar(ahora, texto, CARPETA_PERSONAS)
 
 
 @registrar("memoria")

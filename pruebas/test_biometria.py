@@ -314,3 +314,40 @@ def test_el_estado_completo_trae_todo_para_pintarlo(tmp_path: Path) -> None:
     assert estado["disponibilidad"]["voz"] is True
     # El motor falso de cara está puesto, así que también se declara disponible.
     assert estado["disponibilidad"]["cara"] is True
+
+
+# --------------------------------------------------------------------------- #
+# La mitad legible del reconocimiento: la nota de la persona
+# --------------------------------------------------------------------------- #
+
+
+def test_ponerle_nombre_deja_nota_en_el_vault(tmp_path) -> None:
+    """Los vectores no le dicen nada a nadie; la nota sí, y se corrige a mano."""
+    import asyncio
+
+    from perseo_core import memoria
+
+    vault = memoria.VaultFicheros(tmp_path)
+    memoria._vault = vault
+    try:
+        ruta = asyncio.run(memoria.anotar_persona("Desconocido 3", "Javi"))
+    finally:
+        memoria._vault = None
+
+    assert ruta.startswith(memoria.CARPETA_PERSONAS)
+    escrito = (tmp_path / ruta).read_text(encoding="utf-8")
+    assert "Desconocido 3" in escrito and "Javi" in escrito
+
+
+def test_sin_memoria_iniciada_lo_dice(monkeypatch) -> None:
+    import asyncio
+
+    from perseo_core import memoria
+
+    memoria._vault = None
+    try:
+        asyncio.run(memoria.anotar_persona("Desconocido 1", "Nadie"))
+    except RuntimeError as e:
+        assert "iniciada" in str(e)
+    else:
+        raise AssertionError("tenía que quejarse")

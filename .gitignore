@@ -72,8 +72,10 @@ MANIFEST
 # =========================
 # Datos personales / privados
 # =========================
-# Memorias generadas por Perseo: contienen nombres reales y descripciones
-# de personas identificables. Nunca deben salir del disco local. Ver H-04.
+# El vault vive fuera del repositorio desde el 2026-08-24 (en `Documents/Persus`,
+# carpeta `10_PERSEO/`), así que esta regla ya no tapa nada. Se queda como red:
+# contiene nombres reales y descripciones de personas identificables, y el día
+# que alguien vuelva a dejar un vault aquí dentro no debe salir del disco (H-04).
 obsidian_vault/
 
 # =========================

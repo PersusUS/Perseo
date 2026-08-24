@@ -40,8 +40,8 @@ que permitirá mudarlo a una Raspberry Pi sin reescribir nada.
   └──────┬───────────────────────────────────┬───────┘
          │                                   │
   ┌──────▼───────┐                  ┌────────▼────────┐
-  │ Gemini Live  │                  │ obsidian_vault/ │
-  │ (voz)        │                  │ (memoria)       │
+  │ Gemini Live  │                  │ vault Obsidian  │
+  │ (voz)        │                  │ 10_PERSEO/      │
   └──────────────┘                  └─────────────────┘
 ```
 
@@ -50,7 +50,7 @@ que permitirá mudarlo a una Raspberry Pi sin reescribir nada.
 | `perseo_core/` | El núcleo: cola, bus, API, router local, agentes y política |
 | `RealTime/` | La app de escritorio (Tauri 2 + React + TypeScript): voz y pantalla |
 | `commands/` | El detector (dos aplausos y palabra clave) y los servidores MCP propios: `subagentes_mcp.py` y `correo_mcp.py` |
-| `obsidian_vault/` | La memoria. Fuera del repositorio: contiene datos personales |
+| El vault de Obsidian | La memoria. **Fuera del repositorio**, en `Documents/Persus`: Perseo escribe en su propia carpeta, `10_PERSEO/` (memorias, conversaciones y personas) |
 | `bitacora/` | Plan, hallazgos, sesiones y el documento de traspaso |
 
 ---
@@ -242,8 +242,9 @@ python commands/verificar_palabra_clave.py      # el detector, sin micrófono
 
 Tres cosas que el diseño protege, y no de boquilla:
 
-- **El vault no sale del disco.** `obsidian_vault/` está en el `.gitignore` porque contiene
-  nombres reales y descripciones de personas identificables.
+- **El vault no sale del disco.** No está en el repositorio —vive en `Documents/Persus`—
+  porque contiene nombres reales y descripciones de personas identificables. Lo que
+  escribe Perseo se queda en su carpeta, `10_PERSEO/`.
 - **Titular por Telegram, detalle por Tailscale.** Por el canal de terceros sale el
   recuento —"3 correos, 1 requiere acción"— y nunca el asunto ni el cuerpo. El detalle se
   lee en la web, que va cifrada por WireGuard.
