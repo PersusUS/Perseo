@@ -81,23 +81,53 @@ MARCA_AUTOLLAMADA = RAIZ / ".perseo-autollamada"
 
 
 def _motor() -> str:
-    """Qué CLI hay disponible. El entorno manda; luego, el que esté."""
+    """Qué CLI hay disponible. El entorno manda; luego, el que esté.
+
+    Por defecto manda **claude**: el 2026-08-24 se comprobó encargo a encargo
+    que el modelo gratuito de opencode devuelve «Endpoint is unavailable» a
+    ratos y termina con código 0 sin haber hecho nada, así que un encargo de
+    cada tantos se daba por bueno sin serlo. opencode sigue disponible con
+    `PERSEO_SUBAGENTE_MOTOR=opencode`, y como respaldo si claude no está.
+    """
     pedido = os.environ.get("PERSEO_SUBAGENTE_MOTOR", "").strip().lower()
-    orden = ("opencode", "claude") if pedido in ("", "opencode") else (pedido,)
+    if not pedido:
+        orden = ("claude", "opencode")
+    elif pedido == "claude":
+        orden = ("claude", "opencode")
+    else:
+        orden = (pedido, "claude")
     for nombre in orden:
         if shutil.which(nombre):
             return nombre
     raise RuntimeError(
-        "No hay ningún motor de subagentes instalado. Instala opencode "
-        "(npm i -g opencode-ai) o pon PERSEO_SUBAGENTE_MOTOR=claude."
+        "No hay ningún motor de subagentes instalado. Instala Claude Code, o "
+        "opencode (npm i -g opencode-ai) y pon PERSEO_SUBAGENTE_MOTOR=opencode."
     )
+
+
+#: Lo que un subagente no ejecuta ni aunque se lo pidan. Copia deliberada de
+#: `perseo_core/dev.py`: los dos reparten trabajo a un CLI de agente, y el cerco
+#: tiene que ser el mismo se entre por donde se entre.
+DENEGADAS = (
+    "Bash(git push*)",
+    "Bash(git reset --hard*)",
+    "Bash(git clean*)",
+    "Bash(rm *)",
+    "Bash(rmdir *)",
+    "Bash(del *)",
+    "Bash(format*)",
+)
 
 
 def _comando(motor: str, tarea: str) -> list[str]:
     """La línea completa del encargo, como lista de argumentos y sin shell."""
     if motor == "opencode":
         modelo = os.environ.get("PERSEO_SUBAGENTE_MODELO", "").strip()
-        comando = [shutil.which("opencode") or "opencode", "run"]
+        # `--auto` es obligatorio aquí: sin él, `opencode run` PIDE permiso para
+        # escribir fuera del proyecto, nadie contesta —esto no es interactivo— y
+        # el propio programa se lo deniega («auto-rejecting») y sale con código
+        # 0. El encargo se daba por hecho con el disco intacto.
+        comando = [shutil.which("opencode") or "opencode", "run", "--auto"]
         if modelo:
             comando += ["-m", modelo]
         return [*comando, tarea]
@@ -107,8 +137,19 @@ def _comando(motor: str, tarea: str) -> list[str]:
         tarea,
         "--output-format",
         "text",
+        # `acceptEdits` acepta escribir ficheros y NADA MÁS: cualquier comando
+        # se queda esperando una aprobación que aquí no puede dar nadie, y el
+        # subagente contesta «necesita tu aprobación» y se va. Comprobado el
+        # 2026-08-24 pidiéndole que ejecutara `python -c "print(6*7)"`. Un
+        # subagente que no puede correr nada no sirve para lo que se le pide
+        # —instalar, probar, construir—, así que trabaja sin pedir permiso.
         "--permission-mode",
-        "acceptEdits",
+        "bypassPermissions",
+        # Lo que no hace ni con eso. Es la misma lista del agente `dev`, y por
+        # la misma razón: publicar es del usuario y borrar no tiene vuelta
+        # atrás. La lista de denegados manda sobre el modo de permisos.
+        "--disallowed-tools",
+        *DENEGADAS,
         "--max-turns",
         "40",
     ]
@@ -167,7 +208,10 @@ def _cargar() -> None:
                 "salida": str(entrada.get("salida") or ""),
                 "error": str(entrada.get("error") or ""),
                 "motor": str(entrada.get("motor") or "?"),
-                "entregado": bool(entrada.get("entregado")),
+                # Lo cargado del disco NUNCA avisa: su ventana de gracia murió
+                # con el servidor anterior, y un aviso por algo de hace horas
+                # es ruido, no información (H-62).
+                "entregado": True,
                 "inicio": 0.0,
                 "fin": None,
             }
@@ -189,7 +233,7 @@ def _recortar(texto: str, tope: int = TOPE_SALIDA) -> str:
 
 
 def _primera_linea(texto: str, tope: int = 160) -> str:
-    linea = next((l.strip() for l in (texto or "").splitlines() if l.strip()), "")
+    linea = next((x.strip() for x in (texto or "").splitlines() if x.strip()), "")
     return linea[:tope]
 
 
@@ -247,6 +291,10 @@ def _avisar_si_nadie_pregunto(id_tarea: str) -> None:
 
     El marcador hace que la app LLAME cuando esté viva; el Telegram llega al
     móvil aunque esté apagada. Los dos dicen lo mismo: qué terminó y cómo.
+
+    Avisar ES entregar: quien tiene que saberlo, ya lo sabe — por oído o por
+    Telegram. Sin marcar `entregado` aquí, una tarea vieja seguía «pendiente»
+    para siempre y cada camino que la revisaba volvía a contarla (H-62).
     """
     with _cerrojo:
         tarea = _tareas.get(id_tarea)
@@ -260,10 +308,12 @@ def _avisar_si_nadie_pregunto(id_tarea: str) -> None:
             f"El subagente ({tarea['motor']}) {legible} en la tarea "
             f"{id_tarea}: {_primera_linea(resumen)}"
         )
+        tarea["entregado"] = True
         try:
             MARCA_AUTOLLAMADA.write_text(motivo, encoding="utf-8")
         except OSError:
             pass
+    _persistir()
     _telegram_de_aviso(motivo)
 
 
@@ -272,6 +322,38 @@ def _avisar_si_nadie_pregunto(id_tarea: str) -> None:
 #: segundos; una tarea que llevaba veinte minutos trabajando de verdad no se
 #: reejecuta — repetirla sería tirar el trabajo hecho.
 REINTENTO_SI_MENOS_DE = 120.0
+
+
+#: Lo que un CLI de agente escribe cuando ha fracasado PERO sale con código 0.
+#: Los dos casos vistos el 2026-08-24: opencode denegándose a sí mismo el
+#: permiso de escribir (sin `--auto`, ya arreglado arriba) y el proveedor del
+#: modelo gratuito cayéndose a media petición. Los dos dejaban el encargo en
+#: "hecho" con el disco intacto, que es la peor forma de fallar: la que no se ve.
+_SENALES_DE_FRACASO = (
+    "auto-rejecting",
+    "rejected permission",
+    "error from provider",
+    "endpoint is unavailable",
+    "no such model",
+    # Y cuando el que se queda esperando un sí es Claude: sin nadie al otro
+    # lado, contesta esto y se va con código 0.
+    "needs your approval",
+    "requires approval",
+    "necesita tu aprobación",
+    "requiere tu aprobación",
+)
+
+
+def _fracaso_encubierto(texto: str) -> str:
+    """El motivo, si la salida delata un fracaso con código de éxito. O ''."""
+    bajo = (texto or "").lower()
+    for senal in _SENALES_DE_FRACASO:
+        if senal in bajo:
+            for linea in reversed((texto or "").splitlines()):
+                if senal in linea.lower():
+                    return _primera_linea(linea)
+            return senal
+    return ""
 
 
 def _una_vez(comando: list[str], directorio: Path):
@@ -303,7 +385,13 @@ def _ejecutar(id_tarea: str, motor: str, directorio: Path, tarea: str) -> None:
         vueltas = 0
         while (
             hecho.returncode == 0
-            and not (hecho.stdout or "").strip()
+            and (
+                not (hecho.stdout or "").strip()
+                # Un «Endpoint is unavailable» del proveedor es exactamente el
+                # pico de red contra el que existe este reintento: se ve en la
+                # salida, no en el código de salida.
+                or _fracaso_encubierto(hecho.stdout or "")
+            )
             and time.time() - comienzo < REINTENTO_SI_MENOS_DE
             and vueltas < 1
         ):
@@ -325,6 +413,15 @@ def _ejecutar(id_tarea: str, motor: str, directorio: Path, tarea: str) -> None:
             or f"el proceso terminó con código {hecho.returncode}"
         )
         estado = "hecho" if hecho.returncode == 0 else "fallido"
+        if estado == "hecho":
+            # Código 0 no basta: hay que leer lo que dijo. Un encargo dado por
+            # bueno sin haber tocado nada es lo que hacía que Perseo contara
+            # como terminado algo que no existía.
+            motivo = _fracaso_encubierto(
+                (hecho.stdout or "") + "\n" + (hecho.stderr or "")
+            )
+            if motivo:
+                estado, error = "fallido", _recortar(motivo, 400)
     except subprocess.TimeoutExpired:
         estado, salida, error = "fallido", "", f"pasó de {TOPE_SEGUNDOS:.0f} s y se cortó"
     except OSError as e:

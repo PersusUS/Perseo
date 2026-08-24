@@ -18,10 +18,14 @@ método. El agente no cambia.
 
 Tres decisiones que gobiernan el módulo:
 
-1. **Los encargos no salen de la raíz permitida.** `PERSEO_DEV_RAIZ`, que por
-   defecto es este repositorio. Una ruta que se sale se rechaza antes de arrancar
-   nada. El motivo es el de siempre: lo que Perseo lee viene de correos y de
-   pantallas, y desde la Fase D un correo puede acabar convertido en trabajo.
+1. **Los encargos no salen de las raíces permitidas.** La raíz configurada
+   (`PERSEO_DEV_RAIZ`, por defecto este repositorio) más el **Escritorio** —que
+   es lo que las instrucciones le prometen al modelo, y lo que el servidor MCP
+   'subagentes' ya permite—. Se pueden añadir más por entorno sin tocar código:
+   `PERSEO_DEV_RAICES_EXTRA="C:\\una\\ruta;C:\\otra"`. Una ruta que se sale de
+   todas se rechaza antes de arrancar nada. El motivo es el de siempre: lo que
+   Perseo lee viene de correos y de pantallas, y desde la Fase D un correo puede
+   acabar convertido en trabajo.
 2. **Editar sí, destruir no.** Se aceptan las ediciones sin preguntar —son
    reversibles, están en git, y es lo que dice §7 del plan— pero hay una lista de
    lo que no se ejecuta ni preguntando: `git push`, borrados, formateos. Y una
@@ -39,12 +43,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from . import almacen
+from . import almacen, proyectos
 from .agentes import registrar
 
 logger = logging.getLogger(__name__)
@@ -173,6 +179,93 @@ class MotorClaude:
         )
 
 
+#: Lo que un CLI de agente escribe cuando ha fracasado PERO sale con código 0.
+#: Dos casos vistos el 2026-08-24: opencode denegándose a sí mismo el permiso de
+#: escribir (sin `--auto`) y el proveedor del modelo gratuito cayéndose a media
+#: petición. Los dos daban el encargo por bueno con el disco intacto.
+SENALES_DE_FRACASO = (
+    "auto-rejecting",
+    "rejected permission",
+    "error from provider",
+    "endpoint is unavailable",
+    "no such model",
+)
+
+
+def fracaso_encubierto(texto: str) -> str:
+    """El motivo, si la salida delata un fracaso con código de éxito. O ''."""
+    bajo = (texto or "").lower()
+    for senal in SENALES_DE_FRACASO:
+        if senal in bajo:
+            for linea in reversed((texto or "").splitlines()):
+                if senal in linea.lower():
+                    return linea.strip()[:400]
+            return senal
+    return ""
+
+
+class MotorOpencode:
+    """opencode en modo no interactivo (`opencode run`).
+
+    El segundo motor, para que el señor Persus ELIJA con quién trabaja cada
+    encargo (2026-08-24): Claude de suscripción u opencode gratuito. Los
+    permisos van en `--auto`, porque sin él este programa se deniega a sí mismo
+    lo que necesita para trabajar y sale con código 0 igualmente. El modelo, en
+    `PERSEO_DEV_MODELO` si se quiere uno concreto. La salida llega formateada y
+    con controles ANSI; se limpian aquí una vez, en un sitio.
+
+    No es el motor por defecto: su endpoint gratuito se cae a ratos, y un
+    encargo que muere así no siempre lo dice.
+    """
+
+    _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+    def __init__(self, ejecutable: str) -> None:
+        self._ejecutable = ejecutable
+
+    async def ejecutar(
+        self, instruccion: str, raiz: Path, tope: float, sesion: str = ""
+    ) -> Resultado:
+        # `--auto` no es una comodidad: sin él, `opencode run` pide permiso para
+        # escribir, nadie contesta porque esto no es interactivo, y el propio
+        # programa se lo deniega («auto-rejecting») saliendo con código 0. El
+        # encargo se apuntaba como hecho sin haber tocado un fichero (2026-08-24).
+        argumentos = [self._ejecutable, "run", "--auto"]
+        modelo = os.environ.get("PERSEO_DEV_MODELO", "").strip()
+        if modelo:
+            argumentos += ["-m", modelo]
+        if sesion:
+            argumentos += ["--session", sesion]
+        argumentos.append(instruccion)
+
+        proceso = await asyncio.create_subprocess_exec(
+            *argumentos,
+            cwd=str(raiz),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            salida, error = await asyncio.wait_for(proceso.communicate(), timeout=tope)
+        except asyncio.TimeoutError:
+            proceso.kill()
+            await proceso.wait()
+            raise TimeoutError(f"El encargo pasó de {tope:.0f} s y se cortó.") from None
+
+        texto = self._ANSI.sub("", salida.decode("utf-8", "replace")).strip()
+        if proceso.returncode != 0:
+            detalle = error.decode("utf-8", "replace").strip()[:500] or texto[:500]
+            return Resultado(texto=detalle or "opencode terminó con error.", ok=False)
+
+        # Código 0 tampoco basta aquí: el modelo gratuito devuelve «Endpoint is
+        # unavailable» y sale bien. Un encargo que no hizo nada tiene que
+        # contarse como fallo, o el panel enseña éxitos que no existieron.
+        motivo = fracaso_encubierto(texto)
+        if motivo:
+            return Resultado(texto=motivo, ok=False)
+
+        return Resultado(texto=texto[:4000])
+
+
 class MotorFalso:
     """Motor de mentira, para verificar el circuito sin gastar suscripción.
 
@@ -199,6 +292,17 @@ def abrir_motor(cfg: almacen.Configuracion) -> Motor | None:
     if cfg.dev_motor == "falso":
         return MotorFalso(tardanza=float(cfg.dev_tardanza_falsa))
 
+    if cfg.dev_motor == "opencode":
+        ejecutable = shutil.which("opencode")
+        if ejecutable is None:
+            logger.warning(
+                "PERSEO_DEV_MOTOR=opencode pero no se encuentra %r en el PATH; "
+                "el agente `dev` fallará hasta que esté.",
+                "opencode",
+            )
+            return None
+        return MotorOpencode(ejecutable)
+
     ejecutable = shutil.which(cfg.dev_ejecutable)
     if ejecutable is None:
         logger.warning(
@@ -209,46 +313,202 @@ def abrir_motor(cfg: almacen.Configuracion) -> Motor | None:
     return MotorClaude(ejecutable)
 
 
+def _escritorio() -> Path | None:
+    """La carpeta de Escritorio DE VERDAD, preguntándoselo a Windows.
+
+    «~/Desktop» se queda corto: un Windows español con OneDrive redirige la
+    carpeta y la llama «Escritorio», y lo que vale no es la adivinanza sino la
+    API de carpetas conocidas. Si algo falla, `None` y punto: es un extra del
+    cerco, nunca una pieza de la que dependa nada.
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+
+        # FOLDERID_Desktop {B4BFCC3A-DB2C-424C-B029-7FE99A87C641}. A mano
+        # porque `ctypes.wintypes` no trae GUID hasta Python 3.12.
+        class _GUID(ctypes.Structure):
+            _fields_ = [
+                ("Data1", ctypes.c_ulong),
+                ("Data2", ctypes.c_ushort),
+                ("Data3", ctypes.c_ushort),
+                ("Data4", ctypes.c_ubyte * 8),
+            ]
+
+        identificador = _GUID(
+            0xB4BFCC3A,
+            0xDB2C,
+            0x424C,
+            (ctypes.c_ubyte * 8)(0xB0, 0x29, 0x7F, 0xE9, 0x9A, 0x87, 0xC6, 0x41),
+        )
+        salida = ctypes.c_wchar_p()
+        shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+        shell32.SHGetKnownFolderPath.argtypes = (
+            ctypes.POINTER(_GUID),
+            ctypes.c_ulong,
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_wchar_p),
+        )
+        if shell32.SHGetKnownFolderPath(
+            ctypes.byref(identificador), 0, None, ctypes.byref(salida)
+        ) != 0:
+            return None
+        ruta = Path(str(salida.value))
+        memoria = ctypes.cast(salida, ctypes.c_void_p)
+        if memoria.value:
+            ctypes.WinDLL("ole32").CoTaskMemFree(memoria)
+        return ruta
+    except Exception:  # noqa: BLE001 — sin Escritorio conocido, se vive sin él
+        return None
+
+
+def raices_permitidas(raiz: Path) -> tuple[Path, ...]:
+    """El cerco entero: la raíz configurada, el PERFIL DEL USUARIO y los extras.
+
+    El perfil entero (`C:\\Users\\<quien>`) lo mandó el señor Persus el
+    2026-08-24 —*«que tenga permiso para trabajar en todo usuario»—: sus
+    proyectos viven repartidos por la carpeta personal (MAGI, armario…) y
+    andar listándolos a mano era el impuesto de cada encargo. El Escritorio
+    sigue añadiéndose aparte porque OneDrive puede redirigirlo FUERA del
+    perfil. Los extras siguen por entorno (`PERSEO_DEV_RAICES_EXTRA`,
+    separada por `;`) para lo que esté fuera de `C:\\Users`.
+    """
+    rutas: list[Path] = [raiz, Path.home()]
+    for crudo in os.environ.get("PERSEO_DEV_RAICES_EXTRA", "").split(";"):
+        if crudo.strip():
+            rutas.append(Path(crudo.strip()).expanduser())
+    escritorio = _escritorio()
+    if escritorio is not None:
+        rutas.append(escritorio)
+
+    resueltas: list[Path] = []
+    for ruta in rutas:
+        resuelta = ruta.resolve()
+        if resuelta not in resueltas:
+            resueltas.append(resuelta)
+    return tuple(resueltas)
+
+
+# --------------------------------------------------------------------------- #
+# El encargo en lenguaje natural
+# --------------------------------------------------------------------------- #
+
+#: El motor y el proyecto se DICEN en el propio encargo — «en Armario, añade
+#: un README, con opencode» — y el núcleo los entiende aquí. La cara manda el
+#: texto tal cual: las caras no piensan, que para eso está el núcleo.
+_MOTOR_DEL_TEXTO = re.compile(
+    r"\b(?:con|usando|usa|vía|via)\s+(opencode|claude)\b", re.IGNORECASE
+)
+
+
+def _motor_del_texto(texto: str) -> str:
+    """El motor pedido en el encargo, o vacío si no se dijo ninguno."""
+    coincidencia = _MOTOR_DEL_TEXTO.search(texto)
+    return coincidencia.group(1).lower() if coincidencia else ""
+
+
+def _carpeta_del_proyecto(proyecto: proyectos.Proyecto) -> str:
+    """Dónde trabaja un agente en cada modo: la carpeta, nunca la URL."""
+    if proyecto.modo == "arranque":
+        return proyecto.carpeta
+    if proyecto.modo == "servicio":
+        if proyecto.servidores:
+            return str(proyecto.servidores[0].get("carpeta", ""))
+        return ""
+    return proyecto.destino
+
+
+def _proyecto_del_texto(texto: str, datos: Path) -> str:
+    """La carpeta del proyecto nombrado en el encargo, o vacío.
+
+    Se busca el nombre de ficha («Armario», «CVScraper») como palabra entera
+    — que «perseo» no salte dentro de «perseverar». El primero que aparezca
+    en la lista gana; nombrar dos proyectos en un encargo es dos encargos.
+    """
+    minusculas = texto.lower()
+    for proyecto in proyectos.listar(datos):
+        ficha = proyecto.nombre.lower()
+        token = re.split(r"[·—–-]", ficha, maxsplit=1)[0].strip()
+        if token and re.search(rf"(?<!\w){re.escape(token)}(?!\w)", minusculas):
+            return _carpeta_del_proyecto(proyecto)
+    return ""
+
+
 # --------------------------------------------------------------------------- #
 # El agente
 # --------------------------------------------------------------------------- #
 
 _motor: Motor | None = None
 _raiz: Path | None = None
+_raices: tuple[Path, ...] = ()
 _tope: float = 900.0
+#: Dónde viven `proyectos.json` y compañía: hace falta para entender el
+#: proyecto nombrado en un encago en lenguaje natural.
+_datos: Path | None = None
+#: El ejecutable de Claude, por si el entorno le cambió el nombre. Se fija en
+#: `iniciar` para que la elección POR ENCARGO (peticion.motor) lo respete.
+_ejecutable_claude: str = "claude"
 
 
 def iniciar(cfg: almacen.Configuracion) -> Motor | None:
-    global _motor, _raiz, _tope
+    global _motor, _raiz, _raices, _tope, _datos, _ejecutable_claude
     _raiz = Path(cfg.dev_raiz).resolve()
+    _raices = raices_permitidas(_raiz)
     _tope = float(cfg.dev_tope)
+    _datos = Path(cfg.directorio_datos)
+    _ejecutable_claude = str(cfg.dev_ejecutable or "claude")
     if _motor is None:
         _motor = abrir_motor(cfg)
         if _motor is not None:
-            logger.info("Agente dev listo sobre %s (tope %.0f s).", _raiz, _tope)
+            logger.info("Agente dev listo sobre %s (tope %.0f s).", list(map(str, _raices)), _tope)
     return _motor
 
 
 def detener() -> None:
-    global _motor
+    global _motor, _raices, _datos
     _motor = None
+    _raices = ()
+    _datos = None
+
+
+def _motor_de(nombre: str) -> Motor | None:
+    """Un motor para UN encargo, por nombre. `None` si no está instalado.
+
+    Los nombres son los de `PERSEO_DEV_MOTOR`: `claude`, `opencode` y `falso`.
+    Vacío no llega aquí — lo filtra quien llama, que usa el motor por defecto.
+    """
+    nombre = nombre.strip().lower()
+    if nombre == "falso":
+        return MotorFalso()
+    if nombre == "opencode":
+        ejecutable = shutil.which("opencode")
+        return MotorOpencode(ejecutable) if ejecutable else None
+    if nombre in ("claude", "anthropic"):
+        ejecutable = shutil.which(_ejecutable_claude)
+        return MotorClaude(ejecutable) if ejecutable else None
+    return None
 
 
 def resolver_raiz(pedida: str) -> Path:
-    """Comprueba que el encargo se queda dentro de la raíz permitida.
+    """Comprueba que el encargo se queda dentro de las raíces permitidas.
 
     Se resuelve antes de comparar: comparar cadenas sin resolver es exactamente
     como se cuela un `..`. Es la misma regla que en `memoria.py`, y por el mismo
     motivo — lo que llega puede venir de un correo.
     """
-    if _raiz is None:
+    if _raiz is None or not _raices:
         raise RuntimeError("El agente dev no está iniciado; falta llamar a dev.iniciar().")
     if not pedida:
         return _raiz
 
-    destino = (_raiz / pedida).resolve()
-    if destino != _raiz and _raiz not in destino.parents:
-        raise ValueError(f"{pedida!r} cae fuera de la raíz permitida ({_raiz}).")
+    # Unir una ruta absoluta a `_raiz` da la absoluta tal cual (pathlib), así que
+    # la misma comparación vale para relativas —caen dentro o fuera— y para el
+    # Escritorio u otra raíz que llegue ya absoluta.
+    destino = (_raiz / pedida).expanduser().resolve()
+    if not any(destino == raiz or raiz in destino.parents for raiz in _raices):
+        listadas = ", ".join(str(raiz) for raiz in _raices)
+        raise ValueError(f"{pedida!r} cae fuera de las raíces permitidas ({listadas}).")
     if not destino.is_dir():
         raise ValueError(f"{pedida!r} no es un directorio.")
     return destino
@@ -256,28 +516,53 @@ def resolver_raiz(pedida: str) -> Path:
 
 @registrar("dev")
 async def _dev(trabajo: dict[str, Any]) -> dict[str, Any]:
-    """Le encarga a Claude una tarea de código y devuelve lo que contestó.
+    """Le encarga a un agente de código una tarea y devuelve lo que contestó.
 
-    No pide confirmación: editar código es reversible y está en git, que es lo
-    que dice §7 del plan. Lo irreversible —publicar, borrar— no está en la lista
-    de lo que puede ejecutar.
+    El motor se elige por encargo (`peticion.motor`: `claude` u `opencode`);
+    sin elegir, manda el configurado al arrancar. No pide confirmación: editar
+    código es reversible y está en git, que es lo que dice §7 del plan. Lo
+    irreversible —publicar, borrar— no está en la lista de lo que puede
+    ejecutar.
     """
     peticion = trabajo.get("peticion") or {}
     instruccion = str(peticion.get("texto") or peticion.get("instruccion") or "").strip()
     if not instruccion:
         raise ValueError("Un encargo de `dev` necesita `texto`.")
 
-    if _motor is None:
+    # El motor: explícito en la petición, dicho en el texto («con opencode»),
+    # o el configurado al arrancar. En ese orden.
+    pedido = str(peticion.get("motor") or "").strip().lower() or _motor_del_texto(instruccion)
+    if pedido:
+        motor = _motor_de(pedido)
+        if motor is None:
+            raise ValueError(
+                f"El motor {pedido!r} no está disponible ahora mismo: o no está "
+                "instalado su ejecutable en el PATH, o el nombre no es ninguno "
+                "de los conocidos (claude, opencode)."
+            )
+    elif _motor is not None:
+        motor = _motor
+    else:
         raise RuntimeError(
-            "No hay motor para `dev`. Instala Claude Code y comprueba que `claude` "
-            "está en el PATH, o pon PERSEO_DEV_MOTOR=falso para probar el circuito."
+            "No hay motor para `dev`. Instala Claude Code u opencode y "
+            "comprueba su ejecutable en el PATH, pon PERSEO_DEV_MOTOR=falso "
+            "para probar el circuito, o elige motor en cada encargo."
         )
 
-    raiz = resolver_raiz(str(peticion.get("directorio", "")))
+    # El directorio: explícito, nombrado en el texto («en Armario…»), o la raíz.
+    directorio_pedido = str(peticion.get("directorio", "")).strip()
+    if not directorio_pedido and _datos is not None:
+        directorio_pedido = _proyecto_del_texto(instruccion, _datos)
+    raiz = resolver_raiz(directorio_pedido)
     sesion = str(peticion.get("sesion", ""))
 
-    logger.info("Encargo de dev en %s: %.120s", raiz, instruccion)
-    resultado = await _motor.ejecutar(instruccion, raiz, _tope, sesion)
+    logger.info(
+        "Encargo de dev (%s) en %s: %.120s",
+        type(motor).__name__.replace("Motor", "").lower() or pedido or "configurado",
+        raiz,
+        instruccion,
+    )
+    resultado = await motor.ejecutar(instruccion, raiz, _tope, sesion)
 
     if not resultado.ok:
         raise RuntimeError(resultado.texto or "El encargo falló.")

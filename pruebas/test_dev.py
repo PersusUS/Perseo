@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 
@@ -42,11 +43,24 @@ def test_un_subdirectorio_vale(dev_falso: Path) -> None:
     assert dev.resolver_raiz("dentro") == (dev_falso / "dentro").resolve()
 
 
-@pytest.mark.parametrize("intento", ["..", "../..", "dentro/../..", FUERA_DEL_DISCO])
-def test_de_la_raiz_no_se_sale(dev_falso, intento: str) -> None:
-    """Un encargo puede venir de un correo."""
+@pytest.mark.parametrize(
+    "intento",
+    [
+        FUERA_DEL_DISCO,
+        # Fuera del perfil del usuario, que desde el 2026-08-24 es el cerco.
+        str(Path.home().resolve().parent),
+    ],
+)
+def test_del_perfil_no_se_sale(dev_falso, intento: str) -> None:
+    """Un encargo puede venir de un correo: lo de fuera, fuera."""
     with pytest.raises(ValueError):
         dev.resolver_raiz(intento)
+
+
+def test_subir_hacia_el_perfil_ahora_vale(dev_falso: Path) -> None:
+    """El cerco es el perfil entero, no la raíz: «..» cae dentro y se permite."""
+    destino = dev.resolver_raiz("..")
+    assert Path.home() in destino.parents or destino == Path.home()
 
 
 def test_un_directorio_que_no_existe_se_rechaza(dev_falso) -> None:
@@ -92,9 +106,9 @@ def test_un_encargo_sin_texto_se_rechaza(dev_falso) -> None:
         asyncio.run(dev._dev({"peticion": {"texto": "   "}}))
 
 
-def test_un_encargo_fuera_de_la_raiz_se_rechaza(dev_falso) -> None:
+def test_un_encargo_fuera_del_perfil_se_rechaza(dev_falso) -> None:
     with pytest.raises(ValueError):
-        asyncio.run(dev._dev({"peticion": {"texto": "algo", "directorio": "../.."}}))
+        asyncio.run(dev._dev({"peticion": {"texto": "algo", "directorio": FUERA_DEL_DISCO}}))
 
 
 def test_sin_motor_el_encargo_falla_con_un_error_util(dev_falso, monkeypatch) -> None:
@@ -111,3 +125,170 @@ def test_un_resultado_fallido_del_motor_falla_el_trabajo(dev_falso, monkeypatch)
     monkeypatch.setattr(dev, "_motor", MotorQueFalla())
     with pytest.raises(RuntimeError, match="no pude"):
         asyncio.run(dev._dev({"peticion": {"texto": "algo"}}))
+
+
+# ── La elección de motor por encargo (2026-08-24) ─────────────────────────── #
+
+def test_la_eleccion_por_encargo_manda(dev_falso, monkeypatch) -> None:
+    """Aunque el motor configurado sea otro, `peticion.motor` decide."""
+    lanzados = []
+
+    class MotorQueAnota:
+        async def ejecutar(self, instruccion, raiz, tope, sesion=""):
+            lanzados.append(self)
+            return dev.Resultado(texto="hecho", vueltas=1)
+
+    monkeypatch.setattr(dev, "_motor_de", lambda nombre: MotorQueAnota())
+    asyncio.run(dev._dev({"peticion": {"texto": "algo", "motor": "opencode"}}))
+    assert len(lanzados) == 1
+
+
+def test_pedir_un_motor_desconocido_es_error_claro(dev_falso) -> None:
+    with pytest.raises(ValueError, match="motor"):
+        asyncio.run(dev._dev({"peticion": {"texto": "algo", "motor": "gemini"}}))
+
+
+def test_opencode_no_instalado_da_error_util(dev_falso, monkeypatch) -> None:
+    monkeypatch.setattr(dev.shutil, "which", lambda _: None)
+    with pytest.raises(ValueError, match="opencode"):
+        asyncio.run(dev._dev({"peticion": {"texto": "algo", "motor": "opencode"}}))
+
+
+def test_abrir_motor_opencode(monkeypatch) -> None:
+    monkeypatch.setenv("PERSEO_DEV_MOTOR", "opencode")
+    monkeypatch.setattr(dev.shutil, "which", lambda n: "C:/falso/opencode.exe" if n == "opencode" else None)
+    motor = dev.abrir_motor(almacen.cargar_configuracion())
+    assert isinstance(motor, dev.MotorOpencode)
+
+
+# ── El encargo en lenguaje natural (2026-08-24) ───────────────────────────── #
+
+def test_el_motor_sale_del_texto() -> None:
+    assert dev._motor_del_texto("En Armario, arregla el bug con opencode") == "opencode"
+    assert dev._motor_del_texto("hazlo usando Claude") == "claude"
+    assert dev._motor_del_texto("hazlo") == ""
+
+
+def test_el_proyecto_sale_del_texto(tmp_path: Path) -> None:
+    (tmp_path / "proyectos.json").write_text(
+        json.dumps([
+            {
+                "id": "armario-app",
+                "nombre": "Armario · App",
+                "modo": "servicio",
+                "destino": "http://127.0.0.1:8000",
+                "servidores": [{"arranque": ["python", "x.py"], "carpeta": r"C:\Users\uno\armario"}],
+            }
+        ], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    # El modo servicio trabaja en la carpeta del servidor, no en su URL.
+    assert dev._proyecto_del_texto("En Armario, añade un README", tmp_path) == r"C:\Users\uno\armario"
+    # Sin proyecto nombrado, vacío: manda la raíz.
+    assert dev._proyecto_del_texto("arregla el bug", tmp_path) == ""
+
+
+def test_el_proyecto_no_salta_en_medio_de_una_palabra(tmp_path: Path) -> None:
+    (tmp_path / "proyectos.json").write_text(
+        json.dumps([{"id": "perseo", "nombre": "Perseo", "modo": "carpeta", "destino": r"C:\Users\uno\Perseo"}]),
+        encoding="utf-8",
+    )
+    assert dev._proyecto_del_texto("hay que perseverar con esto", tmp_path) == ""
+
+
+def test_el_perfil_del_usuario_esta_dentro_del_cerco(dev_falso) -> None:
+    """«Que tenga permiso para trabajar en todo usuario» (2026-08-24)."""
+    assert Path.home().resolve() in dev._raices
+
+
+def test_un_encargo_nominando_proyecto_llega_a_su_sitio(dev_falso: Path, tmp_path: Path, monkeypatch) -> None:
+    """«En X…»: el texto manda, la vista no rellena campos."""
+    carpeta = tmp_path / "proyecto_real"
+    carpeta.mkdir()
+    (tmp_path / "proyectos.json").write_text(
+        json.dumps([
+            {"id": "armario-app", "nombre": "Armario · App", "modo": "carpeta", "destino": str(carpeta)}
+        ], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dev, "_datos", tmp_path)
+    resultado = asyncio.run(dev._dev({"peticion": {"texto": "En Armario, arregla el bug"}}))
+    assert resultado["directorio"] == str(carpeta.resolve())
+
+
+# --------------------------------------------------------------------------- #
+# El motor opencode: los permisos y el fracaso que sale con código 0
+# --------------------------------------------------------------------------- #
+
+
+def _argumentos_de_opencode(monkeypatch, **entorno) -> list[str]:
+    """Lo que MotorOpencode le pide de verdad al sistema operativo."""
+    vistos: dict[str, list[str]] = {}
+
+    class ProcesoFalso:
+        returncode = 0
+
+        async def communicate(self):
+            return b"listo", b""
+
+    async def falso_exec(*argumentos, **kwargs):
+        vistos["argumentos"] = list(argumentos)
+        return ProcesoFalso()
+
+    for clave, valor in entorno.items():
+        monkeypatch.setenv(clave, valor)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", falso_exec)
+    motor = dev.MotorOpencode("opencode")
+    asyncio.run(motor.ejecutar("haz algo", Path.cwd(), 30.0))
+    return vistos["argumentos"]
+
+
+def test_opencode_va_con_auto(monkeypatch) -> None:
+    """Sin `--auto` se deniega a sí mismo escribir y sale con éxito igual."""
+    assert "--auto" in _argumentos_de_opencode(monkeypatch)
+
+
+def test_opencode_lleva_el_modelo_pedido(monkeypatch) -> None:
+    argumentos = _argumentos_de_opencode(monkeypatch, PERSEO_DEV_MODELO="opencode/glm-5")
+    assert argumentos[argumentos.index("-m") + 1] == "opencode/glm-5"
+
+
+@pytest.mark.parametrize(
+    "salida",
+    [
+        "! permission requested: external_directory; auto-rejecting",
+        "Error from provider (Console): Upstream request failed: Endpoint is unavailable.",
+    ],
+)
+def test_un_exito_que_no_hizo_nada_cuenta_como_fallo(monkeypatch, salida: str) -> None:
+    """Código 0 no basta: lo que dijo el CLI también cuenta (2026-08-24)."""
+
+    class ProcesoFalso:
+        returncode = 0
+
+        async def communicate(self):
+            return salida.encode("utf-8"), b""
+
+    async def falso_exec(*argumentos, **kwargs):
+        return ProcesoFalso()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", falso_exec)
+    resultado = asyncio.run(dev.MotorOpencode("opencode").ejecutar("x", Path.cwd(), 30.0))
+    assert not resultado.ok
+
+
+def test_una_salida_normal_sigue_siendo_exito(monkeypatch) -> None:
+    """El detector no puede volverse un muro: lo bueno pasa."""
+
+    class ProcesoFalso:
+        returncode = 0
+
+        async def communicate(self):
+            return b"Fichero creado con el texto ok.", b""
+
+    async def falso_exec(*argumentos, **kwargs):
+        return ProcesoFalso()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", falso_exec)
+    resultado = asyncio.run(dev.MotorOpencode("opencode").ejecutar("x", Path.cwd(), 30.0))
+    assert resultado.ok
