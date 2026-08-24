@@ -15,10 +15,11 @@ es la que de verdad sostiene todo:
      proyectos de la lista, jamás qué ejecutar.
   2. **Nunca se invoca un shell.** Listas de argumentos, que el sistema no
      vuelve a parsear.
-  3. **Cuatro formas de abrir y ninguna más**: una carpeta en el explorador, una
+  3. **Cinco formas de abrir y ninguna más**: una carpeta en el explorador, una
      URL http/https en el navegador, un programa de la lista blanca del agente
-     `pc` con la carpeta del proyecto como argumento, o **el arranque que el
-     propio proyecto declare** (`modo: "arranque"`).
+     `pc` con la carpeta del proyecto como argumento, **el arranque que el
+     propio proyecto declare** (`modo: "arranque"`), o **el servicio que el
+     propio proyecto declare** (`modo: "servicio"`, añadido el 2026-08-24).
 
 ENMIENDA DEL 2026-08-21, PEDIDA POR EL SEÑOR PERSUS
 ---------------------------------------------------
@@ -43,8 +44,29 @@ Lo que **no** se relaja al añadirlo:
     descarta con un aviso como cualquier otra mal escrita.
   * La `carpeta` desde la que se arranca tiene que ser una carpeta de verdad.
 
+EL SERVICIO DEL 2026-08-24, PEDIDO POR EL SEÑOR PERSUS
+-------------------------------------------------------
+*«que cuando lo pulse se abra el proyecto en una pestaña nueva, no la carpeta;
+que corra el código del proyecto, runneándolo». Es decir: pulsar «CVScraper ·
+App» tiene que dejar el backend y el frontend corriendo y abrir su URL en una
+pestaña del navegador, sin pasar por VS Code ni por una terminal.
+
+Lo que hace `servicio`, y lo que no:
+
+  * Arranca **los procesos que el fichero declare** (`servidores`: lista de
+    órdenes, cada una con su carpeta) y abre la pestaña cuando el puerto de
+    `destino` contesta — no antes, porque una pestaña sobre un servidor a medio
+    cargar parece un proyecto roto.
+  * Si el puerto ya está abierto, **no arranca nada**: abre la pestaña y dice
+    que ya estaba. Y mientras arranca, una segunda pulsación no duplica
+    procesos: hay un cerrojo por proyecto que se libera solo.
+  * La salida de los procesos va a `<datos>/proyectos_logs/<id>.log`, porque un
+    servidor desprendido que escribe en el vacío es un fallo sin pistas.
+  * Lo mismo que siempre: órdenes escritas en el fichero del disco por una
+    persona, listas de argumentos, sin shell, y por HTTP solo el `id`.
+
 Sin fichero no hay proyectos, y eso es un estado válido: el panel enseña cómo
-crearlo y no se rompe nada.
+crearlos y no se rompe nada.
 """
 
 from __future__ import annotations
@@ -52,8 +74,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
+import socket
 import subprocess
+import threading
+import time
+import urllib.parse
 import webbrowser
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -67,9 +94,20 @@ logger = logging.getLogger(__name__)
 #: agente `pc`, que es la misma lista que ya decide qué puede abrir Perseo por
 #: voz: dos listas distintas acabarían discrepando. `arranque` es el añadido del
 #: 2026-08-21: lo que el proyecto declare, en lista de argumentos y sin shell.
-MODOS = ("carpeta", "url", "programa", "arranque")
+#: `servicio` es el del 2026-08-24: arrancar los procesos del proyecto y abrir
+#: su pestaña cuando respiren — ver la enmienda de la cabecera.
+MODOS = ("carpeta", "url", "programa", "arranque", "servicio")
 
 NOMBRE_FICHERO = "proyectos.json"
+
+#: Cuánto espera el vigilante de un servicio a que su puerto conteste antes de
+#: darse por vencido. Vite y uvicorn tardan segundos; no minutos.
+PLAZO_ARRANQUE_SEGUNDOS = 90
+
+#: Los servicios que están arrancando ahora mismo, con cerrojo: una segunda
+#: pulsación mientras un proyecto despega no tiene que duplicar procesos.
+_EN_MARCHA: set[str] = set()
+_CERROJO_SERVICIOS = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -86,6 +124,15 @@ class Proyecto:
     descripcion: str = ""
     #: Solo para `modo == "arranque"`: la orden, ya troceada en argumentos.
     arranque: tuple[str, ...] = ()
+    #: Solo para `modo == "servicio"`: los procesos que hay que arrancar, cada
+    #: uno como {"arranque": [...], "carpeta": "..."}.
+    servidores: tuple[dict[str, Any], ...] = ()
+    #: Solo para `modo == "servicio"`: cómo quiere el proyecto que se le mire,
+    #: {"ancho": …, "alto": …}. Cada app sabe el sitio que necesita.
+    ventana: dict[str, int] | None = None
+    #: Su color de identidad, para la franja superior de su ficha en el riel.
+    #: Decorativo y validado con celo: si no es un #rrggbb, se ignora sin más.
+    color: str = ""
 
     def a_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -114,7 +161,7 @@ def _valido(crudo: dict[str, Any]) -> Proyecto | None:
     if modo != "arranque" and not destino:
         logger.warning("Proyecto %r sin destino; se ignora.", id_proyecto)
         return None
-    if modo == "url" and not pc._es_url(destino):
+    if modo in ("url", "servicio") and not pc._es_url(destino):
         logger.warning("Proyecto %r: %r no es una URL http/https.", id_proyecto, destino)
         return None
     if modo == "programa" and destino.lower() not in pc.APLICACIONES_PERMITIDAS:
@@ -129,6 +176,18 @@ def _valido(crudo: dict[str, Any]) -> Proyecto | None:
         if not arranque:
             return None
 
+    servidores: tuple[dict[str, Any], ...] = ()
+    ventana: dict[str, int] | None = None
+    if modo == "servicio":
+        servidores = _servidores_validos(id_proyecto, crudo.get("servidores"))
+        if not servidores:
+            return None
+        # Una ventana mal escrita descarta la entrada, como cualquier otra;
+        # la que no se declara vale con el tamaño por defecto.
+        ventana = _ventana_valida(id_proyecto, crudo.get("ventana"))
+        if ventana == {}:
+            return None
+
     return Proyecto(
         id=id_proyecto,
         nombre=nombre,
@@ -137,6 +196,9 @@ def _valido(crudo: dict[str, Any]) -> Proyecto | None:
         carpeta=str(crudo.get("carpeta", "")).strip(),
         descripcion=str(crudo.get("descripcion", "")).strip(),
         arranque=arranque,
+        servidores=servidores,
+        ventana=ventana,
+        color=_color_valido(crudo.get("color")),
     )
 
 
@@ -172,6 +234,52 @@ def _arranque_valido(id_proyecto: str, crudo: Any) -> tuple[str, ...]:
         return ()
 
     return tuple(argumentos)
+
+
+def _color_valido(crudo: Any) -> str:
+    """El color de identidad del proyecto, si es un #rrggbb limpio.
+
+    Decorativo: una entrada con un color mal escrito no se pierde por eso —
+    se queda sin color y el riel usa el suyo.
+    """
+    if isinstance(crudo, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", crudo.strip()):
+        return crudo.strip()
+    return ""
+
+
+def _servidores_validos(id_proyecto: str, crudo: Any) -> tuple[dict[str, Any], ...]:
+    """Los procesos de un servicio, si están bien escritos. Vacío si no.
+
+    Cada uno es un objeto con su orden — lista de argumentos, jamás una cadena,
+    por lo mismo que `arranque` — y su carpeta opcional: cvscraper necesita dos
+    procesos a la vez y no arrancan desde el mismo sitio.
+    """
+    if not isinstance(crudo, (list, tuple)) or not crudo:
+        logger.warning(
+            "Proyecto %r: 'servidores' tiene que ser una lista, como "
+            '[{"arranque": ["python", "servidor.py"], "carpeta": "..."}].',
+            id_proyecto,
+        )
+        return ()
+
+    servidores: list[dict[str, Any]] = []
+    for pieza in crudo:
+        if not isinstance(pieza, dict):
+            logger.warning(
+                "Proyecto %r: cada servidor es un objeto con 'arranque'; se ignora la entrada.",
+                id_proyecto,
+            )
+            return ()
+        arranque = _arranque_valido(id_proyecto, pieza.get("arranque"))
+        if not arranque:
+            return ()
+        servidores.append(
+            {
+                "arranque": list(arranque),
+                "carpeta": str(pieza.get("carpeta", "")).strip(),
+            }
+        )
+    return tuple(servidores)
 
 
 def _resolver_programa(programa: str) -> str | None:
@@ -234,6 +342,9 @@ def abrir(directorio_datos: Path, id_proyecto: str) -> str:
         if proyecto.modo == "arranque":
             return _arrancar(proyecto)
 
+        if proyecto.modo == "servicio":
+            return _servir(proyecto, directorio_datos)
+
         tipo, objetivo = pc.APLICACIONES_PERMITIDAS[proyecto.destino.lower()]
         if tipo != "exe":
             return f"Error: '{proyecto.destino}' no se puede abrir con una carpeta dentro."
@@ -273,11 +384,13 @@ def _arrancar(proyecto: Proyecto) -> str:
 
     argumentos = [programa, *proyecto.arranque[1:]]
 
-    # Sin ventana negra: esto lo lanza el núcleo, que no tiene consola, y una
-    # consola huérfana se queda ahí hasta que alguien la cierra.
+    # Sin ventana negra: esto lo lanza el núcleo, que no tiene consola. Solo
+    # CREATE_NO_WINDOW — y no DETACHED_PROCESS, que se probó aquí y resultó
+    # trampa (2026-08-24): con él, la salida de los .cmd de Windows (npm…) se
+    # pierde entera y un servidor muerto deja el registro vacío, sin una pista.
     banderas = 0
     if os.name == "nt":
-        banderas = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+        banderas = subprocess.CREATE_NO_WINDOW
 
     subprocess.Popen(
         argumentos,
@@ -287,3 +400,195 @@ def _arrancar(proyecto: Proyecto) -> str:
     )
     orden = " ".join(proyecto.arranque)
     return f"Éxito: arrancado {proyecto.nombre} con «{orden}»."
+
+
+def _puerto_abierto(url: str, plazo: float = 0.6) -> bool:
+    """True si algo escucha ya en el puerto de la URL.
+
+    Un socket que conecta y nada más: no se lee HTTP, porque lo único que hay
+    que saber aquí es «¿respira?». Se prueban todas las direcciones que dé el
+    DNS — `localhost` puede ser IPv4 o IPv6 según el día — y con `connect_ex`
+    no hay excepciones ruidosas cuando no llega.
+    """
+    partes = urllib.parse.urlsplit(url)
+    host = partes.hostname or "127.0.0.1"
+    puerto = partes.port or (443 if partes.scheme == "https" else 80)
+    try:
+        direcciones = socket.getaddrinfo(host, puerto, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        return False
+    for familia, _tipo, _proto, _canonico, direccion in direcciones:
+        try:
+            with socket.socket(familia, socket.SOCK_STREAM) as enchufe:
+                enchufe.settimeout(plazo)
+                if enchufe.connect_ex(direccion) == 0:
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+def _abrir_navegador(url: str) -> None:
+    """Una pestaña nueva. Función aparte para que las pruebas la sustituyan."""
+    webbrowser.open_new_tab(url)
+
+
+def _ventana_valida(id_proyecto: str, crudo: Any) -> dict[str, int] | None:
+    """El tamaño de ventana que el proyecto declara para sí, si es válido.
+
+    Cada app sabe cómo quiere que se la mire: el tablero de cvscraper pide
+    más sitio que la consola de MAGI. Lo declara el fichero del disco — como
+    todo aquí — y se exige número entero razonable, no cualquier cosa.
+    """
+    if crudo is None:
+        return None
+    if not isinstance(crudo, dict):
+        logger.warning(
+            "Proyecto %r: 'ventana' tiene que ser un objeto con 'ancho' y 'alto'.",
+            id_proyecto,
+        )
+        return {}
+    try:
+        ancho = int(crudo.get("ancho", 0))
+        alto = int(crudo.get("alto", 0))
+    except (TypeError, ValueError):
+        logger.warning("Proyecto %r: 'ventana' con medidas que no son números.", id_proyecto)
+        return {}
+    if not (300 <= ancho <= 7680 and 200 <= alto <= 4320):
+        logger.warning("Proyecto %r: medidas de ventana fuera de todo sentido.", id_proyecto)
+        return {}
+    return {"ancho": ancho, "alto": alto}
+
+
+def puerto_responde(url: str, plazo: float = 0.35) -> bool:
+    """True si el servicio del proyecto está en marcha ahora mismo.
+
+    Es lo que mira la pantalla al abrir el carril: una ficha que dijera
+    «LANZAR» de una app que ya está corriendo mentiría, y lo mismo al revés.
+    El plazo es corto a propósito — se pregunta por dos o tres puertos locales
+    y nadie espera una respuesta de red para pintar una lista.
+    """
+    return _puerto_abierto(url, plazo=plazo)
+
+
+def _cuando_este_listo(id_proyecto: str, nombre: str, url: str) -> None:
+    """El vigilante de un servicio recién arrancado.
+
+    Corre en un hilo suelto y muerto: espera a que el puerto conteste — la
+    señal de que los procesos despegaron, que es lo que el estado vivo de
+    `/proyectos` enseña a la pantalla — y libera el cerrojo pase lo que pase,
+    o una segunda pulsación creería para siempre que sigue despegando. La
+    ventana NO se abre aquí: la abre el cliente que pidió el arranque, cuando
+    vea `vivo` en verde, con el tamaño que el proyecto pidió para sí.
+    """
+    try:
+        # Dos miradas por segundo es suficiente para algo que tarda segundos,
+        # y barato para la máquina.
+        for _ in range(PLAZO_ARRANQUE_SEGUNDOS * 2):
+            if _puerto_abierto(url):
+                return
+            time.sleep(0.5)
+        logger.error(
+            "%s no abrió su puerto en %s s; mira datos/proyectos_logs/%s.log",
+            nombre,
+            PLAZO_ARRANQUE_SEGUNDOS,
+            id_proyecto,
+        )
+    finally:
+        with _CERROJO_SERVICIOS:
+            _EN_MARCHA.discard(id_proyecto)
+
+
+def _servir(proyecto: Proyecto, directorio_datos: Path) -> str:
+    """Arranca los procesos del servicio y deja a alguien esperando su puerto.
+
+    Devuelve enseguida: lo que arranca aquí son servidores que duran horas, y
+    la pestaña la abre el vigilante (`_cuando_este_listo`) cuando de verdad hay
+    algo detrás. Si el puerto ya respira, no se arranca nada — abrir dos veces
+    el mismo proyecto no puede costar dos servidores.
+    """
+    with _CERROJO_SERVICIOS:
+        if proyecto.id in _EN_MARCHA:
+            return (
+                f"Éxito: {proyecto.nombre} ya se está arrancando; "
+                "la pestaña se abre sola."
+            )
+        _EN_MARCHA.add(proyecto.id)
+
+    entregado = False
+    try:
+        if _puerto_abierto(proyecto.destino):
+            return f"Éxito: {proyecto.nombre} ya está en marcha."
+
+        # La salida de los procesos, apuntada y no perdida: un servidor
+        # desprendido que escribe en el vacío es un fallo sin pistas.
+        registros = Path(directorio_datos) / "proyectos_logs"
+        try:
+            registros.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            registros = None
+
+        # CREATE_NO_WINDOW y no DETACHED_PROCESS, por lo mismo que en
+        # `_arrancar`: detached silencia del todo la salida de los .cmd, y el
+        # registro compartido es la única pista cuando un servidor muere.
+        banderas = 0
+        if os.name == "nt":
+            banderas = subprocess.CREATE_NO_WINDOW
+
+        lanzamientos: list[tuple[list[str], str | None]] = []
+        for servidor in proyecto.servidores:
+            programa = _resolver_programa(servidor["arranque"][0])
+            if programa is None:
+                return (
+                    f"Error: ya no se encuentra '{servidor['arranque'][0]}' "
+                    "en esta máquina."
+                )
+            carpeta = servidor["carpeta"] or proyecto.carpeta
+            cwd: str | None = None
+            if carpeta:
+                ruta = Path(carpeta)
+                if not ruta.is_dir():
+                    return (
+                        f"Error: la carpeta de '{proyecto.nombre}' ya no existe: {ruta}"
+                    )
+                cwd = str(ruta)
+            lanzamientos.append(([programa, *servidor["arranque"][1:]], cwd))
+
+        # Un solo registro por servicio, compartido por todos sus procesos y
+        # abierto ANTES de lanzar el primero: si algo fallara a mitad, no
+        # quedaría un proceso huérfano sin sitio donde escribir.
+        salida: Any
+        if registros is not None:
+            salida = open(registros / f"{proyecto.id}.log", "ab")
+        else:
+            salida = subprocess.DEVNULL
+        try:
+            for argumentos, cwd in lanzamientos:
+                subprocess.Popen(
+                    argumentos,
+                    cwd=cwd,
+                    stdin=subprocess.DEVNULL,
+                    stdout=salida,
+                    stderr=subprocess.STDOUT,
+                    creationflags=banderas,
+                    close_fds=True,
+                )
+        finally:
+            if salida is not subprocess.DEVNULL:
+                salida.close()
+
+        threading.Thread(
+            target=_cuando_este_listo,
+            args=(proyecto.id, proyecto.nombre, proyecto.destino),
+            daemon=True,
+            name=f"servicio-{proyecto.id}",
+        ).start()
+        entregado = True
+        return (
+            f"Éxito: arrancando {proyecto.nombre}; "
+            "su ventana se abre sola cuando esté listo."
+        )
+    finally:
+        if not entregado:
+            with _CERROJO_SERVICIOS:
+                _EN_MARCHA.discard(proyecto.id)

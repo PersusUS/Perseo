@@ -8,6 +8,12 @@ export class AudioManager {
   
   public onError: (msg: string) => void = () => {};
   public onStreamReady: () => void = () => {};
+  /**
+   * Gancho para el reconocimiento de personas (lib/identidad.ts): recibe el
+   * MISMO trozo PCM que va a Gemini, sin copiar el stream ni abrir otro
+   * worklet. Si nadie lo registra, no se hace nada — coste cero.
+   */
+  public onTrozoPCM: ((trozo: ArrayBuffer) => void) | null = null;
 
   async start() {
     if (this.captureContext) return;
@@ -36,6 +42,7 @@ export class AudioManager {
 
       this.workletNode.port.onmessage = (event) => {
         const pcmBuffer = event.data; // ArrayBuffer of Int16
+        this.onTrozoPCM?.(pcmBuffer);
         const base64 = this.arrayBufferToBase64(pcmBuffer);
         geminiClient.sendAudioChunk(base64);
       };

@@ -130,8 +130,14 @@ def trigger_action():
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     marcador = os.path.join(base_dir, ".perseo-autollamada")
     try:
+        # VACÍO, no una fecha: el contenido del marcador es el MOTIVO de la
+        # llamada y quien lo lee distingue así los dos caminos — vacío es el
+        # aplauso (entra en llamada sin más) y con texto un subagente que
+        # terminó (timbre y cartel «PERSEO LLAMA»). La marca de tiempo que
+        # había aquí antes viajaba como motivo y Perseo entraba al aplauso
+        # pasando por la notificación de aviso: los dos rituales mezclados.
         with open(marcador, 'w', encoding='utf-8') as f:
-            f.write(time.strftime("%Y-%m-%d %H:%M:%S"))
+            f.write('')
         print("[*] Señal de auto-conexión depositada.")
     except Exception as e:
         print(f"[-] No se pudo dejar la señal de auto-conexión: {e}")

@@ -40,6 +40,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -152,6 +153,10 @@ def _corriendo(fragmento: str) -> bool:
             ],
             capture_output=True,
             text=True,
+            # PowerShell contesta en el código de página de la consola, no en
+            # UTF-8: sin este colchón, una línea de comandos con tilde mata al
+            # hilo lector y «¿está corriendo?» se queda sin respuesta.
+            errors="replace",
             timeout=20,
         ).stdout
     except (OSError, subprocess.SubprocessError):
@@ -205,6 +210,12 @@ def _exe_vivo(nombre: str) -> bool:
             ["tasklist", "/FI", f"IMAGENAME eq {nombre}", "/NH"],
             capture_output=True,
             text=True,
+            # tasklist escribe en el código de página OEM (cp850 en un Windows
+            # español) y con `-X utf8` Python intenta leerlo como UTF-8: el
+            # primer byte raro reventaba la lectura entera. `estado` tiene que
+            # contestar SIEMPRE, aunque tasklist tenga un mal día; los nombres
+            # de ejecutable son ASCII y sobreviven a cualquier recodificación.
+            errors="replace",
             timeout=20,
         ).stdout
     except (OSError, subprocess.SubprocessError):
@@ -457,6 +468,7 @@ def _marca_de_construccion() -> str:
             cwd=str(RAIZ),
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=10,
         )
         if revision.returncode == 0 and revision.stdout.strip():
@@ -491,6 +503,40 @@ def _sellar(marca: str, huella: str) -> Path:
         encoding="utf-8",
     )
     return fichero
+
+
+def _limpiar_cache_webview() -> None:
+    """Vacía la caché HTTP de WebView2 tras una construcción.
+
+    La interfaz va incrustada en el binario, pero WebView2 la sirve a través de
+    su propia caché HTTP (`EBWebView\\Default\\Cache`), y esa caché no distingue
+    un binario nuevo de uno viejo: tras actualizar, la ventana puede enseñar el
+    bundle ANTERIOR sin un solo error que lo delate. Pasó el 2026-08-24 — la
+    pestaña Proyectos reconstruida seguía mostrando la versión anterior con el
+    exe nuevo ya corriendo. Borrarla es barato y no toca los ajustes: esos
+    viven en Local Storage, que aquí no se mira.
+    """
+    raiz = (
+        Path(os.environ.get("LOCALAPPDATA", ""))
+        / "com.perseo.app"
+        / "EBWebView"
+        / "Default"
+    )
+    borradas: list[str] = []
+    for nombre in ("Cache", "Code Cache"):
+        carpeta = raiz / nombre
+        try:
+            if carpeta.is_dir():
+                shutil.rmtree(carpeta)
+                borradas.append(nombre)
+        except OSError:
+            # Con la app viva los ficheros están bloqueados; no pasa nada,
+            # porque en el flujo normal `actualizar` la cerró al empezar.
+            print("  [aviso]      No se pudo vaciar la caché de WebView2; "
+                  "si la ventana enseña la interfaz vieja, ciérra del todo y ábrela otra vez")
+    if borradas:
+        print("  [caché]      Vaciada la caché de WebView2 "
+              f"({', '.join(borradas)}): la ventana nace del binario nuevo")
 
 
 def actualizar() -> None:
@@ -548,6 +594,8 @@ def actualizar() -> None:
     fichero = _sellar(marca, huella)
     print(f"\n  [sellado]    {fichero}")
     print("  [listo]      La app y el móvil enseñan ya la misma marca.")
+
+    _limpiar_cache_webview()
 
     if estaba_abierta:
         arrancar_app()

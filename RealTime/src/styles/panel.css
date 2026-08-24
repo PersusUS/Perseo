@@ -221,20 +221,185 @@
   max-height: 50vh; overflow-y: auto;
 }
 
-/* El chat del panel. Mismas burbujas que en el móvil. */
+/* El chat del panel. Misma gramática que en el móvil: lo del señor Persus es
+   relleno blanco con la esquina cortada por donde sale; lo de Perseo, una
+   superficie quieta con borde. Borde y clip-path juntos dejaban la esquina
+   abierta en falso: parecía roto, no diseñado. */
 .pnl-burbuja {
-  /* Una esquina cortada en vez de cuatro redondeadas, igual que en el móvil:
-     la del que habla se corta del lado por el que sale. */
-  max-width: 85%; padding: 10px 14px;
+  padding: 12px 16px; line-height: 1.6;
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .pnl-burbuja.mia {
-  align-self: flex-end; background: var(--fg); color: var(--bg); font-weight: 400;
+  background: var(--fg); color: var(--bg); font-weight: 400;
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
 }
 .pnl-burbuja.suya {
-  align-self: flex-start; background: var(--surface); border: 1px solid var(--border);
-  clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px);
+  /* Acento monocromo de la máquina: filo blanco a la izquierda y superficie
+     un punto más presente. Se distingue de un vistazo sin sacar el color
+     de su sitio — que es de los puntos de estado. */
+  background: rgba(255, 255, 255, .09);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--fg);
+}
+
+/* ── Chat escrito ───────────────────────────────────────────────────────────
+   Dos columnas: las conversaciones a la izquierda y el hilo a la derecha. El
+   hilo es quien hace scroll; el compositor va pegado abajo, como en cualquier
+   chat que se respete. Mientras Perseo está escribiendo, su burbuja muestra el
+   texto creciente con un cursor que late. */
+.pnl-cuerpo-chat { overflow: hidden; gap: 0; padding: 0; }
+.pnl-cuerpo-chat > * { width: min(1100px, 100%); }
+
+.pnl-chat {
+  height: 100%; min-height: 0;
+  display: flex;
+}
+
+.pnl-chat-sesiones {
+  width: 240px; flex: none;
+  border-right: 1px solid var(--border);
+  padding: 14px 12px;
+  display: flex; flex-direction: column; gap: 12px;
+  min-height: 0;
+}
+.pnl-chat-nueva { align-self: stretch; text-align: center; }
+.pnl-chat-lista { overflow-y: auto; display: flex; flex-direction: column; gap: 3px; min-height: 0; }
+.pnl-chat-sesion { position: relative; }
+.pnl-chat-sesion button {
+  display: block; width: 100%; text-align: left;
+  background: none; border: none; border-left: 2px solid transparent;
+  color: var(--fg-dim); font: inherit; font-size: 13px;
+  padding: 8px 28px 8px 10px; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: background .15s, color .15s;
+}
+.pnl-chat-sesion button:hover { color: var(--fg); }
+.pnl-chat-sesion.activa button {
+  color: var(--fg); background: var(--surface); border-left-color: var(--fg);
+}
+.pnl-chat-borrar {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  color: var(--fg-dim); font-family: var(--mono); font-size: 13px;
+  cursor: pointer; line-height: 1; padding: 2px 4px;
+}
+.pnl-chat-borrar:hover { color: #f87171; }
+
+.pnl-chat-hilo {
+  flex: 1; min-width: 0;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 18px;
+  padding: 20px;
+}
+
+/* Las barras de scroll, de la casa: la de por defecto de Windows es un ladrillo
+   claro sobre pantalla negra y delata el descuido antes que nada. */
+.pnl-chat-hilo, .pnl-chat-lista, .pnl-cuerpo-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, .18) transparent;
+}
+.pnl-chat-hilo::-webkit-scrollbar, .pnl-chat-lista::-webkit-scrollbar,
+.pnl-cuerpo-scroll::-webkit-scrollbar { width: 10px; }
+.pnl-chat-hilo::-webkit-scrollbar-track, .pnl-chat-lista::-webkit-scrollbar-track,
+.pnl-cuerpo-scroll::-webkit-scrollbar-track { background: transparent; }
+.pnl-chat-hilo::-webkit-scrollbar-thumb, .pnl-chat-lista::-webkit-scrollbar-thumb,
+.pnl-cuerpo-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, .16);
+  border: 3px solid var(--bg);
+}
+
+/* El turno: quién habla y a qué hora, encima de la burbuja. Es lo que convierte
+   una lista de globos en una conversación legible tres días después. Cada turno
+   entra una sola vez — el nodo vive mientras la conversación vive —. */
+.pnl-turno {
+  display: flex; flex-direction: column; gap: 7px;
+  max-width: min(85%, 68ch);
+  animation: pnl-subir .22s ease;
+}
+@keyframes pnl-subir {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.pnl-turno.mio { align-self: flex-end; }
+.pnl-turno.suyo { align-self: flex-start; }
+.pnl-turno .pnl-burbuja { max-width: none; }
+.pnl-turno-cabeza {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--fg);
+  opacity: .85;
+}
+.pnl-turno-hora { font-size: 10.5px; color: var(--fg-muted); font-variant-numeric: tabular-nums; letter-spacing: .06em; }
+
+/* El texto sigue llegando mientras miras: el cursor late al final del último
+   trozo, y desaparece solo cuando el turno se cierra. */
+.pnl-cursor {
+  display: inline-block; width: 7px; height: 14px;
+  background: var(--fg); margin-left: 5px; vertical-align: text-bottom;
+  animation: latido 1.1s ease-in-out infinite;
+}
+
+/* Las herramientas que usó el turno, debajo de su respuesta: la diferencia
+   entre «te lo digo yo» y «lo he comprobado». Van apagadas a propósito: son
+   una nota al pie, no el titular. */
+.pnl-herramientas { display: flex; flex-wrap: wrap; gap: 6px; }
+.pnl-herramientas .pnl-ficha { font-size: 9px; padding: 2px 9px; letter-spacing: .1em; color: var(--fg-dim); }
+
+/* Los tres puntos mientras piensa. Que mandar un mensaje y esperar se vea
+   igual que una app rota fue un fallo caro en el móvil; aquí no se repite. */
+.pnl-pensando { display: flex; align-items: center; gap: 6px; }
+.pnl-pensando span,
+.pnl-burbuja.pensando span {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--fg-muted);
+  animation: pnl-pulso 1.2s ease-in-out infinite;
+}
+.pnl-burbuja.pensando span:nth-child(2), .pnl-pensando span:nth-child(2) { animation-delay: .18s; }
+.pnl-burbuja.pensando span:nth-child(3), .pnl-pensando span:nth-child(3) { animation-delay: .36s; }
+@keyframes pnl-pulso {
+  0%, 100% { opacity: .25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-2px); }
+}
+
+.pnl-chat-form {
+  position: sticky; bottom: -18px; margin-top: auto;
+  background: var(--bg);
+  padding: 12px 0 2px;
+  border-top: 1px solid var(--border);
+}
+.pnl-chat-form input:disabled { opacity: .55; }
+
+/* ── Encargos (antes «Agentes») ─────────────────────────────────────────── */
+.pnl-agentes-form { display: flex; flex-direction: column; gap: 10px; }
+.pnl-agentes-form select,
+.pnl-agentes-form textarea {
+  font: inherit; border: 1px solid var(--border);
+  background: var(--surface); color: var(--fg); padding: 11px 14px;
+}
+.pnl-agentes-form select:focus, .pnl-agentes-form textarea:focus {
+  outline: none; border-color: rgba(255, 255, 255, .35);
+}
+.pnl-agentes-form textarea { resize: vertical; min-height: 96px; }
+
+/* El rótulo de cada campo: versalitas monoespaciadas, la casa de siempre. */
+.pnl-rotulo {
+  font-size: 9px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+/* Los ejemplos que se rellenan al pulsarlos: la lección del señor Persus
+   («no sé usarlo») es que nadie debería tener que inventar el primer encargo. */
+.pnl-ejemplos { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.pnl-ejemplo {
+  cursor: pointer; text-align: left;
+  background: transparent; border: 1px dashed var(--border);
+  color: var(--fg-dim); padding: 8px 12px; font: inherit; font-size: 11px;
+}
+.pnl-ejemplo:hover { color: var(--fg); border-color: rgba(255, 255, 255, .4); }
+
+/* Cabecera de cada montón: en marcha, terminados. */
+.pnl-seccion {
+  font-size: 9px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--fg-dim); margin: 14px 0 6px;
+  border-bottom: 1px solid var(--border); padding-bottom: 5px;
 }
 
 

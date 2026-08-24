@@ -18,8 +18,17 @@
  *     espaciadas y nada redondeado. Antes era un formulario gris en medio de una
  *     pantalla negra.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { defaultConfig, guardarAjuste, SYSTEM_PROMPT_POR_DEFECTO, type AspectoLive } from '../lib/config';
+import {
+  borrarPerfil,
+  capturarCara,
+  crearPerfil,
+  estadoBiometria,
+  grabarMuestra,
+  renombrarPerfil,
+  type EstadoBiometria,
+} from '../lib/identidad';
 
 interface Props {
   onClose: () => void;
@@ -48,9 +57,116 @@ export const Settings: React.FC<Props> = ({ onClose, llamadaActiva = false, onAs
   const [prompt, setPrompt] = useState(defaultConfig.systemPrompt);
   const [guardarHistorial, setGuardarHistorial] = useState(defaultConfig.saveHistoryEnabled);
   const [pantallaAuto, setPantallaAuto] = useState(defaultConfig.pantallaAuto);
+  const [identidad, setIdentidad] = useState(defaultConfig.identidadActivada);
   const [aspecto, setAspecto] = useState<AspectoLive>(defaultConfig.aspectoLive);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
+
+  // Biometría: estado de perfiles y motores, traído del núcleo al abrir.
+  const [bio, setBio] = useState<EstadoBiometria | null>(null);
+  const [grabando, setGrabando] = useState(false);
+  // La muestra grabada espera su nombre; el renombrado en curso espera texto;
+  // el borrado pide un segundo clic. Todo EN LÍNEA y no con window.prompt:
+  // los diálogos nativos no están garantizados dentro del WebView de Tauri.
+  const [vozGrabada, setVozGrabada] = useState<string | null>(null);
+  const [nombreVoz, setNombreVoz] = useState('');
+  // El alta tarda (el motor carga la primera vez): sin este estado, cada clic
+  // impaciente reenviaba la misma muestra y el núcleo la reforzaba otra vez.
+  const [guardandoVoz, setGuardandoVoz] = useState(false);
+  // Cara: mismo patrón que la voz — fotograma capturado espera su nombre.
+  const [caraGrabada, setCaraGrabada] = useState<string | null>(null);
+  const [nombreCara, setNombreCara] = useState('');
+  const [capturandoCara, setCapturandoCara] = useState(false);
+  const [guardandoCara, setGuardandoCara] = useState(false);
+  const [renombrarDe, setRenombrarDe] = useState<string | null>(null);
+  const [nombreNuevo, setNombreNuevo] = useState('');
+  const [borrarConfirmando, setBorrarConfirmando] = useState<string | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    estadoBiometria()
+      .then((estado) => { if (vivo) setBio(estado); })
+      .catch((e) => console.warn('[Ajustes] Biometría sin respuesta:', e));
+    return () => { vivo = false; };
+  }, []);
+
+  const refrescarBiometria = () => {
+    estadoBiometria().then(setBio).catch(() => {});
+  };
+
+  /** Enseñar la voz: graba seis segundos y deja la muestra esperando nombre. */
+  const ensenarVoz = async () => {
+    setError('');
+    setGrabando(true);
+    try {
+      const audio = await grabarMuestra(6);
+      setVozGrabada(audio);
+      setNombreVoz('');
+    } catch (e) {
+      setError(`No se pudo grabar: ${e}`);
+    } finally {
+      setGrabando(false);
+    }
+  };
+
+  const guardarVoz = async () => {
+    if (!vozGrabada || !nombreVoz.trim() || guardandoVoz) return;
+    setGuardandoVoz(true);
+    try {
+      const resultado = await crearPerfil(nombreVoz.trim(), vozGrabada);
+      if (resultado.error) { setError(resultado.error); return; }
+      setVozGrabada(null);
+      setNombreVoz('');
+      refrescarBiometria();
+    } finally {
+      setGuardandoVoz(false);
+    }
+  };
+
+  /** Enseñar la cara: abre la cámara, dispara un fotograma y espera nombre. */
+  const ensenarCara = async () => {
+    setError('');
+    setCapturandoCara(true);
+    try {
+      const imagen = await capturarCara();
+      setCaraGrabada(imagen);
+      setNombreCara('');
+    } catch (e) {
+      setError(`No se pudo abrir la cámara: ${e}`);
+    } finally {
+      setCapturandoCara(false);
+    }
+  };
+
+  const guardarCara = async () => {
+    if (!caraGrabada || !nombreCara.trim() || guardandoCara) return;
+    setGuardandoCara(true);
+    try {
+      const resultado = await crearPerfil(nombreCara.trim(), undefined, caraGrabada);
+      if (resultado.error) { setError(resultado.error); return; }
+      setCaraGrabada(null);
+      setNombreCara('');
+      refrescarBiometria();
+    } finally {
+      setGuardandoCara(false);
+    }
+  };
+
+  const confirmarRenombrar = async () => {
+    if (!renombrarDe || !nombreNuevo.trim()) return;
+    const resultado = await renombrarPerfil(renombrarDe, nombreNuevo.trim());
+    if (resultado.error) { setError(resultado.error); return; }
+    setRenombrarDe(null);
+    setNombreNuevo('');
+    refrescarBiometria();
+  };
+
+  const borrarUno = async (nombre: string) => {
+    const resultado = await borrarPerfil(nombre);
+    if (resultado.error) { setError(resultado.error); return; }
+    setBorrarConfirmando(null);
+    refrescarBiometria();
+  };
 
   // El que había al abrir, para devolverlo si se cancela: el aspecto se aplica
   // al pulsar la ficha, así que sin esto «Cancelar» dejaría el cambio hecho.
@@ -79,6 +195,7 @@ export const Settings: React.FC<Props> = ({ onClose, llamadaActiva = false, onAs
       await guardarAjuste('systemPrompt', prompt);
       await guardarAjuste('saveHistoryEnabled', guardarHistorial);
       await guardarAjuste('pantallaAuto', pantallaAuto);
+      await guardarAjuste('identidadActivada', identidad);
       await guardarAjuste('aspectoLive', aspecto);
       onClose();
     } catch (e) {
@@ -158,6 +275,141 @@ export const Settings: React.FC<Props> = ({ onClose, llamadaActiva = false, onAs
               Apagado, Perseo no ve nada hasta que se lo pidas: te preguntará y, con tu
               sí, empezará a mirar por su cuenta.
             </p>
+            <label className="ajustes-interruptor">
+              <input
+                type="checkbox"
+                checked={identidad}
+                onChange={e => setIdentidad(e.target.checked)}
+              />
+              <span>Reconocer quién habla y quién sale por la cámara</span>
+            </label>
+            <p className="ajustes-nota">
+              Perseo pone nombre a cada voz conocida y etiqueta cada cara; si no
+              conoce a alguien, aprende su voz con la llamada. Todo se decide y
+              se guarda en este ordenador — nunca sale nada a internet.
+            </p>
+
+            {identidad && (
+              <div className="ajustes-biometria">
+                {!grabando && !vozGrabada && (
+                  <button className="ajustes-accion" onClick={ensenarVoz}>
+                    Enseñar mi voz (6 segundos)
+                  </button>
+                )}
+                {grabando && <p className="ajustes-nota">Grabando… habla ahora.</p>}
+                {vozGrabada && (
+                  <div className="ajustes-fila">
+                    <input
+                      autoFocus
+                      placeholder="¿A qué nombre guardo esta voz?"
+                      value={nombreVoz}
+                      onChange={e => setNombreVoz(e.target.value)}
+                    />
+                    <button onClick={guardarVoz} disabled={!nombreVoz.trim() || guardandoVoz}>
+                      {guardandoVoz ? 'Guardando…' : 'Guardar'}
+                    </button>
+                    <button onClick={() => setVozGrabada(null)}>Descartar</button>
+                  </div>
+                )}
+                {!capturandoCara && !caraGrabada && (
+                  <button className="ajustes-accion" onClick={ensenarCara}>
+                    Enseñar mi cara (un fotograma)
+                  </button>
+                )}
+                {capturandoCara && (
+                  <p className="ajustes-nota">Abriendo la cámara… mira al objetivo y no te muevas.</p>
+                )}
+                {caraGrabada && (
+                  <div className="ajustes-fila">
+                    <input
+                      autoFocus
+                      placeholder="¿A qué nombre guardo esta cara?"
+                      value={nombreCara}
+                      onChange={e => setNombreCara(e.target.value)}
+                    />
+                    <button onClick={guardarCara} disabled={!nombreCara.trim() || guardandoCara}>
+                      {guardandoCara ? 'Guardando…' : 'Guardar'}
+                    </button>
+                    <button onClick={() => setCaraGrabada(null)}>Descartar</button>
+                  </div>
+                )}
+                {!bio && <p className="ajustes-nota">Preguntando al núcleo…</p>}
+                {bio && (
+                  <>
+                    {!bio.disponibilidad.voz && (
+                      <p className="ajustes-nota ajustes-aviso">{bio.disponibilidad.motivo_voz}</p>
+                    )}
+                    {!bio.disponibilidad.cara && (
+                      <p className="ajustes-nota ajustes-aviso">{bio.disponibilidad.motivo_cara}</p>
+                    )}
+                    {bio.aprendiendo.voz && (
+                      <p className="ajustes-nota">
+                        Aprendiendo a «{bio.aprendiendo.voz.etiqueta}»:{' '}
+                        {Math.round(bio.aprendiendo.voz.peso)} de {bio.aprendiendo.voz.objetivo} s
+                        de voz.
+                      </p>
+                    )}
+                    {bio.perfiles.length > 0 ? (
+                      <ul className="ajustes-perfiles">
+                        {bio.perfiles.map(p => (
+                          <li key={p.nombre}>
+                            {renombrarDe === p.nombre ? (
+                              <>
+                                <input
+                                  autoFocus
+                                  placeholder="Nombre nuevo"
+                                  value={nombreNuevo}
+                                  onChange={e => setNombreNuevo(e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') void confirmarRenombrar(); }}
+                                />
+                                <button onClick={confirmarRenombrar} disabled={!nombreNuevo.trim()}>
+                                  Guardar
+                                </button>
+                                <button onClick={() => setRenombrarDe(null)}>Cancelar</button>
+                              </>
+                            ) : (
+                              <>
+                                <span className="perfil-nombre">{p.nombre}</span>
+                                <span className="perfil-datos">
+                                  {[p.voz ? 'voz' : null, p.caras > 0 ? `${p.caras} cara(s)` : null]
+                                    .filter(Boolean)
+                                    .join(' · ') || 'sin muestras'}
+                                </span>
+                                <button
+                                  onClick={() => { setRenombrarDe(p.nombre); setNombreNuevo(''); }}
+                                >
+                                  Renombrar
+                                </button>
+                                {borrarConfirmando === p.nombre ? (
+                                  <>
+                                    <button
+                                      className="perfil-borrar-si"
+                                      onClick={() => void borrarUno(p.nombre)}
+                                    >
+                                      ¿Seguro? Se pierde.
+                                    </button>
+                                    <button onClick={() => setBorrarConfirmando(null)}>No</button>
+                                  </>
+                                ) : (
+                                  <button onClick={() => setBorrarConfirmando(p.nombre)}>
+                                    Borrar
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="ajustes-nota">
+                        Todavía no hay perfiles: hable delante del micrófono y
+                        Perseo aprenderá solo, o use «Enseñar mi voz».
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </section>
 
           <section className="ajustes-bloque">

@@ -7,6 +7,12 @@ export class CameraManager {
   private canvasElement: HTMLCanvasElement | null = null;
   private intervalId: number | null = null;
   public onStreamReady: (stream: MediaStream) => void = () => {};
+  /**
+   * Gancho para el reconocimiento de personas (lib/identidad.ts): el mismo
+   * JPEG que va a Gemini, sin segunda captura. El vigilante decide si mandarlo
+   * al núcleo o descartarlo según su ritmo propio.
+   */
+  public onFotograma: ((base64: string) => void) | null = null;
 
   async start() {
     if (this.stream) return;
@@ -46,6 +52,7 @@ export class CameraManager {
     const dataUrl = this.canvasElement.toDataURL('image/jpeg', 0.7);
     const base64 = dataUrl.split(',')[1];
     
+    this.onFotograma?.(base64);
     geminiClient.sendVideoChunk(base64);
   }
 

@@ -710,3 +710,119 @@ pub async fn precalentar_herramientas(app: AppHandle) -> Result<(), String> {
     .await?;
     Ok(())
 }
+
+// --------------------------------------------------------------------------- //
+// Biometría
+//
+// El reconocimiento de quién habla y quién sale por la cámara vive en el núcleo
+// (perseo_core/biometria.py); la llamada solo transporta los mismos trozos que
+// ya le manda a Gemini y pinta la etiqueta que vuelve. Estos comandos son rutas
+// CONCRETAS y no un proxy genérico a /{ruta}, por el mismo motivo que panel.rs:
+// si el frontend elige la ruta entera, la ruta la escribe el frontend.
+//
+// No pasan por la cola de trabajos a propósito: identificar voz son varias
+// peticiones por segundo durante toda la llamada, y ensuciar la cola que ve el
+// móvil con un trabajo cada dos segundos la haría ilegible.
+// --------------------------------------------------------------------------- //
+
+async fn traer_biometria(app: &AppHandle, ruta: &str) -> Result<Value, String> {
+    let token = token(app)?;
+    let cliente = reqwest::Client::new();
+    pedir_json(
+        cliente
+            .get(format!("{}{ruta}", base_url()))
+            .bearer_auth(&token),
+    )
+    .await
+}
+
+async fn mandar_biometria(
+    app: &AppHandle,
+    metodo: &str,
+    ruta: &str,
+    cuerpo: Value,
+) -> Result<Value, String> {
+    let token = token(app)?;
+    let cliente = reqwest::Client::new();
+    let peticion = match metodo {
+        "POST" => cliente.post(format!("{}{ruta}", base_url())).json(&cuerpo),
+        "DELETE" => cliente.delete(format!("{}{ruta}", base_url())),
+        otra => return Err(format!("Método interno desconocido: {otra}")),
+    };
+    pedir_json(peticion.bearer_auth(&token)).await
+}
+
+/// Perfiles guardados, progreso de aprendizaje y qué motores hay hoy.
+#[tauri::command]
+pub async fn biometria_estado(app: AppHandle) -> Result<Value, String> {
+    traer_biometria(&app, "/biometria").await
+}
+
+/// Un trozo de PCM 16k mono (base64): ¿de quién es la voz?
+#[tauri::command]
+pub async fn biometria_voz(app: AppHandle, audio: String) -> Result<Value, String> {
+    mandar_biometria(&app, "POST", "/biometria/voz", json!({ "audio": audio })).await
+}
+
+/// Un JPEG (base64): qué caras salen, con nombre y caja.
+#[tauri::command]
+pub async fn biometria_cara(app: AppHandle, imagen: String) -> Result<Value, String> {
+    mandar_biometria(&app, "POST", "/biometria/cara", json!({ "imagen": imagen })).await
+}
+
+/// Crea o refuerza un perfil con una muestra grabada a propósito.
+#[tauri::command]
+pub async fn biometria_enrolar(
+    app: AppHandle,
+    nombre: String,
+    audio: Option<String>,
+    imagen: Option<String>,
+) -> Result<Value, String> {
+    mandar_biometria(
+        &app,
+        "POST",
+        "/biometria/perfiles",
+        json!({ "nombre": nombre, "audio": audio, "imagen": imagen }),
+    )
+    .await
+}
+
+/// Le pone el nombre real a un «Desconocido N».
+#[tauri::command]
+pub async fn biometria_renombrar(
+    app: AppHandle,
+    nombre: String,
+    nuevo_nombre: String,
+) -> Result<Value, String> {
+    mandar_biometria(
+        &app,
+        "POST",
+        &format!("/biometria/perfiles/{}", encode_ruta(&nombre)),
+        json!({ "nuevo_nombre": nuevo_nombre }),
+    )
+    .await
+}
+
+/// Borra el perfil y sus vectores. Sin copia, que es lo pedido.
+#[tauri::command]
+pub async fn biometria_borrar(app: AppHandle, nombre: String) -> Result<Value, String> {
+    mandar_biometria(
+        &app,
+        "DELETE",
+        &format!("/biometria/perfiles/{}", encode_ruta(&nombre)),
+        json!({}),
+    )
+    .await
+}
+
+/// Codifica un nombre para meterlo en la ruta. Los perfiles pueden llamarse
+/// «Desconocido 1» o «Fátima»: espacios y acentos no pueden ir crudos en una URL.
+/// Lo codifica el propio parser de URL que trae reqwest, sin dependencia nueva.
+fn encode_ruta(nombre: &str) -> String {
+    let mut url = reqwest::Url::parse("http://localhost/biometria/perfiles")
+        .expect("la URL semilla es fija y válida");
+    url.path_segments_mut()
+        .expect("la URL semilla no puede ser «cannot-be-a-base»")
+        .push(nombre);
+    url.path().to_string()
+}

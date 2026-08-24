@@ -5,6 +5,8 @@ mod nucleo;
 mod panel;
 mod presencia;
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -21,15 +23,36 @@ pub fn run() {
         // serviria de nada: el proceso terminaria en cuanto se cerrara la
         // ventana y el detector de palabra clave no tendria a quien invocar.
         .on_window_event(|ventana, evento| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = evento {
-                if bandeja::ocultar_en_vez_de_cerrar(ventana) {
-                    api.prevent_close();
+            match evento {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    if bandeja::ocultar_en_vez_de_cerrar(ventana) {
+                        api.prevent_close();
+                    }
                 }
+                // Una corteza muerta deja su ficha huerfana: sin esto, cada
+                // apertura de proyecto acumularia una entrada diminuta para
+                // siempre. Las etiquetas de corteza empiezan por proyecto- o
+                // grafo-; las de Perseo, no.
+                tauri::WindowEvent::Destroyed => {
+                    let etiqueta = ventana.label();
+                    if etiqueta.starts_with("proyecto-") || etiqueta.starts_with("grafo-") {
+                        if let Some(estado) = ventana
+                            .app_handle()
+                            .try_state::<panel::EstadoCorteza>()
+                        {
+                            if let Ok(mut mapa) = estado.0.lock() {
+                                mapa.remove(&etiqueta.to_string());
+                            }
+                        }
+                    }
+                }
+                _ => {}
             }
         })
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_screenshots::init())
         .plugin(tauri_plugin_opener::init())
+        .manage(panel::EstadoCorteza::default())
         .invoke_handler(tauri::generate_handler![
             commands::capture_screen_base64,
             commands::geometria_pantalla,
@@ -39,6 +62,12 @@ pub fn run() {
             commands::consumir_autollamada,
             nucleo::ejecutar_herramienta,
             nucleo::precalentar_herramientas,
+            nucleo::biometria_estado,
+            nucleo::biometria_voz,
+            nucleo::biometria_cara,
+            nucleo::biometria_enrolar,
+            nucleo::biometria_renombrar,
+            nucleo::biometria_borrar,
             panel::panel_estado,
             panel::panel_trabajos,
             panel::panel_trabajo,
@@ -49,7 +78,15 @@ pub fn run() {
             panel::panel_marcar_correo,
             panel::panel_proyectos,
             panel::panel_abrir_proyecto,
-            panel::panel_mensaje
+            panel::ventana_proyecto,
+            panel::ventana_grafo,
+            panel::corteza_parametros,
+            panel::panel_mensaje,
+            panel::chat_sesiones,
+            panel::chat_crear,
+            panel::chat_sesion,
+            panel::chat_borrar,
+            panel::chat_hablar
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -26,6 +26,19 @@ sys.path.insert(0, str(RAIZ))
 from perseo_core import almacen  # noqa: E402
 
 
+def _vault_de_verdad() -> Path | None:
+    """Dónde está el vault grande de verdad: una carpeta de Documents con su
+    `.obsidian` dentro. El de dentro de Perseo es el de fábrica de la memoria,
+    no el segundo cerebro que se mira en el grafo."""
+    documentos = Path.home() / "Documents"
+    if not documentos.is_dir():
+        return None
+    for carpeta in sorted(documentos.iterdir()):
+        if carpeta.is_dir() and (carpeta / ".obsidian").is_dir():
+            return carpeta
+    return None
+
+
 def ajustes_recomendados(datos: Path, hay_tailscale: bool) -> dict[str, str]:
     """Qué poner en `entorno.json` según lo que esté configurado.
 
@@ -42,6 +55,12 @@ def ajustes_recomendados(datos: Path, hay_tailscale: bool) -> dict[str, str]:
 
     if (datos / "obsidian.txt").is_file():
         ajustes["PERSEO_VAULT"] = "rest"
+
+    # Con el vault por el plugin, Obsidian sabe dónde está el suyo; el grafo del
+    # segundo cerebro lee el disco directamente y necesita la ruta por escrito.
+    vault = _vault_de_verdad()
+    if vault:
+        ajustes["OBSIDIAN_VAULT_PATH"] = str(vault)
 
     if (datos / "google.json").is_file():
         credenciales = {}

@@ -16,6 +16,7 @@ import { audioManager } from './lib/audio-manager';
 import { audioPlayer } from './lib/audio-player';
 import { cameraManager } from './lib/camera-manager';
 import { screenManager } from './lib/screen-manager';
+import { vigilante, type CaraDetectada } from './lib/identidad';
 import { defaultConfig, cargarAjustesPersistidos, type AspectoLive } from './lib/config';
 
 // ── Types ──
@@ -36,6 +37,13 @@ const ahoraCorta = () =>
 const MAX_MENSAJES = 400;   // tope de memoria de una sesión
 const MENSAJES_VISIBLES = 40;
 
+/** Un aviso que nadie atendió: qué dijo y cuándo se apuntó. */
+type LlamadaPendiente = { id: number; texto: string; cuando: string };
+
+const CLAVE_PENDIENTES_LLAMADAS = 'perseo-llamadas-pendientes';
+/** Cuánto suena la campana antes de rendirse y apuntar la llamada. */
+const PLAZO_AVISO_MS = 45_000;
+
 function App() {
   const [connectionState, setConnectionState] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
   // El oyente de autollamada se registra una vez y vive todo el rato, así que
@@ -43,6 +51,13 @@ function App() {
   // cuando se montó. La referencia sí está siempre al día.
   const connectionStateRef = useRef(connectionState);
   connectionStateRef.current = connectionState;
+  // Instante del arranque de la interfaz. Los primeros segundos son «apertura»:
+  // si el vigilante de Rust gana la carrera al marcador que el detector dejó
+  // justo antes de lanzar la app, el evento llegaría aquí con motivo vacío y
+  // sería una llamada al abrirse disfrazada de evento — justo lo que ya no se
+  // quiere. Dentro de esa ventana un marcador vacío no entra en llamada; uno
+  // con motivo (subagente) suena igual siempre.
+  const instanteArranque = useRef(Date.now());
   const [transcripts, setTranscripts] = useState<TranscriptMsg[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -77,8 +92,41 @@ function App() {
   const [pendientes, setPendientes] = useState<{ id: number; pregunta: string }[]>([]);
   /** Aviso de subagente terminado, esperando que se acepte o se deje para luego. */
   const [avisoEntrante, setAvisoEntrante] = useState<string | null>(null);
+  // Reconocimiento de personas (biometría local): quién habla ahora y qué
+  // caras hay en el último fotograma analizado. Ambas cosas las decide el
+  // núcleo; aquí solo se pintan. Ver lib/identidad.ts.
+  const [hablante, setHablante] = useState<string | null>(null);
+  const [caras, setCaras] = useState<CaraDetectada[]>([]);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
+
+  // Anti-martilleo del aviso de identidad al modelo: sin esto, cada pausa de
+  // 4,5 s del watchdog del vigilante limpiaría el hablante y al volver a hablar
+  // reinyectaría «ahora habla Persus» una y otra vez. Mismo texto dentro de un
+  // minuto no se repite; texto distinto (voz/cara) pasa siempre la primera vez.
+  // Y solo con sesión viva: si llega un resultado cuando el socket ya cayó, se
+  // descarta — encolarlo era que saliera horas después en otra llamada.
+  const conectadoRef = useRef(false);
+  const ultimaIdentidad = useRef<{ texto: string; cuando: number }>({ texto: '', cuando: 0 });
+  const carasVistas = useRef('');
+  /** Las etiquetas provisionales van marcadas como tales: sin esto el modelo
+   *  recibía «Desconocido 1» y podía saludar así a la persona. */
+  const etiquetaParaElModelo = (nombre: string): string =>
+    nombre.startsWith('Desconocido')
+      ? `${nombre} (etiqueta provisional, aún no sabemos su nombre)`
+      : nombre;
+  const avisarIdentidad = (texto: string) => {
+    if (!conectadoRef.current) return;
+    const ahora = Date.now();
+    if (
+      ultimaIdentidad.current.texto === texto &&
+      ahora - ultimaIdentidad.current.cuando < 60_000
+    ) {
+      return;
+    }
+    ultimaIdentidad.current = { texto, cuando: ahora };
+    geminiClient.informarIdentidad(texto);
+  };
 
   // Espejo del estado para poder leerlo desde callbacks sin recrearlos.
   // Antes había dos almacenes en paralelo (un ref y un estado) y se
@@ -86,6 +134,11 @@ function App() {
   // que emite handleReconnect antes de reconectar, así que el historial que se
   // inyectaba al reconectar siempre estaba vacío. Ver H-06.
   const conversacionRef = useRef<TranscriptMsg[]>([]);
+  // Dónde empieza el episodio en curso: la transcripción anterior a esa marca
+  // no viaja al prompt ni en reconexión. Lo pide el arreglo del 2026-08-24 —
+  // Perseo arrastraba avisos de llamadas previas («el s5 terminó») a cada
+  // llamada nueva.
+  const inicioEpisodio = useRef(0);
   useEffect(() => { conversacionRef.current = transcripts; }, [transcripts]);
 
   /** Persiste la conversación como Markdown en el vault, donde el RAG la indexa
@@ -114,6 +167,9 @@ function App() {
         if (sesionDesde.current === null) sesionDesde.current = Date.now();
         audioManager.start(); // Reactivar el micrófono al reconectar
         if (defaultConfig.cameraEnabled) cameraManager.start();
+        // Reconocimiento de personas: solo si está encendido en Ajustes. Se
+        // rearma en cada reconexión porque 'disconnected' lo apaga siempre.
+        if (defaultConfig.identidadActivada) vigilante.activar();
         // La vista de la pantalla ya no se pide: si el ajuste no dice lo
         // contrario, Perseo la ve desde el primer segundo de la llamada. Es lo
         // que hace de esto un agente — mirar sin que le den las cosas.
@@ -130,10 +186,19 @@ function App() {
           console.warn('[Confianza] No se pudo activar:', e)
         );
         addTranscript('system', 'Conectado.');
+        conectadoRef.current = true;
       } else if (state === 'disconnected' || state === 'error') {
         audioManager.stop();
         cameraManager.stop();
         screenManager.stop();
+        vigilante.desactivar();
+        conectadoRef.current = false;
+        setHablante(null);
+        setCaras([]);
+        // Nueva llamada, presentación nueva: sin esto, si la misma cara sigue
+        // delante al reconectar nadie se lo diría otra vez al modelo.
+        carasVistas.current = '';
+        ultimaIdentidad.current = { texto: '', cuando: 0 };
         setCameraStream(null);
         setIsSpeaking(false);
         // La conversación NO se borra aquí: 'disconnected' también se emite en
@@ -166,6 +231,38 @@ function App() {
     audioManager.onStreamReady = () => addTranscript('system', 'Micrófono activo.');
     audioManager.onError = (err) => addTranscript('system', err);
     cameraManager.onStreamReady = (stream) => setCameraStream(stream);
+    // Biometría: la app transporta, el núcleo reconoce, aquí se pinta. La
+    // etiqueta de voz entra también en la bitácora: es el registro de quién
+    // dijo qué cuando lo lea alguien dentro de un rato.
+    audioManager.onTrozoPCM = (trozo) => vigilante.consumirAudio(trozo);
+    cameraManager.onFotograma = (base64) => vigilante.consumirFotograma(base64);
+    vigilante.onHablante = (nombre) => {
+      setHablante(nombre);
+      if (nombre) {
+        addTranscript('system', `Habla ${nombre}.`);
+        avisarIdentidad(`[IDENTIDAD] Ahora habla ${etiquetaParaElModelo(nombre)}.`);
+      }
+    };
+    vigilante.onCaras = (lista) => {
+      setCaras(lista);
+      // Solo cuando cambia QUIÉN está delante, no cada fotograma: el modelo
+      // no necesita el mismo aviso cada cuatro segundos. Las caras sin nombre
+      // se descartan del aviso: sin el filtro saldría un literal «null».
+      const nombres = lista
+        .map(c => c.nombre)
+        .filter((n): n is string => !!n)
+        .map(etiquetaParaElModelo)
+        .sort()
+        .join(', ');
+      if (nombres) {
+        if (nombres !== carasVistas.current) {
+          carasVistas.current = nombres;
+          avisarIdentidad(`[IDENTIDAD] Delante de la cámara: ${nombres}.`);
+        }
+      } else {
+        carasVistas.current = '';
+      }
+    };
   
     audioPlayer.onVolumeChange = (v) => {
       volumenCrudo.current = v;
@@ -178,9 +275,13 @@ function App() {
     // Historial que se reinyecta en el prompt al reconectar. Ahora incluye
     // también lo que dijo el usuario, porque la transcripción de entrada ya
     // está activada (H-05); antes solo se recuperaba el monólogo de Perseo.
+    // Solo el EPISODIO actual: una llamada nueva no hereda la transcripción
+    // de las anteriores, o Perseo llegaría creyendo que sigue en la de antes
+    // — el mismo porqué de matar el testigo al colgar.
     geminiClient.getConversationHistory = () => {
       if (!defaultConfig.saveHistoryEnabled) return "";
       const texto = conversacionRef.current
+        .slice(inicioEpisodio.current)
         .filter(m => m.type !== 'system' && m.text.trim())
         .map(m => (m.type === 'ai' ? `Perseo: "${m.text}"` : `Señor Persus: "${m.text}"`))
         .join('\n');
@@ -194,6 +295,7 @@ function App() {
       audioManager.stop();
       cameraManager.stop();
       screenManager.stop();
+      vigilante.desactivar();
     };
   }, []);
 
@@ -238,19 +340,24 @@ function App() {
     setAvisoEntrante(prev => (prev ? `${prev}\n${motivo}` : motivo));
   };
 
-  // Auto-llamada cuando la app se abre desde el detector de aplausos.
-  // La señal se consume en tiempo de ejecución desde Rust (un fichero marcador
-  // que se borra al leerlo), no con un JSON importado estáticamente: Vite
-  // congelaba ese valor al compilar, así que en producción el disparo por
-  // aplausos no funcionaba, y además nunca volvía a false. Ver H-09.
+  // Señal pendiente cuando la app se abre. La señal se consume desde Rust (un
+  // fichero marcador que se borra al leerlo), no con un JSON importado
+  // estáticamente: Vite congelaba ese valor al compilar, así que en producción
+  // el disparo por aplausos no funcionaba, y además nunca volvía a false.
+  // Ver H-09.
+  //
+  // Al abrirse ya NO hay llamada sola (encargo del señor Persus, 2026-08-24):
+  // el marcador vacío de la palabra clave o del aplauso se consume y basta —
+  // la ventana ya está al frente y la llamada empieza cuando él pulse. Solo
+  // un motivo escrito (un subagente terminó) suena el timbre, que no es una
+  // entrada automática: la decisión sigue siendo suya.
   useEffect(() => {
     if (!apiKeyReady || connectionState !== 'disconnected') return;
 
     let cancelado = false;
-    const lanzar = () => { if (!cancelado) handleCall(); };
     invoke<string>('consumir_autollamada').then(motivo => {
-      if (cancelado) return;
-      atenderMarcador(motivo || '', lanzar);
+      if (cancelado || !motivo) return;
+      atenderMarcador(motivo, handleCall);
     }).catch(e => console.warn('[AutoLlamada] No se pudo comprobar la señal:', e));
 
     return () => { cancelado = true; };
@@ -269,6 +376,8 @@ function App() {
       // Si ya está en llamada no se hace nada: la palabra clave sirve para
       // empezar una conversación, no para cortar la que hay.
       if (connectionStateRef.current !== 'disconnected') return;
+      // Recién abierto tampoco: ver `instanteArranque`.
+      if (!evento.payload && Date.now() - instanteArranque.current < 4000) return;
       atenderMarcador(evento.payload || '', () => { if (!cancelado) handleCall(); });
     });
 
@@ -351,10 +460,43 @@ function App() {
     });
   };
 
-  // El timbre suena mientras haya un aviso de subagente sin resolver.
+  // Llamadas pendientes: avisos que nadie atendió a tiempo o que se dejaron
+  // para después. Viven en localStorage para sobrevivir a reinicios de la app,
+  // y desde la lista se pueden atender (llamada con su motivo) o quitar.
+  const [llamadasPendientes, setLlamadasPendientes] = useState<LlamadaPendiente[]>(() => {
+    try {
+      const guardadas = JSON.parse(localStorage.getItem(CLAVE_PENDIENTES_LLAMADAS) || '[]');
+      return Array.isArray(guardadas) ? guardadas : [];
+    } catch {
+      return [];
+    }
+  });
   useEffect(() => {
-    if (avisoEntrante) sonar(); else callar();
-    return () => callar();
+    localStorage.setItem(CLAVE_PENDIENTES_LLAMADAS, JSON.stringify(llamadasPendientes));
+  }, [llamadasPendientes]);
+
+  const apuntarPendiente = (texto: string) => {
+    setLlamadasPendientes(prev => [
+      ...prev,
+      { id: Date.now(), texto, cuando: ahoraCorta() },
+    ]);
+  };
+
+  // El timbre suena mientras haya un aviso de subagente sin resolver. Sin
+  // respuesta en PLAZO_AVISO_MS el aviso NO se pierde: cae a llamadas
+  // pendientes y la campana calla — nada de timbre eterno.
+  useEffect(() => {
+    if (!avisoEntrante) return;
+    sonar();
+    const plazo = window.setTimeout(() => {
+      apuntarPendiente(avisoEntrante);
+      addTranscript('system', 'Sin respuesta: la llamada queda en pendientes.');
+      setAvisoEntrante(null);
+    }, PLAZO_AVISO_MS);
+    return () => {
+      callar();
+      window.clearTimeout(plazo);
+    };
   }, [avisoEntrante]);
 
   const atenderAviso = () => {
@@ -366,13 +508,29 @@ function App() {
 
   const dejarAvisoParaDespues = () => {
     if (!avisoEntrante) return;
-    geminiClient.anadirPendiente(`Pendiente de contarte: ${avisoEntrante}`);
-    addTranscript('system', `Queda pendiente para la próxima: ${avisoEntrante}`);
+    apuntarPendiente(avisoEntrante);
+    addTranscript('system', 'Queda en llamadas pendientes.');
     setAvisoEntrante(null);
+  };
+
+  /** Atiende una pendiente de la lista: llamada nueva con su motivo. */
+  const atenderPendiente = (id: number) => {
+    const pendiente = llamadasPendientes.find(p => p.id === id);
+    if (!pendiente || connectionStateRef.current !== 'disconnected') return;
+    setLlamadasPendientes(lista => lista.filter(p => p.id !== id));
+    geminiClient.contextoPendiente = pendiente.texto;
+    handleCall();
+  };
+
+  const quitarPendiente = (id: number) => {
+    setLlamadasPendientes(lista => lista.filter(p => p.id !== id));
   };
 
   const handleCall = () => {
     if (!defaultConfig.geminiApiKey) { addTranscript('system', 'API Key no configurada. Pulsa ⚙.'); return; }
+    // Empieza un EPISODIO: lo que se hable aquí es lo único que se reinyecta
+    // si la red corta a mitad — la transcripción de llamadas anteriores no.
+    inicioEpisodio.current = conversacionRef.current.length;
     audioPlayer.initialize();
     audioManager.start();
     geminiClient.connect();
@@ -472,7 +630,7 @@ function App() {
 
       {/* La llamada entrante de un subagente: timbre y decisión del señor
           Persus. Nada de entrar solos — él acepta o lo deja para después, y
-          en ese caso el resultado espera a la próxima conversación. */}
+          si no contesta a tiempo cae sola a llamadas pendientes. */}
       {avisoEntrante && (
         <div className="aviso-capa">
           <div className="aviso-caja">
@@ -489,18 +647,40 @@ function App() {
         </div>
       )}
 
+      {/* Llamadas pendientes: avisos rechazados o sin respuesta. Cada uno se
+          atiende cuando él quiera (llamada con su motivo) o se tira. */}
+      {!avisoEntrante && llamadasPendientes.length > 0 && (
+        <div className="pendientes-caja">
+          <div className="pendientes-titulo">
+            Llamadas pendientes ({llamadasPendientes.length})
+          </div>
+          <ul className="pendientes-lista">
+            {llamadasPendientes.map(p => (
+              <li key={p.id} className="pendientes-fila">
+                <span className="pendientes-hora">{p.cuando}</span>
+                <span className="pendientes-texto">{p.texto}</span>
+                <span className="pendientes-acciones">
+                  <button onClick={() => atenderPendiente(p.id)} disabled={connectionState !== 'disconnected'}>
+                    Atender
+                  </button>
+                  <button onClick={() => quitarPendiente(p.id)}>Quitar</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* El riel de arriba —panel, ajustes y los botones de la ventana— y la
           pestaña de proyectos. Ver components/Marco.tsx. */}
       <Marco
         onPanel={() => setShowPanel(true)}
         onAjustes={() => setShowSettings(true)}
-        // La pestaña de proyectos se queda VISTA pero MUERTA (encargo del
-        // señor Persus, 2026-08-23: «cuando lo pulses haz que no haga nada
-        // por ahora porque esto lo vamos a modificar»). El apartado entero —
-        // tira, componente y comando de Rust `panel_abrir_proyecto`— sigue
-        // en pie; volver a enchufarlo es restaurar esta línea:
-        //   onProyectos={() => setShowProyectos(v => !v)}
-        onProyectos={() => {}}
+        // La pestaña vuelve a estar viva (encargo del señor Persus, 2026-08-24):
+        // pulsar una ficha arranca los servidores del proyecto — modo
+        // `servicio` en perseo_core/proyectos.py — y la pestaña del navegador
+        // se abre sola cuando el puerto contesta.
+        onProyectos={() => setShowProyectos(v => !v)}
         proyectosAbiertos={showProyectos}
       />
 
@@ -511,9 +691,35 @@ function App() {
           <div className="camera-pip">
             <video ref={cameraVideoRef} autoPlay playsInline muted />
             <span className="pip-etiqueta">Cámara</span>
+            {/* Etiquetas de reconocimiento: la caja la da YuNet sobre 640x480,
+                que es exactamente lo que captura camera-manager, así que los
+                porcentajes caen donde toca sin medir el vídeo real. */}
+            {caras.map((cara, i) => (
+              <div
+                key={`${cara.nombre}-${i}`}
+                className={`cara-marco ${cara.aprendiendo ? 'cara-aprendiendo' : ''}`}
+                style={{
+                  left: `${(cara.caja[0] / 640) * 100}%`,
+                  top: `${(cara.caja[1] / 480) * 100}%`,
+                  width: `${(cara.caja[2] / 640) * 100}%`,
+                  height: `${(cara.caja[3] / 480) * 100}%`,
+                }}
+              >
+                <span>{cara.nombre ?? '…'}</span>
+              </div>
+            ))}
           </div>
         )}
       </div>
+
+      {/* Quién habla ahora mismo, según su voz. El núcleo lo decide; este chip
+          se apaga solo a los pocos segundos de silencio. */}
+      {hablante && isActive && (
+        <div className="hablante-chip">
+          <span className="hablante-punto" />
+          {hablante}
+        </div>
+      )}
 
       {/* Center */}
       <div className="call-center">
@@ -571,7 +777,7 @@ function App() {
 
       {/* La tira de proyectos. Se despliega sobre la barra de controles y no
           toca la llamada: abrir un proyecto no corta la sesión de voz. */}
-      <Proyectos abierto={showProyectos} onCerrar={() => setShowProyectos(false)} />
+      <Proyectos abierto={showProyectos} onCerrar={() => setShowProyectos(false)} aspecto={aspecto} />
 
       {/* Controls. La vista de pantalla ya no tiene botón: es automática al
           conectar (pantallaAuto) y un interruptor para algo que siempre está

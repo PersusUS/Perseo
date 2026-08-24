@@ -164,6 +164,28 @@ export class GeminiLiveClient {
   }
 
   /**
+   * Aviso de identidad en vivo («ahora habla Persus», «delante hay X e Y»).
+   * Va por realtime-input, el mismo canal barato que los trozos de audio y el
+   * motivo de llamada: una línea de texto sobre el WebSocket ya abierto, sin
+   * petición nueva ni interrupción del sonido. Si la sesión está cerrada se
+   * guarda para entregarse al abrir, igual que `entregarAlAbrir`.
+   */
+  informarIdentidad(texto: string): void {
+    if (!texto) return;
+    try {
+      if (typeof (this.session as any)?.sendRealtimeInput === 'function') {
+        (this.session as any).sendRealtimeInput({ text: texto });
+        return;
+      }
+    } catch (e) {
+      console.warn('[Gemini] Identidad sin entregar en vivo; queda pendiente:', e);
+    }
+    this.entregarAlAbrir = this.entregarAlAbrir
+      ? `${this.entregarAlAbrir}\n${texto}`
+      : texto;
+  }
+
+  /**
    * El cliente del SDK, construido con la clave que haya **ahora**.
    *
    * No se construye en el constructor a propósito. Este módulo exporta una
@@ -826,6 +848,14 @@ export class GeminiLiveClient {
     // persona, así que no arrastra la espera larga que hubiera acumulado el
     // bucle automático.
     this.retryCount = 0;
+    // Y colgar mata la SESIÓN. Si el testigo sobreviviera al colgar, la
+    // siguiente llamada resucitaría esta conversación entera: el modelo
+    // creería seguir a mitad de ella — le pasó al señor Persus el 2026-08-24,
+    // anunciando en cada llamada nueva que «el s5 había terminado». El testigo
+    // es para las RECONEXIONES automáticas de mitad de llamada, que no pasan
+    // por aquí; para cruzar de una llamada a otra, no.
+    this.testigoSesion = null;
+    localStorage.removeItem(CLAVE_TESTIGO);
 
     if (this.session) {
        try {

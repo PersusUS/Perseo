@@ -26,7 +26,22 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { CONSTRUCCION, EN_DESARROLLO } from '../lib/version';
 
-type Pestana = 'chat' | 'cola' | 'correo' | 'memoria' | 'estado';
+type Pestana = 'chat' | 'agentes' | 'cola' | 'correo' | 'memoria' | 'estado';
+
+/** Una conversación del chat escrito. `turno` es el semáforo que vive en el
+ *  núcleo: mientras esté «ocupado», esta vista sondea el texto creciente. */
+type Sesion = { id: number; titulo: string; turno: string; actualizado_en: string };
+
+/** Un mensaje del chat. El de Perseo nace vacío con estado `escribiendo` y su
+ *  texto va creciendo en la base mientras el turno trabaja. */
+type Mensaje = {
+  id: number;
+  rol: 'usuario' | 'perseo';
+  texto: string;
+  herramientas: string[];
+  estado: string;
+  momento: string;
+};
 
 type Trabajo = {
   id: number;
@@ -60,6 +75,17 @@ type Estado = {
 };
 
 const ESTADOS_ABIERTOS = new Set(['pendiente', 'en_curso', 'esperando']);
+
+/** Lo que se lee en la barra, que no tiene por qué ser el identificador
+ *  interno: «agentes» no decía nada de qué va la pestaña. */
+const NOMBRES_PESTANA: Record<Pestana, string> = {
+  chat: 'chat',
+  agentes: 'encargos',
+  cola: 'cola',
+  correo: 'correo',
+  memoria: 'memoria',
+  estado: 'estado',
+};
 
 /** Cada cuánto se repregunta mientras el panel está delante.
  *  Se sondea en vez de escuchar el flujo SSE: el flujo se autentica por cookie y
@@ -490,13 +516,320 @@ const TarjetaTrabajo: React.FC<{ t: Trabajo; onResponder: (id: number, d: string
   );
 };
 
+/** El chat escrito, la otra mitad de hablar.
+ *
+ *  Ya no va por `/mensaje` (el router local contestaba sin herramientas ni
+ *  memoria): ahora cada turno es un trabajo para el agente `chat`, que piensa
+ *  con Gemini y usa las MISMAS herramientas que la voz —agenda, buzón triado,
+ *  memoria, web, PC, MCP, subagentes—. La vista solo encola y sondea: las caras
+ *  no piensan. */
+const ChatTab: React.FC = () => {
+  const [sesiones, setSesiones] = useState<Sesion[]>([]);
+  const [sesion, setSesion] = useState<number | null>(null);
+  const [mensajes, setMensajes] = useState<Mensaje[]>([]);
+  const [turno, setTurno] = useState<string>('libre');
+  const [escrito, setEscrito] = useState('');
+  const [aviso, setAviso] = useState('');
+  /** El carril por el que scrollea la conversación y si estábamos abajo.
+   *  Empujar a abajo en cada trozo arrastraba a quien había subido a releer:
+   *  solo se sigue al final cuando ya se estaba cerca o al enviar. */
+  const hiloRef = useRef<HTMLDivElement | null>(null);
+  const pegadoAbajoRef = useRef(true);
+
+  const cargarSesiones = useCallback(async (preferir?: number) => {
+    try {
+      const datos = await invoke<{ sesiones: Sesion[] }>('chat_sesiones');
+      setSesiones(datos.sesiones);
+      setSesion(actual => {
+        if (actual != null && datos.sesiones.some(s => s.id === actual)) return actual;
+        if (preferir != null && datos.sesiones.some(s => s.id === preferir)) return preferir;
+        return datos.sesiones[0]?.id ?? null;
+      });
+    } catch (e: any) {
+      setAviso(String(e));
+    }
+  }, []);
+
+  /** Sondea mientras hay un turno en marcha. El texto de Perseo crece en la
+   *  base; aquí se ve crecer en pantalla. Cuando el semáforo vuelve a «libre»,
+   *  el sondeo se para solo. */
+  useEffect(() => {
+    if (sesion == null) return;
+    let vivo = true;
+    let temporizador: number | undefined;
+
+    const mirar = async () => {
+      try {
+        const datos = await invoke<Sesion & { mensajes: Mensaje[] }>('chat_sesion', { id: sesion });
+        if (!vivo) return;
+        setMensajes(datos.mensajes);
+        setTurno(datos.turno);
+        setAviso('');
+        if (datos.turno !== 'ocupado') return;
+      } catch (e: any) {
+        if (vivo) setAviso(String(e));
+      }
+      temporizador = window.setTimeout(mirar, 700);
+    };
+
+    mirar();
+    return () => { vivo = false; if (temporizador) clearTimeout(temporizador); };
+  }, [sesion, turno]);
+
+  // La última burbuja a la vista, pero solo si ya se miraba abajo: llegar un
+  // trozo nuevo no autoriza a secuestrar el scroll de quien subió a releer.
+  useEffect(() => {
+    const hilo = hiloRef.current;
+    if (!hilo || !pegadoAbajoRef.current) return;
+    hilo.scrollTop = hilo.scrollHeight;
+  }, [mensajes, aviso]);
+
+  // Cambiar de conversación empieza abajo: la posición de scroll era de la
+  // otra charla y no significa nada aquí.
+  useEffect(() => {
+    pegadoAbajoRef.current = true;
+    const hilo = hiloRef.current;
+    if (hilo) hilo.scrollTop = hilo.scrollHeight;
+  }, [sesion]);
+
+  const enviar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const texto = escrito.trim();
+    if (!texto || sesion == null || turno === 'ocupado') return;
+    setEscrito('');
+    // Lo que acabas de mandar se ve siempre, aunque estuvieras leyendo arriba.
+    pegadoAbajoRef.current = true;
+    try {
+      await invoke('chat_hablar', { id: sesion, texto });
+      const datos = await invoke<Sesion & { mensajes: Mensaje[] }>('chat_sesion', { id: sesion });
+      setMensajes(datos.mensajes);
+      setTurno(datos.turno);
+      setAviso('');
+    } catch (err: any) {
+      setAviso(String(err));
+    }
+  };
+
+  const nueva = async () => {
+    try {
+      const nueva_sesion = await invoke<Sesion>('chat_crear');
+      await cargarSesiones(nueva_sesion.id);
+    } catch (err: any) {
+      setAviso(String(err));
+    }
+  };
+
+  const borrar = async (id: number) => {
+    try {
+      await invoke('chat_borrar', { id });
+      await cargarSesiones();
+    } catch (err: any) {
+      setAviso(String(err));
+    }
+  };
+
+  useEffect(() => { cargarSesiones(); }, [cargarSesiones]);
+
+  const ocupado = turno === 'ocupado';
+  const pensando = ocupado && (!mensajes.length || mensajes[mensajes.length - 1].estado === 'escribiendo');
+
+  return (
+    <div className="pnl-chat">
+      <aside className="pnl-chat-sesiones">
+        <button className="pnl-pildora pnl-chat-nueva" onClick={nueva}>Nueva conversación</button>
+        <div className="pnl-chat-lista">
+          {sesiones.map(s => (
+            <div key={s.id} className={'pnl-chat-sesion' + (s.id === sesion ? ' activa' : '')}>
+              <button onClick={() => setSesion(s.id)} title={s.titulo}>
+                {s.titulo || 'Conversación'}
+              </button>
+              {s.id === sesion && !ocupado && (
+                <span className="pnl-chat-borrar" title="Borrar" onClick={() => borrar(s.id)}>×</span>
+              )}
+            </div>
+          ))}
+          {sesiones.length === 0 && <div className="pnl-nota">Ninguna conversación todavía.</div>}
+        </div>
+      </aside>
+
+      <div
+        className="pnl-chat-hilo"
+        ref={hiloRef}
+        onScroll={() => {
+          const hilo = hiloRef.current;
+          if (!hilo) return;
+          pegadoAbajoRef.current = hilo.scrollHeight - hilo.scrollTop - hilo.clientHeight < 120;
+        }}
+      >
+        {mensajes.length === 0 && (
+          <div className="pnl-nota">
+            Escríbele. Tiene las mismas manos que en la llamada: agenda, buzón
+            triado, memoria, web, PC, MCP y subagentes. Lo que haga aparece en la cola.
+          </div>
+        )}
+        {mensajes.map(m => (
+          <div key={m.id} className={`pnl-turno ${m.rol === 'usuario' ? 'mio' : 'suyo'}`}>
+            <div className="pnl-turno-cabeza">
+              <span>{m.rol === 'usuario' ? 'Señor Persus' : 'Perseo'}</span>
+              <span className="pnl-turno-hora">
+                {new Date(m.momento).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
+            <div className={'pnl-burbuja ' + (m.rol === 'usuario' ? 'mia' : 'suya')}>
+              {m.texto}
+              {m.estado === 'escribiendo' && m.texto && <span className="pnl-cursor" />}
+            </div>
+            {m.herramientas?.length > 0 && (
+              <div className="pnl-herramientas">
+                {m.herramientas.map((h, i) => <span key={i} className="pnl-ficha">{h}</span>)}
+              </div>
+            )}
+          </div>
+        ))}
+        {pensando && (
+          <div className="pnl-burbuja suya pensando"><span /><span /><span /></div>
+        )}
+        {aviso && <div className="pnl-nota">{aviso}</div>}
+        <form className="pnl-form pnl-chat-form" onSubmit={enviar}>
+          <input
+            value={escrito}
+            onChange={e => setEscrito(e.target.value)}
+            placeholder={ocupado ? 'Perseo está escribiendo…' : 'Escribe a Perseo…'}
+            disabled={ocupado}
+          />
+          <button type="submit" disabled={ocupado}>Enviar</button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+/** Los encargos de código, lanzados desde el panel.
+ *
+ *  Un encargo se escribe COMO SE HABLA: «En Armario, añade un README con
+ *  opencode». El núcleo entiende el proyecto y el motor desde el propio
+ *  texto — la vista no pregunta nada, solo manda el encargo. Las caras no
+ *  piensan: el que lee y decide es `dev.py`.
+ *
+ *  El señor Persus tachó los desplegables el 2026-08-24 —*«no me gusta cómo
+ *  se ve el elegir opciones»*— y pidió que el dónde se dijera en la entrada.
+ *  Antes de eso había dos selects que nadie sabía rellenar. */
+const EJEMPLOS_ENCARGO = [
+  'En CVScraper: ejecuta los tests, arregla los que fallen y cuenta qué pasaba.',
+  'Añade un README con qué es este proyecto y cómo arrancarlo.',
+  'Con claude: revisa la pestaña de ajustes y propón cómo hacerla más clara.',
+];
+
+const AgentesTab: React.FC<{ onEncargado: () => void }> = ({ onEncargado }) => {
+  const [tarea, setTarea] = useState('');
+  const [aviso, setAviso] = useState('');
+  const [encargos, setEncargos] = useState<Trabajo[]>([]);
+
+  const cargar = useCallback(async () => {
+    try {
+      const datos = await invoke<{ trabajos: Trabajo[] }>('panel_trabajos', { limite: 50 });
+      setEncargos(datos.trabajos.filter(t => t.agente === 'dev'));
+    } catch (e: any) {
+      setAviso(String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    cargar();
+    const t = setInterval(cargar, REFRESCO);
+    return () => clearInterval(t);
+  }, [cargar]);
+
+  const lanzar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const texto = tarea.trim();
+    if (!texto) { setAviso('Escribe primero qué tiene que hacer.'); return; }
+    try {
+      const trabajo = await invoke<Trabajo>('panel_encolar', { agente: 'dev', peticion: { texto } });
+      setTarea('');
+      setAviso(`Encargo #${trabajo.id} en marcha. Puede tardar minutos: trabaja solo.`);
+      onEncargado();
+    } catch (err: any) {
+      setAviso('No se pudo lanzar: ' + err);
+    }
+  };
+
+  // Tres montones, leídos como los lee una persona: lo que va, lo que espera
+  // tu decisión y lo que ya terminó. La cola cruda está en su pestaña; aquí
+  // solo importa el ciclo de vida de UN encargo.
+  const enMarcha = encargos.filter(t => t.estado === 'pendiente' || t.estado === 'en_curso');
+  const esperando = encargos.filter(t => t.estado === 'esperando');
+  const terminados = encargos.filter(t => !ESTADOS_ABIERTOS.has(t.estado));
+
+  const tarjeta = (t: Trabajo) => (
+    <TarjetaTrabajo key={t.id} t={t} onResponder={(id, d) => {
+      invoke('panel_responder', { id, decision: d }).then(cargar).catch(() => {});
+    }} />
+  );
+
+  return (
+    <>
+      <div className="pnl-tarjeta pnl-agentes-form">
+        <div className="pnl-cabeza">Encargos de código</div>
+        <div className="pnl-detalle">
+          Escribe el encargo como se habla: el proyecto va en el texto
+          («en CVScraper…») y el motor si quieres elegirlo («con opencode»,
+          «con claude»). Sin nada de eso: raíz de Perseo y opencode.
+        </div>
+      </div>
+
+      <form className="pnl-tarjeta pnl-agentes-form" onSubmit={lanzar}>
+        <textarea
+          value={tarea}
+          onChange={e => setTarea(e.target.value)}
+          rows={4}
+          placeholder="P. ej.: «En Armario, añade un README con cómo arrancarlo»."
+        />
+        {!tarea && (
+          <div className="pnl-ejemplos">
+            {EJEMPLOS_ENCARGO.map(ejemplo => (
+              <button
+                key={ejemplo}
+                type="button"
+                className="pnl-ficha pnl-ejemplo"
+                onClick={() => setTarea(ejemplo)}
+              >
+                {ejemplo}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="pnl-acciones">
+          <button type="submit" className="pnl-pildora aprobar">Lanzar encargo</button>
+          {aviso && <span className="pnl-detalle">{aviso}</span>}
+        </div>
+      </form>
+
+      {encargos.length === 0 ? (
+        <div className="pnl-nota">
+          Ningún encargo todavía. Lanza el primero con un ejemplo de arriba.
+        </div>
+      ) : (
+        <>
+          {(enMarcha.length > 0 || esperando.length > 0) && (
+            <div className="pnl-seccion">En marcha ({enMarcha.length + esperando.length})</div>
+          )}
+          {enMarcha.map(tarjeta)}
+          {esperando.map(tarjeta)}
+
+          {terminados.length > 0 && (
+            <div className="pnl-seccion">Terminados ({terminados.length})</div>
+          )}
+          {terminados.map(tarjeta)}
+        </>
+      )}
+    </>
+  );
+};
+
 export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
   const [pestana, setPestana] = useState<Pestana>('chat');
-  // El chat escrito, que es la otra mitad de hablar. Va por `/mensaje`, la
-  // misma puerta que el móvil: el router decide si contesta o encola, y lo que
-  // encola aparece en la cola de al lado.
-  const [dialogo, setDialogo] = useState<{ mio: boolean; texto: string }[]>([]);
-  const [escrito, setEscrito] = useState('');
   const [trabajos, setTrabajos] = useState<Trabajo[]>([]);
   const [estado, setEstado] = useState<Estado | null>(null);
   const [fallo, setFallo] = useState<string>('');
@@ -658,13 +991,13 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
       </header>
 
       <nav className="pnl-pestanas">
-        {(['chat', 'cola', 'correo', 'memoria', 'estado'] as Pestana[]).map(p => (
+        {(['chat', 'agentes', 'cola', 'correo', 'memoria', 'estado'] as Pestana[]).map(p => (
           <button
             key={p}
             aria-selected={pestana === p}
             onClick={() => setPestana(p)}
           >
-            {p}
+            {NOMBRES_PESTANA[p]}
             {p === 'cola' && abiertos > 0 && <span className="pnl-cuenta"> ({abiertos})</span>}
             {p === 'estado' && malas > 0 && <span className="pnl-cuenta"> ({malas})</span>}
           </button>
@@ -673,54 +1006,10 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
 
       {fallo && <div className="pnl-nota">{fallo}</div>}
 
-      <div className="pnl-cuerpo-scroll">
-        {pestana === 'chat' && (
-          <>
-            {dialogo.length === 0 && (
-              <div className="pnl-nota">
-                Escríbele. Lo que necesite trabajo aparecerá en la cola; lo trivial lo
-                contesta aquí mismo.
-              </div>
-            )}
-            {dialogo.map((m, i) => (
-              <div key={i} className={`pnl-burbuja ${m.mio ? 'mia' : 'suya'}`}>{m.texto}</div>
-            ))}
-            <form
-              className="pnl-form"
-              onSubmit={async e => {
-                e.preventDefault();
-                const texto = escrito.trim();
-                if (!texto || trabajando.current) return;
-                trabajando.current = true;
-                setEscrito('');
-                setDialogo(d => [...d, { mio: true, texto }]);
-                try {
-                  const r: any = await invoke('panel_mensaje', { texto });
-                  setDialogo(d => [...d, {
-                    mio: false,
-                    // Si encola no se inventa una respuesta: se dice que hay
-                    // trabajo y la cola es donde se sigue.
-                    texto: r.destino === 'responder'
-                      ? (r.respuesta || '(sin respuesta)')
-                      : `Encargado — trabajo #${r.trabajo.id} (${r.trabajo.agente})`,
-                  }]);
-                  cargarTrabajos();
-                } catch (err: any) {
-                  setDialogo(d => [...d, { mio: false, texto: 'No se pudo enviar: ' + err }]);
-                } finally {
-                  trabajando.current = false;
-                }
-              }}
-            >
-              <input
-                value={escrito}
-                onChange={e => setEscrito(e.target.value)}
-                placeholder="Escribe a Perseo…"
-              />
-              <button type="submit">Enviar</button>
-            </form>
-          </>
-        )}
+      <div className={'pnl-cuerpo-scroll' + (pestana === 'chat' ? ' pnl-cuerpo-chat' : '')}>
+        {pestana === 'chat' && <ChatTab />}
+
+        {pestana === 'agentes' && <AgentesTab onEncargado={cargarTrabajos} />}
 
         {pestana === 'cola' && (
           <>
