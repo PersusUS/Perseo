@@ -93,8 +93,22 @@ def test_el_secreto_del_directorio_gana_al_del_fichero_de_ajustes(datos: Path) -
 # --------------------------------------------------------------------------- #
 
 
-def test_sin_credenciales_no_se_enciende_nada(tmp_path: Path) -> None:
+def test_sin_credenciales_no_se_enciende_nada(tmp_path: Path, monkeypatch) -> None:
+    """Y sin vault de verdad a la vista: la detección del vault grande mira el
+    Documents de la máquina real, y aquí se apaga para que la prueba no dependa
+    de dónde vive el cerebro de nadie."""
+    monkeypatch.setattr(configurar_arranque, "_vault_de_verdad", lambda: None)
     assert configurar_arranque.ajustes_recomendados(tmp_path, hay_tailscale=False) == {}
+
+
+def test_el_vault_grande_de_documents_va_al_entorno(tmp_path: Path, monkeypatch) -> None:
+    """El grafo del segundo cerebro lee el disco: necesita la ruta del vault de
+    verdad, no la del de fábrica de dentro de Perseo."""
+    vault = tmp_path / "Persus"
+    (vault / ".obsidian").mkdir(parents=True)
+    monkeypatch.setattr(configurar_arranque, "_vault_de_verdad", lambda: vault)
+    ajustes = configurar_arranque.ajustes_recomendados(tmp_path, False)
+    assert ajustes["OBSIDIAN_VAULT_PATH"] == str(vault)
 
 
 def test_con_tailscale_se_abre_el_tailnet(tmp_path: Path) -> None:
@@ -437,3 +451,53 @@ def test_el_vigilante_deja_dicho_si_se_muere_por_una_excepcion(
     assert "se muere por RuntimeError" in escrito
     assert "se acabó el disco" in escrito
     assert "Traceback" in escrito
+
+
+# --------------------------------------------------------------------------- #
+# Dos núcleos a la vez: el segundo se retira
+# --------------------------------------------------------------------------- #
+
+
+class _RespuestaFalsa:
+    """Lo mínimo que urlopen devuelve y que la comprobación mira."""
+
+    def __init__(self, status: int) -> None:
+        self.status = status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+def _con_salud(monkeypatch, respuesta) -> bool:
+    import urllib.request
+
+    from perseo_core import __main__ as arranque_nucleo
+
+    def falso_urlopen(url, timeout=None):
+        if isinstance(respuesta, Exception):
+            raise respuesta
+        return respuesta
+
+    monkeypatch.setattr(urllib.request, "urlopen", falso_urlopen)
+    cfg = almacen.cargar_configuracion()
+    return arranque_nucleo._ya_contesta_otro_nucleo(cfg)
+
+
+def test_si_otro_nucleo_contesta_este_sobra(datos: Path, monkeypatch) -> None:
+    """Arrancar el segundo es lo que dejaba el bucle de OSError 10048."""
+    assert _con_salud(monkeypatch, _RespuestaFalsa(200))
+
+
+def test_un_401_tambien_cuenta_como_alguien_vivo(datos: Path, monkeypatch) -> None:
+    """No se pregunta si nos dejan entrar: se pregunta si hay alguien."""
+    import urllib.error
+
+    error = urllib.error.HTTPError("u", 401, "no", None, None)
+    assert _con_salud(monkeypatch, error)
+
+
+def test_con_el_puerto_libre_se_arranca(datos: Path, monkeypatch) -> None:
+    assert not _con_salud(monkeypatch, ConnectionRefusedError())

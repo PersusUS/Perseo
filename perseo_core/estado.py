@@ -358,6 +358,22 @@ def _web(cfg: almacen.Configuracion) -> Pieza:
     return Pieza("web", "Navegador", OK, "HTTP de verdad, sin alcanzar la red de casa.")
 
 
+def _chat(cfg: almacen.Configuracion) -> Pieza:
+    """El chat escrito vive de la misma clave que el suplente: sin ella no
+    hay cabeza para los turnos, y es un «apagado» y no un rojo a propósito."""
+    from . import chat as modulo_chat
+
+    if not cfg.gemini_clave:
+        return Pieza(
+            "chat",
+            "Chat escrito",
+            APAGADO,
+            f"Sin clave de Gemini no hay turnos ({modulo_chat.MODELO_POR_DEFECTO} es quien piensa).",
+            "GEMINI_API_KEY, o <datos>/gemini.txt.",
+        )
+    return Pieza("chat", "Chat escrito", OK, f"{modulo_chat._modelo()}, con herramientas.")
+
+
 def _confianza() -> Pieza:
     hasta = politica.confianza_hasta()
     if hasta is None:
@@ -579,7 +595,19 @@ async def presencia(cfg: almacen.Configuracion) -> dict[str, Any]:
 
     # El calendario se pregunta solo si está configurado: sin esto, una pantalla
     # que se refresca sola pediría un testigo de Google cada pocos segundos.
-    calendario = agenda.abrir_calendario(cfg)
+    #
+    # Y se pide EL DEL AGENTE, no uno nuevo. `abrir_calendario` fabricaba un
+    # `CalendarioGoogle` por sondeo, cada uno con su `ClientSession` que nadie
+    # cerraba nunca: el panel refresca cada veinte segundos, así que el núcleo
+    # dejaba tres sesiones abiertas por minuto —1.417 en el registro— y pedía
+    # un testigo de Google nuevo con cada una. Ahora se reutiliza el que ya
+    # está abierto (2026-08-24).
+    try:
+        calendario = agenda.calendario()
+    except RuntimeError:
+        # El agente `agenda` no está iniciado (arranque con PERSEO_DISPARADORES
+        # vacío, o un test). Sin calendario, y sin ruido.
+        calendario = None
     if calendario is not None:
         try:
             eventos = await asyncio.wait_for(
@@ -650,6 +678,7 @@ async def reunir(cfg: almacen.Configuracion, router: Router) -> dict[str, Any]:
         _agenda(cfg),
         _dev(cfg),
         _web(cfg),
+        _chat(cfg),
         _confianza(),
     ]
 

@@ -21,16 +21,16 @@ import sys
 # tapa al otro. El sintoma es un AttributeError en `web.AppRunner` al arrancar.
 from aiohttp import web as servidor
 
-from . import agenda, almacen, api, correo, dev, mcp, memoria, pc, politica, web
+from . import agenda, almacen, api, chat, correo, dev, mcp, memoria, pc, politica, web
 from .agentes import Router, Trabajador
 from .bus import Bus
 from .disparadores import Planificador
 from .telegram import Telegram
 
-# Estos seis se importan por sus efectos: al cargarse registran sus agentes —y
+# Estos siete se importan por sus efectos: al cargarse registran sus agentes —y
 # `correo` y `agenda`, además, sus disparadores—. Sin el import el registro está
 # vacío y el núcleo arranca sin agentes sin decir por qué.
-_ = (agenda, correo, dev, memoria, pc, web)
+_ = (agenda, chat, correo, dev, memoria, pc, web)
 
 logger = logging.getLogger("perseo_core")
 
@@ -124,11 +124,53 @@ def _avisar_de_la_escucha(
     logger.info("Token en %s", cfg.directorio_datos / "token.txt")
 
 
+def _ya_contesta_otro_nucleo(cfg: almacen.Configuracion) -> bool:
+    """¿Hay ya un núcleo vivo en el puerto? Entonces este sobra.
+
+    Sin esta pregunta, un segundo núcleo hace todo el arranque —base de datos,
+    MCP, trabajadores, Telegram— y muere al final con `OSError 10048` al intentar
+    abrir un puerto que ya es de otro. El vigilante lo ve morir mal, lo vuelve a
+    arrancar, y ahí queda el bucle: el 2026-08-24 dio seis vueltas en seis
+    minutos escribiendo trazas de trescientas líneas. Peor todavía es lo que
+    parece desde fuera —el núcleo «funciona», porque el viejo sigue en pie— y
+    todo lo que se prueba va contra el código de antes.
+
+    Un 401 vale igual que un 200: lo que se pregunta no es si nos dejan entrar,
+    sino si hay alguien ahí.
+    """
+    import urllib.error
+    import urllib.request
+
+    url = f"http://127.0.0.1:{cfg.puerto}/salud"
+    try:
+        with urllib.request.urlopen(url, timeout=2) as respuesta:
+            return respuesta.status < 500
+    except urllib.error.HTTPError:
+        return True
+    except OSError:
+        return False
+
+
 async def arrancar() -> None:
     cfg = almacen.cargar_configuracion()
 
+    if await asyncio.to_thread(_ya_contesta_otro_nucleo, cfg):
+        # Salida limpia a propósito: para el vigilante, un código 0 es una orden
+        # de retirarse (regla 2 de `commands/vigilante.py`), que es justo lo que
+        # toca cuando el trabajo ya lo está haciendo otro.
+        logger.warning(
+            "Ya hay un núcleo contestando en el puerto %d. Este se retira sin "
+            "tocar nada. Si lo que quieres es reiniciarlo: `perseo parar` y "
+            "luego `perseo on`.",
+            cfg.puerto,
+        )
+        return
+
     almacen.abrir(cfg)
     almacen.recuperar_huerfanos()
+    # El semáforo del chat escrito vive en la base; al arrancar, nadie está a
+    # mitad de un turno, así que todo libre.
+    almacen.reiniciar_turnos_chat()
 
     # La política de §7 se aplica en el trabajador, así que tiene que estar en pie
     # antes de que ninguno reclame nada.
@@ -142,13 +184,18 @@ async def arrancar() -> None:
     router = Router(cfg)
     await router.abrir()
 
-    # Dos carriles. `dev` puede tardar minutos, y con un solo trabajador un
-    # encargo de código dejaba el correo sin triar mientras durase.
-    trabajador = Trabajador(bus, excluir=("dev",), nombre="general")
+    # Tres carriles. `dev` puede tardar minutos, y con un solo trabajador un
+    # encargo de código dejaba el correo sin triar mientras durase. El chat
+    # tiene el suyo porque un turno puede irse a los dos minutos entre
+    # herramientas, y no debe frenar ni al triaje ni a la cola general.
+    trabajador = Trabajador(bus, excluir=("dev", "chat"), nombre="general")
     tarea_trabajador = asyncio.create_task(trabajador.ejecutar(), name="trabajador")
 
     trabajador_dev = Trabajador(bus, agentes=("dev",), nombre="dev")
     tarea_dev = asyncio.create_task(trabajador_dev.ejecutar(), name="trabajador-dev")
+
+    trabajador_chat = Trabajador(bus, agentes=("chat",), nombre="chat")
+    tarea_chat = asyncio.create_task(trabajador_chat.ejecutar(), name="trabajador-chat")
 
     # El triaje del correo comparte una sola sesión contra Ollama entre trabajos.
     correo.iniciar(cfg)
@@ -156,6 +203,7 @@ async def arrancar() -> None:
     dev.iniciar(cfg)
     web.iniciar(cfg)
     agenda.iniciar(cfg)
+    chat.iniciar(cfg, router)
 
     # Sin token configurado se retira sola tras avisar: es un canal más.
     telegram = Telegram(cfg, bus)
@@ -195,9 +243,10 @@ async def arrancar() -> None:
         logger.info("Cerrando…")
         trabajador.detener()
         trabajador_dev.detener()
+        trabajador_chat.detener()
         telegram.detener()
         planificador.detener()
-        for tarea in (tarea_trabajador, tarea_dev, tarea_telegram, tarea_disparadores):
+        for tarea in (tarea_trabajador, tarea_dev, tarea_chat, tarea_telegram, tarea_disparadores):
             tarea.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await tarea
@@ -208,6 +257,7 @@ async def arrancar() -> None:
         dev.detener()
         await web.detener()
         await agenda.detener()
+        await chat.detener()
         await mcp.detener()
         almacen.cerrar()
         logger.info("Adiós.")
