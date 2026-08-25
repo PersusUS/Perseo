@@ -22,6 +22,13 @@ import {
   MS_TOPE_CONEXION,
   planificarReintento,
 } from './reconexion';
+import {
+  CIERRE_DE_AVISOS,
+  entregaEnVivo,
+  etiquetaEncargosResueltos,
+  etiquetaOrigen,
+  type OrigenLlamada,
+} from './aviso-llamada';
 
 /**
  * Modelo de la Fase C. Se baja del 3.1 a propósito: el 3.1 **no soporta audio
@@ -103,6 +110,19 @@ export class GeminiLiveClient {
    * todo esto. connect() los cuela una vez en las instrucciones y limpia.
    */
   public pendientesAlReconectar: string[] = [];
+  /**
+   * Quién pidió la llamada que va a conectar: lo pone `iniciarLlamada()` y lo
+   * consume el primer connect(). Las reconexiones automáticas de mitad de
+   * llamada llaman a connect() solas, ya sin etiqueta — el sentido de la
+   * llamada se dice UNA vez, no en cada reintento.
+   */
+  private etiquetaOrigenSinEnviar: OrigenLlamada | null = null;
+  /**
+   * Avisos entregados al abrir cuya parte falta cerrar. Cuando el modelo
+   * completa su primer turno se le manda `CIERRE_DE_AVISOS` y se apaga: sin
+   * ese cierre seguía contando el encargo como pendiente toda la llamada.
+   */
+  private cierreAvisoPendiente = false;
   /** Texto que hay que entregar por tiempo real al abrir la sesión. */
   private entregarAlAbrir: string = '';
   /**
@@ -161,6 +181,18 @@ export class GeminiLiveClient {
   anadirPendiente(texto: string): void {
     this.pendientesAlReconectar.push(texto);
     this.guardarPendientes();
+  }
+
+  /**
+   * La aplicación anuncia una llamada nueva, y con ella QUIÉN la pidió.
+   *
+   * Con motivo (un subagente terminó) la llamada es saliente y el motivo ya
+   * dice lo demás; sin él, ha llamado el señor Persus a Perseo: etiqueta de
+   * entrante para que el modelo no invente que llama él — la escena del
+   * 2026-08-25, «el sistema ha notificado que un encargo ha finalizado».
+   */
+  iniciarLlamada(): void {
+    this.etiquetaOrigenSinEnviar = this.contextoPendiente ? 'saliente' : 'entrante';
   }
 
   /**
@@ -252,33 +284,40 @@ export class GeminiLiveClient {
         ? `${defaultConfig.systemPrompt}\n\n[HISTORIAL RECIENTE POR RECONEXIÓN - PARA MANTENER EL CONTEXTO DE LA CHARLA]:\n" ${contextHistory} "`
         : defaultConfig.systemPrompt;
 
-      // El motivo de una llamada automática y los resultados huérfanos del
-      // corte van delante de cualquier saludo — en las instrucciones, para
-      // las sesiones nuevas...
+      // Quién llama y qué avisos hay pendientes, delante de cualquier saludo —
+      // en las instrucciones, para las sesiones nuevas...
       const contexto = this.contextoPendiente;
+      this.contextoPendiente = null;
       const pendientes = [...this.pendientesAlReconectar];
-      if (contexto) {
-        finalSystemInstructionText +=
-          `\n\n[HAS LLAMADO TÚ POR INICIATIVA DEL SISTEMA. MOTIVO DE LA LLAMADA — cuéntaselo al señor Persus lo primero]: ${contexto}`;
-        this.contextoPendiente = null;
-      }
-      if (pendientes.length) {
-        finalSystemInstructionText +=
-          `\n\n[MIENTRAS ESTABAS DESCONECTADO RESOLVIERON ESTOS ENCARGOS — informaselo al señor Persus]:\n- ${pendientes.join('\n- ')}`;
+
+      // El sentido de la llamada lo manda `iniciarLlamada()` una sola vez; un
+      // connect() que viene de una reconexión automática no lleva etiqueta y
+      // no repite nada. Con motivo manda el saliente, que ya lo dice todo.
+      const origen: OrigenLlamada | null = contexto
+        ? 'saliente'
+        : this.etiquetaOrigenSinEnviar;
+      this.etiquetaOrigenSinEnviar = null;
+      const etiqueta = origen ? etiquetaOrigen(origen, contexto) : null;
+      if (etiqueta) finalSystemInstructionText += `\n\n${etiqueta}`;
+
+      const avisoEncargos = etiquetaEncargosResueltos(pendientes);
+      if (avisoEncargos) {
+        finalSystemInstructionText += `\n\n${avisoEncargos}`;
         this.pendientesAlReconectar = [];
         this.guardarPendientes();
       }
+
+      // Si la llamada abre con avisos (motivo o encargos resueltos), al acabar
+      // el PRIMER turno del modelo se le da por informado y se cierra el tema.
+      this.cierreAvisoPendiente = Boolean(contexto) || avisoEncargos !== null;
+
       // ...y por texto en vivo al abrir: las sesiones restauradas por testigo
       // IGNORAN las instrucciones nuevas (comprobado el 2026-08-23 — Perseo
       // entraba en llamada y no contaba el motivo), pero el texto en tiempo
       // real siempre llega. Si se cuela dos veces en una sesión nueva, el
       // precio es repetirse; el de lo contrario era callarse para siempre.
-      if (contexto || pendientes.length) {
-        this.entregarAlAbrir = [
-          contexto ? `Motivo de esta llamada: ${contexto}` : '',
-          ...(pendientes.length ? ['Resultados que debías contar:', ...pendientes.map(p => `- ${p}`)] : []),
-        ].filter(Boolean).join('\n');
-      }
+      const enVivo = entregaEnVivo(contexto, pendientes);
+      if (enVivo) this.entregarAlAbrir = enVivo;
 
       this.session = await this.cliente().live.connect({
         model: MODELO,
@@ -670,6 +709,21 @@ export class GeminiLiveClient {
     if (contenido.turnComplete) {
         this.onTranscript('user', '', true);
         this.onTranscript('ai', '', true);
+        // Primer turno completo tras entregar avisos: el asunto se da por
+        // contado. Por texto en vivo, que es el canal que una sesión
+        // restaurada sí escucha — y así el cierre sobrevive a reconectarse
+        // dentro de la misma llamada.
+        if (this.cierreAvisoPendiente && !this.isManualDisconnect && this.session) {
+          this.cierreAvisoPendiente = false;
+          try {
+            if (typeof (this.session as any)?.sendRealtimeInput === 'function') {
+              (this.session as any).sendRealtimeInput({ text: CIERRE_DE_AVISOS });
+              console.log('[Gemini] Avisos dados por informados y cerrados.');
+            }
+          } catch (e) {
+            console.warn('[Gemini] El cierre de avisos no se pudo entregar:', e);
+          }
+        }
     }
   }
 
@@ -848,6 +902,12 @@ export class GeminiLiveClient {
     // persona, así que no arrastra la espera larga que hubiera acumulado el
     // bucle automático.
     this.retryCount = 0;
+    // Ni etiquetas de una llamada anterior: el sentido y el cierre son de la
+    // llamada en curso, y una colgada es una llamada muerta. Sin esto, un
+    // aviso que nunca llegó a contarse mancharía la primera frase de la
+    // siguiente.
+    this.etiquetaOrigenSinEnviar = null;
+    this.cierreAvisoPendiente = false;
     // Y colgar mata la SESIÓN. Si el testigo sobreviviera al colgar, la
     // siguiente llamada resucitaría esta conversación entera: el modelo
     // creería seguir a mitad de ella — le pasó al señor Persus el 2026-08-24,

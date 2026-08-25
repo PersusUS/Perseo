@@ -538,6 +538,10 @@ function App() {
 
   const handleCall = () => {
     if (!defaultConfig.geminiApiKey) { addTranscript('system', 'API Key no configurada. Pulsa ⚙.'); return; }
+    // Quién llama, para que el modelo no lo invente: con motivo (un subagente
+    // terminó) es saliente y el motivo ya lo dice; sin él, entrante — ha
+    // llamado él. Ver lib/aviso-llamada.ts.
+    geminiClient.iniciarLlamada();
     // Empieza un EPISODIO: lo que se hable aquí es lo único que se reinyecta
     // si la red corta a mitad — la transcripción de llamadas anteriores no.
     inicioEpisodio.current = conversacionRef.current.length;
