@@ -631,19 +631,62 @@ def enrolar(
 
 
 def renombrar(directorio_datos: Path, antes: str, nuevo: str) -> dict[str, Any]:
-    """Le pone el nombre real a un «Desconocido N». Todo lo demás se conserva."""
+    """Le pone el nombre real a un «Desconocido N». Todo lo demás se conserva.
+
+    **También vale para quien aún se está aprendiendo.** Antes solo aceptaba
+    perfiles ya fijados, y eso dejaba fuera el caso que más importa: alguien
+    entra en la llamada, Perseo le pregunta cómo se llama y lo dice a los diez
+    segundos — cuando su racimo todavía no ha llegado a los doce segundos de
+    voz ni a los ocho fotogramas de cara que hacen falta para fijarse solo. El
+    2026-08-25 el padre del señor Persus se quedó en «Desconocido» toda la
+    llamada por esto. Ahora el nombre CIERRA el aprendizaje: el racimo se fija
+    en ese instante con el nombre real, que es exactamente la información que
+    faltaba y que ningún vector podía dar.
+    """
     antes, nuevo = _limpiar(antes), _limpiar(nuevo)
     if not nuevo:
         return {"error": "Falta el nombre nuevo"}
     with _bloqueo_sesion:
         perfiles = cargar(directorio_datos)
-        if antes not in perfiles:
+        if antes in perfiles:
+            if nuevo in perfiles and nuevo != antes:
+                return {"error": f"Ya existe un perfil llamado '{nuevo}'"}
+            perfiles[nuevo] = perfiles.pop(antes)
+            guardar(directorio_datos, perfiles)
+            return {"ok": True, "nombre": nuevo}
+
+        # Ni perfil fijado ni racimo a medias: aquí no hay nadie con ese nombre.
+        racimo_voz = _clusters_voz.pop(antes, None)
+        racimo_cara = _clusters_cara.pop(antes, None)
+        if racimo_voz is None and racimo_cara is None:
             return {"error": f"No hay ningún perfil llamado '{antes}'"}
-        if nuevo in perfiles and nuevo != antes:
-            return {"error": f"Ya existe un perfil llamado '{nuevo}'"}
-        perfiles[nuevo] = perfiles.pop(antes)
+
+        # Si ya existe un perfil con el nombre nuevo, lo aprendido se le suma:
+        # es la misma persona vista por otro canal, no una segunda ficha.
+        perfil = perfiles.get(nuevo)
+        if perfil is None:
+            perfil = {
+                "voz": None,
+                "caras": [],
+                "muestras": 0,
+                "creado": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+            }
+            perfiles[nuevo] = perfil
+
+        if racimo_voz is not None:
+            perfil["voz"] = (
+                _media(perfil["voz"], racimo_voz["vector"])
+                if perfil.get("voz")
+                else racimo_voz["vector"]
+            )
+            perfil["muestras"] = perfil.get("muestras", 0) + 1
+        if racimo_cara is not None:
+            caras = perfil.setdefault("caras", [])
+            if len(caras) < MAX_VECTORES_CARA:
+                caras.append(racimo_cara["vector"])
+
         guardar(directorio_datos, perfiles)
-    return {"ok": True, "nombre": nuevo}
+    return {"ok": True, "nombre": nuevo, "aprendido": True}
 
 
 def borrar(directorio_datos: Path, nombre: str) -> dict[str, Any]:

@@ -295,6 +295,45 @@ def test_renombrar_choca_con_nombres_ocupados(tmp_path: Path) -> None:
     assert biometria.renombrar(tmp_path, "Z", "C")["error"].startswith("No hay")
 
 
+def test_renombrar_fija_al_que_todavia_se_esta_aprendiendo(tmp_path: Path) -> None:
+    """El nombre cierra el aprendizaje: no hay que esperar a los doce segundos.
+
+    Es el caso de la llamada del 2026-08-25. Alguien entra, Perseo le pregunta
+    cómo se llama y lo dice enseguida; si el nombre solo valiera para perfiles
+    ya fijados, esa persona seguiría siendo «Desconocido» el resto de la
+    conversación y la siguiente empezaría igual.
+    """
+    biometria.pon_motores(voz=MotorVozFalso([1.0, 0.0]))
+    # Un solo trozo: el racimo existe pero está lejos de fijarse solo.
+    primera = biometria.identificar_voz(tmp_path, _audio_falso())
+    assert primera["nombre"] == "Desconocido 1"
+    assert "aprendiendo" in primera
+
+    resultado = biometria.renombrar(tmp_path, "Desconocido 1", "Antonio")
+    assert resultado["ok"] is True
+    assert resultado["nombre"] == "Antonio"
+
+    perfiles = biometria.cargar(tmp_path)
+    assert "Antonio" in perfiles and "Desconocido 1" not in perfiles
+    # Y a partir de aquí se le reconoce por su nombre, no por la etiqueta.
+    assert biometria.identificar_voz(tmp_path, _audio_falso())["nombre"] == "Antonio"
+
+
+def test_nombrar_una_cara_a_medias_suma_al_perfil_que_ya_existe(tmp_path: Path) -> None:
+    """La misma persona vista por otro canal no abre una ficha aparte."""
+    biometria.guardar(
+        tmp_path,
+        {"Antonio": {"voz": [1.0, 0.0], "caras": [], "muestras": 1, "creado": "hoy"}},
+    )
+    biometria.pon_motores(cara=MotorCaraFalso(([0, 0, 40, 40], [0.0, 1.0])))
+    biometria.identificar_cara(tmp_path, _imagen_falsa())
+
+    assert biometria.renombrar(tmp_path, "Desconocido 1", "Antonio")["ok"] is True
+    perfil = biometria.cargar(tmp_path)["Antonio"]
+    assert perfil["voz"] == [1.0, 0.0]
+    assert len(perfil["caras"]) == 1
+
+
 def test_borrar_quita_los_vectores_de_verdad(tmp_path: Path) -> None:
     biometria.guardar(
         tmp_path,

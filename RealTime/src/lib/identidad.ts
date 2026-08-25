@@ -61,6 +61,16 @@ const TOPE_MUESTRAS = OBJETIVO_MUESTRAS * 3;
 const CADUCIDAD_HABLANTE_MS = 4500;
 /** Cada cuánto se analiza un fotograma de cámara (ms). */
 const CADA_CARA_MS = 4000;
+/**
+ * Lo mismo, mientras hay alguien a medio aprender.
+ *
+ * Fijar una cara desconocida cuesta ocho detecciones buenas, y a una cada
+ * cuatro segundos eso son más de treinta segundos con esa persona delante:
+ * media conversación tratándola de «Desconocido». Con el ritmo corto baja a la
+ * mitad. Solo se acelera cuando hay algo que aprender, así que en la llamada
+ * normal —el señor Persus solo delante de la cámara— no cambia nada.
+ */
+const CADA_CARA_APRENDIENDO_MS = 2000;
 /** Cuánto sigue valiendo la última lectura de caras (ms). */
 const CADUCIDAD_CARAS_MS = 7000;
 
@@ -79,6 +89,8 @@ class VigilanteIdentidad {
   private sueloRuido = 400;
   private enVueloVoz = false;
   private enVueloCara = false;
+  /** Si la última lectura traía alguien a medio aprender, se mira más a menudo. */
+  private aprendiendoCara = false;
   private ultimoResultadoVozMs = 0;
   private ultimoEnvioCaraMs = 0;
   private fotogramaPendiente: string | null = null;
@@ -103,6 +115,7 @@ class VigilanteIdentidad {
     this.muestrasAcumuladas = 0;
     this.fotogramaPendiente = null;
     this.carasActuales = [];
+    this.aprendiendoCara = false;
     if (this.hablanteActual !== null) {
       this.hablanteActual = null;
       this.onHablante(null);
@@ -159,8 +172,9 @@ class VigilanteIdentidad {
       this.carasActuales = [];
       this.onCaras([]);
     }
-    // Cara: una foto cada CADA_CARA_MS, si la cámara dejó alguna pendiente.
-    if (this.fotogramaPendiente && ahora - this.ultimoEnvioCaraMs >= CADA_CARA_MS && !this.enVueloCara) {
+    // Cara: una foto cada tanto, si la cámara dejó alguna pendiente.
+    const cadaCuanto = this.aprendiendoCara ? CADA_CARA_APRENDIENDO_MS : CADA_CARA_MS;
+    if (this.fotogramaPendiente && ahora - this.ultimoEnvioCaraMs >= cadaCuanto && !this.enVueloCara) {
       void this.enviarCara(this.fotogramaPendiente);
       this.fotogramaPendiente = null;
     }
@@ -217,6 +231,7 @@ class VigilanteIdentidad {
         return;
       }
       this.carasActuales = respuesta.caras ?? [];
+      this.aprendiendoCara = this.carasActuales.some(c => c.aprendiendo);
       this.onCaras(this.carasActuales);
     } catch (e) {
       console.warn('[Identidad] No se pudo analizar la imagen:', e);
