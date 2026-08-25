@@ -35,6 +35,7 @@ import {
   renombrarPerfil,
   type EstadoBiometria,
 } from '../lib/identidad';
+import { esElSenor } from '../lib/quien-hay';
 
 interface Props {
   onClose: () => void;
@@ -75,6 +76,9 @@ export const Settings: React.FC<Props> = ({
   const [guardarHistorial, setGuardarHistorial] = useState(defaultConfig.saveHistoryEnabled);
   const [pantallaAuto, setPantallaAuto] = useState(defaultConfig.pantallaAuto);
   const [identidad, setIdentidad] = useState(defaultConfig.identidadActivada);
+  // Cuál de los perfiles es él. Sin esto, Perseo trata de «señor Persus» a
+  // cualquiera que reconozca, incluida una visita. Ver lib/quien-hay.ts.
+  const [perfilPersus, setPerfilPersus] = useState(defaultConfig.perfilPersus);
   const [aspecto, setAspecto] = useState<AspectoLive>(defaultConfig.aspectoLive);
   const [estiloHabitos, setEstiloHabitos] = useState<EstiloHabitos>(defaultConfig.estiloHabitos);
   const [guardando, setGuardando] = useState(false);
@@ -221,6 +225,7 @@ export const Settings: React.FC<Props> = ({
       await guardarAjuste('saveHistoryEnabled', guardarHistorial);
       await guardarAjuste('pantallaAuto', pantallaAuto);
       await guardarAjuste('identidadActivada', identidad);
+      await guardarAjuste('perfilPersus', perfilPersus);
       await guardarAjuste('aspectoLive', aspecto);
       await guardarAjuste('estiloHabitos', estiloHabitos);
       onClose();
@@ -334,6 +339,10 @@ export const Settings: React.FC<Props> = ({
               conoce a alguien, aprende su voz con la llamada. Todo se decide y
               se guarda en este ordenador — nunca sale nada a internet.
             </p>
+            <p className="ajustes-nota">
+              Marca con «Este soy yo» tu propio perfil: solo a ese le trata Perseo
+              de señor Persus, y delante de cualquier otra persona se calla lo tuyo.
+            </p>
 
             {identidad && (
               <div className="ajustes-biometria">
@@ -421,6 +430,13 @@ export const Settings: React.FC<Props> = ({
                                     .filter(Boolean)
                                     .join(' · ') || 'sin muestras'}
                                 </span>
+                                {esElSenor(p.nombre, perfilPersus) ? (
+                                  <span className="perfil-yo">Eres tú</span>
+                                ) : (
+                                  <button onClick={() => setPerfilPersus(p.nombre)}>
+                                    Este soy yo
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => { setRenombrarDe(p.nombre); setNombreNuevo(''); }}
                                 >

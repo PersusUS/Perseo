@@ -1041,6 +1041,16 @@
 }
 .perfil-nombre { flex: 1; font-weight: 600; }
 .perfil-datos { color: var(--fg-muted); font-size: 12px; }
+/* El perfil del dueño va marcado y sin botón: es el único que recibe el trato
+   de «señor Persus», y por eso se ve de un vistazo cuál es. */
+.perfil-yo {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+}
 .ajustes-perfiles button {
   background: transparent;
   border: none;

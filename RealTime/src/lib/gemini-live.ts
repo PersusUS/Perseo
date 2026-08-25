@@ -29,6 +29,7 @@ import {
   etiquetaOrigen,
   type OrigenLlamada,
 } from './aviso-llamada';
+import { bloqueCenso, type PerfilConocido } from './quien-hay';
 
 /**
  * Modelo de la Fase C. Se baja del 3.1 a propósito: el 3.1 **no soporta audio
@@ -72,6 +73,10 @@ const PLANIFICACION: Record<string, FunctionResponseScheduling> = {
   listar_mcp: FunctionResponseScheduling.INTERRUPT,
   usar_mcp: FunctionResponseScheduling.INTERRUPT,
   ver_pantalla: FunctionResponseScheduling.INTERRUPT,
+  // Ponerle nombre a quien tiene delante se contesta en el acto: quien acaba
+  // de decir cómo se llama espera oírlo de vuelta, no treinta segundos después.
+  nombrar_persona: FunctionResponseScheduling.INTERRUPT,
+  quien_conozco: FunctionResponseScheduling.INTERRUPT,
 };
 
 export class GeminiLiveClient {
@@ -82,6 +87,8 @@ export class GeminiLiveClient {
   public onTranscript: (rol: 'ai' | 'user', delta: string, final: boolean) => void = () => {};
   public onConnectionStateChange: (state: string) => void = () => {};
   public onError: (msg: string) => void = () => {};
+  /** Alguien dejó de ser «Desconocido N». La aplicación repinta la etiqueta. */
+  public onPersonaNombrada: (etiqueta: string, nombre: string) => void = () => {};
   /** Un trabajo que paró a pedir un sí. Durante una llamada la pregunta vivía
    *  solo en el panel y en Telegram, así que la acción no pasaba y el modelo se
    *  quedaba diciendo «no parece que haya funcionado». Ver H-51. */
@@ -218,6 +225,24 @@ export class GeminiLiveClient {
   }
 
   /**
+   * El censo de gente conocida, traído del núcleo para las instrucciones.
+   *
+   * Nunca lanza: si la biometría está apagada, sin modelos o el núcleo no
+   * contesta, la llamada tiene que abrirse igual. Lo que se pierde entonces es
+   * una lista de nombres, no la conversación.
+   */
+  private async censoDePersonas(): Promise<string | null> {
+    if (!defaultConfig.identidadActivada) return null;
+    try {
+      const estado = await invoke<{ perfiles?: PerfilConocido[] }>('biometria_estado');
+      return bloqueCenso(estado?.perfiles ?? [], defaultConfig.perfilPersus);
+    } catch (e) {
+      console.warn('[Gemini] Sin censo de personas para esta llamada:', e);
+      return null;
+    }
+  }
+
+  /**
    * El cliente del SDK, construido con la clave que haya **ahora**.
    *
    * No se construye en el constructor a propósito. Este módulo exporta una
@@ -299,6 +324,15 @@ export class GeminiLiveClient {
       this.etiquetaOrigenSinEnviar = null;
       const etiqueta = origen ? etiquetaOrigen(origen, contexto) : null;
       if (etiqueta) finalSystemInstructionText += `\n\n${etiqueta}`;
+
+      // A quién reconoce hoy el ordenador, escrito en las instrucciones antes
+      // de que hable nadie. Un aviso [IDENTIDAD] suelto a mitad de frase llega
+      // tarde: el modelo ya ha decidido cómo trata a quien tiene delante. Con
+      // el censo entra sabiendo que hay más de una persona en esta casa.
+      const censo = await this.censoDePersonas();
+      if (censo) finalSystemInstructionText += `
+
+${censo}`;
 
       const avisoEncargos = etiquetaEncargosResueltos(pendientes);
       if (avisoEncargos) {
@@ -431,6 +465,37 @@ export class GeminiLiveClient {
                   },
                   required: ["activar"]
                 }
+              },
+              {
+                // El eslabón que faltaba entre la cámara y la memoria: el
+                // reconocimiento sabe DISTINGUIR a una persona desde el primer
+                // fotograma, pero no puede saber cómo se llama — eso solo lo
+                // dice ella en voz alta, y hasta hoy nadie recogía la respuesta.
+                // El 2026-08-25 el padre del señor Persus se quedó en
+                // «Desconocido» toda la llamada por esto.
+                name: "nombrar_persona",
+                behavior: Behavior.NON_BLOCKING,
+                description: "Le pone el nombre real a alguien que el reconocimiento etiquetó como «Desconocido N». Úsala en cuanto esa persona te diga cómo se llama: el perfil se queda hecho con ese nombre y se apunta una nota suya en «Perseo/Personas» del vault, así que la próxima vez la reconocerás sola. La etiqueta va COPIADA LITERAL del aviso [IDENTIDAD] («Desconocido 1», no «el desconocido»). No la uses para renombrar al señor Persus ni para inventar un nombre que nadie te haya dicho.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    etiqueta: {
+                      type: Type.STRING,
+                      description: "La etiqueta provisional tal cual vino en el aviso, por ejemplo 'Desconocido 1'."
+                    },
+                    nombre: {
+                      type: Type.STRING,
+                      description: "El nombre real, tal como la persona lo ha dicho. Por ejemplo 'Antonio'."
+                    }
+                  },
+                  required: ["etiqueta", "nombre"]
+                }
+              },
+              {
+                name: "quien_conozco",
+                behavior: Behavior.NON_BLOCKING,
+                description: "A quién reconoce este ordenador por voz o por cara, con los que aún esperan nombre. Úsala cuando te pregunten a quién conoces, o antes de 'nombrar_persona' para no repetir un nombre que ya existe.",
+                parameters: { type: Type.OBJECT, properties: {}, required: [] }
               },
               {
                 // La puerta de extensión (N-3): lo que no tenga herramienta
@@ -791,6 +856,40 @@ export class GeminiLiveClient {
       } catch (e: any) {
         response = { error: String(e) };
       }
+    } else if (name === 'nombrar_persona') {
+      // Tampoco viaja por `ejecutar_herramienta`: la biometría tiene su propio
+      // puente en Rust y meterla en el router de herramientas del núcleo sería
+      // un rodeo para llegar al mismo sitio.
+      const etiqueta = String(args?.etiqueta ?? '').trim();
+      const nombre = String(args?.nombre ?? '').trim();
+      if (!etiqueta || !nombre) {
+        response = { error: 'Hacen falta la etiqueta provisional y el nombre real.' };
+      } else {
+        try {
+          const r = await invoke<{ ok?: boolean; error?: string; nombre?: string }>(
+            'biometria_renombrar',
+            { nombre: etiqueta, nuevoNombre: nombre },
+          );
+          if (r?.error) {
+            response = { error: r.error };
+          } else {
+            const puesto = r?.nombre ?? nombre;
+            this.onPersonaNombrada(etiqueta, puesto);
+            response = {
+              result: `Hecho: quien figuraba como «${etiqueta}» es ${puesto}. El perfil queda guardado y hay nota suya en Perseo/Personas.`,
+            };
+          }
+        } catch (e: any) {
+          response = { error: String(e) };
+        }
+      }
+    } else if (name === 'quien_conozco') {
+      const censo = await this.censoDePersonas();
+      response = {
+        result:
+          censo ??
+          'El reconocimiento de personas está apagado o todavía no reconoce a nadie en este ordenador.',
+      };
     } else {
       try {
         const argumentos = await this.traducirSiSeñala(name, args);

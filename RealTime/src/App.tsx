@@ -18,6 +18,7 @@ import { audioPlayer } from './lib/audio-player';
 import { cameraManager } from './lib/camera-manager';
 import { screenManager } from './lib/screen-manager';
 import { vigilante, type CaraDetectada } from './lib/identidad';
+import { avisoCaras, avisoHablante, esElSenor } from './lib/quien-hay';
 import {
   defaultConfig,
   cargarAjustesPersistidos,
@@ -120,12 +121,6 @@ function App() {
   const conectadoRef = useRef(false);
   const ultimaIdentidad = useRef<{ texto: string; cuando: number }>({ texto: '', cuando: 0 });
   const carasVistas = useRef('');
-  /** Las etiquetas provisionales van marcadas como tales: sin esto el modelo
-   *  recibía «Desconocido 1» y podía saludar así a la persona. */
-  const etiquetaParaElModelo = (nombre: string): string =>
-    nombre.startsWith('Desconocido')
-      ? `${nombre} (etiqueta provisional, aún no sabemos su nombre)`
-      : nombre;
   const avisarIdentidad = (texto: string) => {
     if (!conectadoRef.current) return;
     const ahora = Date.now();
@@ -223,6 +218,26 @@ function App() {
     };
 
     geminiClient.onError = (msg) => addTranscript('system', msg);
+    // Perseo acaba de preguntarle su nombre a quien tenía delante y lo ha
+    // guardado. La pantalla no puede seguir enseñando «Desconocido 2» después
+    // de que el propio interesado haya dicho cómo se llama.
+    geminiClient.onPersonaNombrada = (etiqueta, nombre) => {
+      addTranscript(
+        'system',
+        esElSenor(nombre, defaultConfig.perfilPersus)
+          ? `«${etiqueta}» era usted: perfil guardado como ${nombre}.`
+          : `«${etiqueta}» ya tiene nombre: ${nombre}.`,
+      );
+      setHablante(previo => (previo === etiqueta ? nombre : previo));
+      setCaras(previas =>
+        previas.map(c => (c.nombre === etiqueta ? { ...c, nombre } : c)),
+      );
+      // El aviso de caras solo sale cuando cambia quién está delante: sin
+      // limpiar la huella, el nombre nuevo no llegaría al modelo hasta que
+      // alguien entrara o saliera del encuadre.
+      carasVistas.current = '';
+    };
+
     geminiClient.onAprobacionPendiente = (id, pregunta) => {
       setPendientes(prev => (prev.some(p => p.id === id) ? prev : [...prev, { id, pregunta }]));
     };
@@ -250,7 +265,10 @@ function App() {
       setHablante(nombre);
       if (nombre) {
         addTranscript('system', `Habla ${nombre}.`);
-        avisarIdentidad(`[IDENTIDAD] Ahora habla ${etiquetaParaElModelo(nombre)}.`);
+        // El aviso dice quién habla Y qué trato le toca. Un nombre a secas
+        // dejaba al modelo llamando «señor Persus» a cualquiera que pasara por
+        // delante de la cámara. Ver lib/quien-hay.ts.
+        avisarIdentidad(avisoHablante(nombre, defaultConfig.perfilPersus));
       }
     };
     vigilante.onCaras = (lista) => {
@@ -261,13 +279,13 @@ function App() {
       const nombres = lista
         .map(c => c.nombre)
         .filter((n): n is string => !!n)
-        .map(etiquetaParaElModelo)
-        .sort()
-        .join(', ');
-      if (nombres) {
-        if (nombres !== carasVistas.current) {
-          carasVistas.current = nombres;
-          avisarIdentidad(`[IDENTIDAD] Delante de la cámara: ${nombres}.`);
+        .sort();
+      const clave = nombres.join(', ');
+      if (clave) {
+        if (clave !== carasVistas.current) {
+          carasVistas.current = clave;
+          const aviso = avisoCaras(nombres, defaultConfig.perfilPersus);
+          if (aviso) avisarIdentidad(aviso);
         }
       } else {
         carasVistas.current = '';
