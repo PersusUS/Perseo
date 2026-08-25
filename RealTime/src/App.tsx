@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { PerseoFace } from './components/PerseoFace';
 import { Settings } from './components/Settings';
 import { Panel } from './components/Panel';
+import { Habitos } from './components/Habitos';
 import { Proyectos } from './components/Proyectos';
 import { Escenografia, comoReloj, type Fase } from './components/Escenografia';
 import { Marco } from './components/Marco';
@@ -17,7 +18,12 @@ import { audioPlayer } from './lib/audio-player';
 import { cameraManager } from './lib/camera-manager';
 import { screenManager } from './lib/screen-manager';
 import { vigilante, type CaraDetectada } from './lib/identidad';
-import { defaultConfig, cargarAjustesPersistidos, type AspectoLive } from './lib/config';
+import {
+  defaultConfig,
+  cargarAjustesPersistidos,
+  type AspectoLive,
+  type EstiloHabitos,
+} from './lib/config';
 
 // ── Types ──
 // `abierto` marca un mensaje que aún está recibiendo fragmentos de transcripción.
@@ -77,6 +83,11 @@ function App() {
   // El panel es una vista de esta misma ventana, no otra ventana: ver
   // src-tauri/src/panel.rs para por qué no puede ser la interfaz del núcleo.
   const [showPanel, setShowPanel] = useState(false);
+  const [showHabitos, setShowHabitos] = useState(false);
+  // El aire de la pantalla de hábitos vive aquí y no dentro de ella para que
+  // Ajustes pueda cambiarlo en caliente, igual que hace con el aspecto del
+  // modo live. Ver components/Settings.tsx.
+  const [estiloHabitos, setEstiloHabitos] = useState<EstiloHabitos>(defaultConfig.estiloHabitos);
   const [showProyectos, setShowProyectos] = useState(false);
   // El aspecto del modo live (T-11). Se elige en Ajustes y se guarda con el
   // resto: aquí hace falta como estado —y no leyendo `defaultConfig`— porque
@@ -212,7 +223,6 @@ function App() {
     };
 
     geminiClient.onError = (msg) => addTranscript('system', msg);
-
     geminiClient.onAprobacionPendiente = (id, pregunta) => {
       setPendientes(prev => (prev.some(p => p.id === id) ? prev : [...prev, { id, pregunta }]));
     };
@@ -628,6 +638,10 @@ function App() {
           detrás, así que volver es instantáneo y no se pierde la conversación. */}
       {showPanel && <Panel onCerrar={() => setShowPanel(false)} />}
 
+      {/* Los hábitos, con la misma regla que el panel: tapan la llamada, no la
+          cortan. Ver components/Habitos.tsx. */}
+      {showHabitos && <Habitos onCerrar={() => setShowHabitos(false)} estilo={estiloHabitos} />}
+
       {/* La llamada entrante de un subagente: timbre y decisión del señor
           Persus. Nada de entrar solos — él acepta o lo deja para después, y
           si no contesta a tiempo cae sola a llamadas pendientes. */}
@@ -675,6 +689,7 @@ function App() {
           pestaña de proyectos. Ver components/Marco.tsx. */}
       <Marco
         onPanel={() => setShowPanel(true)}
+        onHabitos={() => setShowHabitos(true)}
         onAjustes={() => setShowSettings(true)}
         // La pestaña vuelve a estar viva (encargo del señor Persus, 2026-08-24):
         // pulsar una ficha arranca los servidores del proyecto — modo
@@ -810,6 +825,7 @@ function App() {
           onClose={() => setShowSettings(false)}
           llamadaActiva={isActive}
           onAspecto={setAspecto}
+          onEstiloHabitos={setEstiloHabitos}
         />
       )}
     </div>

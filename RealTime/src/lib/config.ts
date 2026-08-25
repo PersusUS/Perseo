@@ -18,6 +18,18 @@ export type AspectoLive = 'mira' | 'mando' | 'cartel';
  */
 export type PosicionRiel = Record<AspectoLive, { x: number; y: number }>;
 
+/**
+ * Con qué aire se dibuja el seguimiento de hábitos.
+ *
+ * - `perseo`:    negro, versalitas y monoespaciada, como el resto de la app.
+ * - `plantilla`: el beige y el taupe de la hoja de la que salió la pantalla.
+ *
+ * Son dos paletas sobre la MISMA pantalla: mismo reparto, mismas cifras, mismos
+ * gestos. Lo único que cambia son los colores y la tipografía, y por eso vive
+ * en un ajuste y no en dos componentes.
+ */
+export type EstiloHabitos = 'perseo' | 'plantilla';
+
 export interface PerseoConfig {
   geminiApiKey: string;
   voiceName: string;
@@ -39,6 +51,8 @@ export interface PerseoConfig {
   aspectoLive: AspectoLive;
   /** Posición del riel de proyectos, una por aspecto. Ver PosicionRiel. */
   posicionRiel: PosicionRiel;
+  /** Con qué aire se dibuja la pantalla de hábitos. Ver EstiloHabitos. */
+  estiloHabitos: EstiloHabitos;
 }
 
 export const defaultConfig: PerseoConfig = {
@@ -59,6 +73,10 @@ export const defaultConfig: PerseoConfig = {
   identidadActivada: false,
   saveHistoryEnabled: true, // Activado a petición: Mantendrá el contexto al re-conectar.
   aspectoLive: 'mira',
+  // De fábrica, el aire de la casa: la pantalla vive dentro de Perseo y el
+  // beige de la plantilla era una isla. El que lo prefiera lo tiene a dos
+  // clics en Ajustes.
+  estiloHabitos: 'perseo',
   // El centro de la mitad izquierda, a la altura de la cara: el mismo punto
   // para los tres aspectos hasta que él arrastre cada uno a su sitio.
   posicionRiel: {
@@ -169,7 +187,7 @@ export const SYSTEM_PROMPT_POR_DEFECTO = defaultConfig.systemPrompt;
 export const VERSION_PROMPT = '2026-08-24-spotify-clic';
 
 /** Ajustes que se persisten en el almacén local que gestiona Rust. */
-const AJUSTES_PERSISTIDOS = ['voiceName', 'systemPrompt', 'saveHistoryEnabled', 'aspectoLive', 'pantallaAuto', 'identidadActivada', 'posicionRiel'] as const;
+const AJUSTES_PERSISTIDOS = ['voiceName', 'systemPrompt', 'saveHistoryEnabled', 'aspectoLive', 'pantallaAuto', 'identidadActivada', 'posicionRiel', 'estiloHabitos'] as const;
 
 /**
  * Carga los ajustes guardados sobre la configuración por defecto.

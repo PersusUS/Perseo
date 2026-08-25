@@ -22,6 +22,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 
 interface Props {
   onPanel: () => void;
+  onHabitos: () => void;
   onAjustes: () => void;
   onProyectos: () => void;
   proyectosAbiertos: boolean;
@@ -61,7 +62,9 @@ function ventanaActual() {
   }
 }
 
-export const Marco: React.FC<Props> = ({ onPanel, onAjustes, onProyectos, proyectosAbiertos }) => {
+export const Marco: React.FC<Props> = ({
+  onPanel, onHabitos, onAjustes, onProyectos, proyectosAbiertos,
+}) => {
   const [completa, setCompleta] = useState(true);
 
   // Se pregunta al arrancar en vez de suponerlo: la ventana nace en pantalla
@@ -90,6 +93,11 @@ export const Marco: React.FC<Props> = ({ onPanel, onAjustes, onProyectos, proyec
       <div className="marco-riel" data-tauri-drag-region>
         <div className="marco-acciones">
           <button className="marco-boton" onClick={onPanel}>Panel</button>
+          {/* Va pegado al Panel y no al final del riel: las dos son pantallas
+              que tapan la llamada, y Ajustes es otra cosa —un cajón de
+              preferencias—. Agruparlas por lo que hacen y no por cuándo se
+              añadieron. */}
+          <button className="marco-boton" onClick={onHabitos}>Hábitos</button>
           <button className="marco-boton" onClick={onAjustes}>Ajustes</button>
         </div>
 

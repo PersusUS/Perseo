@@ -1,0 +1,664 @@
+/* El seguimiento de hábitos (clases `hb-`). La carga `globals.css`, que es la
+   única hoja que importa `main.tsx`. Ver el reparto ahí.
+
+   ── Dos aires, una hoja ──────────────────────────────────────────────────
+   La pantalla se dibuja igual en los dos estilos: mismo reparto, mismas cajas,
+   mismos gestos. Lo único que cambia son los colores y la tipografía, y por eso
+   todo eso vive en variables declaradas en `.hb[data-estilo="…"]` y nada más
+   abajo repite un color literal. Añadir un tercer aire es añadir un bloque de
+   variables; no se toca una sola regla de las de abajo.
+
+     perseo     negro, versalitas espaciadas y monoespaciada para las cifras,
+                como el panel y la llamada.
+     plantilla  el beige y el taupe de la hoja de cálculo de la que salió,
+                aclarado para que el texto tenga contraste de verdad.
+
+   ── La escala ────────────────────────────────────────────────────────────
+   La plantilla original venía con tipografías de 7 a 12 px: en una hoja de
+   cálculo uno hace zoom, en una ventana no. Las medidas están arriba, en un
+   solo sitio, para poder subirlas todas a la vez sin ir regla por regla.
+
+   Nada de esquinas redondeadas, como en el resto de Perseo desde T-11. */
+
+.hb {
+  /* Tapa la llamada entera menos el riel de la ventana, igual que el panel:
+     minimizar y esconder tienen que seguir alcanzables desde aquí. */
+  position: absolute;
+  inset: 38px 0 0;
+  z-index: 6;
+
+  /* ── Medidas, comunes a los dos aires ── */
+  --hb-celda: 26px;        /* ancho de la columna de un día */
+  --hb-fila: 27px;         /* alto de la fila de un hábito */
+  --hb-marca: 16px;        /* lado de la casilla que se pulsa */
+  --hb-nombre: 232px;      /* ancho de la columna de nombres */
+  --hb-t-micro: 11px;
+  --hb-t-mini: 12px;
+  --hb-t-base: 14px;
+  --hb-t-medio: 16px;
+  --hb-t-titulo: 19px;
+  --hb-t-cifra: 30px;
+
+  background: var(--hb-fondo);
+  color: var(--hb-tinta);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font);
+  font-size: var(--hb-t-base);
+  font-weight: 400;
+}
+
+/* ── El aire de Perseo ───────────────────────────────────────────────────── */
+
+.hb[data-estilo="perseo"] {
+  --hb-fondo: #000000;
+  --hb-panel: rgba(255, 255, 255, .04);
+  --hb-panel-alto: rgba(255, 255, 255, .07);
+  --hb-borde: rgba(255, 255, 255, .15);
+  --hb-borde-vivo: rgba(255, 255, 255, .34);
+  --hb-tinta: #ffffff;
+  --hb-tinta-suave: #9a9a9a;
+  --hb-tinta-tenue: #5a5a5a;
+  --hb-acento: #ffffff;
+  --hb-marca-fondo: #ffffff;
+  --hb-marca-tinta: #000000;
+  --hb-marca-filo: rgba(255, 255, 255, .32);
+  --hb-finde: rgba(255, 255, 255, .045);
+  --hb-hoy: rgba(251, 191, 36, .16);
+  --hb-hoy-filo: #fbbf24;
+  --hb-serie-a: #ffffff;
+  --hb-serie-a-relleno: rgba(255, 255, 255, .16);
+  --hb-serie-b: #fbbf24;
+  --hb-serie-b-relleno: rgba(251, 191, 36, .14);
+  /* Las lecturas del puesto de mando van en monoespaciada: cifras que cambian
+     con anchos distintos hacen bailar la línea entera. */
+  --hb-fuente-rotulo: var(--mono);
+  --hb-caps: uppercase;
+  --hb-tracking: .18em;
+  --hb-peso-rotulo: 400;
+}
+
+/* ── El aire de la plantilla ─────────────────────────────────────────────── */
+
+.hb[data-estilo="plantilla"] {
+  /* Más claro que el beige original (#d8d5d0): aquel dejaba el texto gris sobre
+     gris y era justo lo que no se leía. */
+  --hb-fondo: #e9e6e1;
+  --hb-panel: #ffffff;
+  --hb-panel-alto: #f2efea;
+  --hb-borde: #cbc4b8;
+  --hb-borde-vivo: #9d9486;
+  --hb-tinta: #2b2823;
+  --hb-tinta-suave: #6b6459;
+  --hb-tinta-tenue: #9b9388;
+  --hb-acento: #7c7364;
+  --hb-marca-fondo: #7c7364;
+  --hb-marca-tinta: #ffffff;
+  --hb-marca-filo: #b3aa9c;
+  --hb-finde: #efece7;
+  --hb-hoy: rgba(124, 115, 100, .16);
+  --hb-hoy-filo: #7c7364;
+  --hb-serie-a: #6f6657;
+  --hb-serie-a-relleno: rgba(111, 102, 87, .26);
+  --hb-serie-b: #a8907a;
+  --hb-serie-b-relleno: rgba(168, 144, 122, .28);
+  --hb-fuente-rotulo: var(--font);
+  --hb-caps: none;
+  --hb-tracking: .02em;
+  --hb-peso-rotulo: 600;
+}
+
+/* Cifras de ancho fijo en toda la pantalla: sin esto, un 1 mide menos que un 8
+   y las columnas de números dejan de estar a plomo. */
+.hb, .hb * { font-variant-numeric: tabular-nums; }
+
+/* ── La cabecera ─────────────────────────────────────────────────────────── */
+
+.hb-cabecera {
+  display: flex; align-items: baseline; gap: var(--e4);
+  padding: var(--e3) var(--e5);
+  border-bottom: 1px solid var(--hb-borde);
+  background: var(--hb-panel-alto);
+  flex: none;
+}
+.hb-cabecera h2 {
+  font-family: var(--hb-fuente-rotulo);
+  font-size: var(--hb-t-medio); font-weight: var(--hb-peso-rotulo);
+  text-transform: var(--hb-caps); letter-spacing: var(--hb-tracking);
+}
+.hb-cabecera-pie { color: var(--hb-tinta-suave); font-size: var(--hb-t-mini); }
+.hb-volver {
+  margin-left: auto;
+  background: none; border: 1px solid var(--hb-borde-vivo);
+  color: var(--hb-tinta); font: inherit;
+  font-family: var(--hb-fuente-rotulo);
+  font-size: var(--hb-t-micro);
+  text-transform: var(--hb-caps); letter-spacing: var(--hb-tracking);
+  padding: 7px 14px; cursor: pointer;
+  transition: background var(--paso), border-color var(--paso);
+}
+.hb-volver:hover { background: var(--hb-panel-alto); border-color: var(--hb-tinta); }
+
+/* ── El lienzo: tres filas ───────────────────────────────────────────────── */
+
+/* La pantalla entera cabe en la ventana: aquí no se desplaza nada.
+   `overflow: hidden` no es una tirita sobre un desbordamiento, es la regla que
+   hace visible cualquier fallo de encaje — si algo no cupiera, se vería
+   cortado en vez de esconderse detrás de una barra. Lo que se adapta es la
+   rejilla, y lo hace en `Habitos.tsx` (ver `useEncaje`).
+
+   Retícula de tres filas y no columna flex: la de arriba y la de abajo miden
+   lo que necesitan, y la rejilla —lo único cuyo tamaño depende de cuántos
+   hábitos haya— se queda con todo lo que sobre. */
+.hb-lienzo {
+  flex: 1; min-height: 0; overflow: hidden;
+  padding: var(--e3);
+  display: grid;
+  /* La rejilla toma lo que necesita (`auto`, y lo que necesita lo calcula
+     `useEncaje`) y es la fila de abajo la que se queda con todo lo que sobre.
+     Al revés —rejilla en `1fr`— la caja se estiraba hasta el fondo pero la
+     tabla se quedaba en su alto de fila máximo, y media caja era un hueco
+     negro con la rejilla flotando arriba. */
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: var(--e3);
+}
+
+.hb-fila { display: grid; gap: var(--e3); align-items: stretch; min-height: 0; }
+
+/* Alturas elásticas con `clamp`: en una ventana de 720 px de alto, ciento
+   cincuenta píxeles de gráficas son un lujo que le quitas a la rejilla, que es
+   la única parte que no se puede resumir. Arriba y abajo ceden primero. */
+.hb-fila-alta {
+  grid-template-columns: 250px minmax(300px, 1.5fr) minmax(190px, .8fr) 296px;
+  /* El mínimo no es un gusto: por debajo de 128 px, el bloque del mes con su
+     navegación y sus dos listas ya no cabe, y las gráficas se quedan sin sitio
+     para sus rótulos. */
+  height: clamp(128px, 15vh, 150px);
+}
+.hb-fila-rejilla { grid-template-columns: minmax(0, 1fr) 400px; min-height: 0; }
+.hb-fila-baja {
+  grid-template-columns: minmax(0, 1fr) 296px;
+  /* Mínimo, no altura: esta fila absorbe el alto que le sobre a la rejilla, y
+     lo reparte entre el dibujo del estado mental y los diez puestos del
+     ranking. En una ventana grande respira; en una baja se queda en esto. */
+  min-height: 168px;
+}
+
+/* ── La caja, el ladrillo de todo lo demás ───────────────────────────────── */
+
+.hb-caja {
+  background: var(--hb-panel);
+  border: 1px solid var(--hb-borde);
+  display: flex; flex-direction: column;
+  /* Los dos mínimos automáticos a cero: una caja es hija de una retícula con
+     altura acotada, y con `min-height: auto` su contenido manda sobre la fila y
+     se derrama por el borde de abajo. `overflow: hidden` es el cierre: lo que
+     no quepa se recorta dentro de su caja y no se sube encima de la vecina. */
+  min-width: 0; min-height: 0; overflow: hidden;
+}
+
+/* El título de una caja: rótulo a la izquierda, aclaración en gris al lado.
+   La aclaración es lo que convierte «Cada día» en algo que se entiende sin
+   preguntar qué mide la barra. */
+.hb-caja-titulo {
+  display: flex; align-items: baseline; gap: var(--e2);
+  padding: var(--e2) var(--e3);
+  border-bottom: 1px solid var(--hb-borde);
+  background: var(--hb-panel-alto);
+  font-family: var(--hb-fuente-rotulo);
+  font-size: var(--hb-t-mini); font-weight: var(--hb-peso-rotulo);
+  text-transform: var(--hb-caps); letter-spacing: var(--hb-tracking);
+  flex: none;
+}
+.hb-caja-pie {
+  font-family: var(--font); font-weight: 400;
+  text-transform: none; letter-spacing: 0;
+  font-size: var(--hb-t-micro); color: var(--hb-tinta-suave);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── El mes y su navegación ──────────────────────────────────────────────── */
+
+.hb-mes {
+  justify-content: center; align-items: center; gap: var(--e3);
+  padding: var(--e3);
+}
+.hb-mes-nav { display: flex; align-items: center; gap: var(--e2); width: 100%; }
+.hb-mes-nav button {
+  width: 30px; height: 30px; flex: none;
+  background: none; border: 1px solid var(--hb-borde);
+  color: var(--hb-tinta); font: inherit; font-size: 20px; line-height: 1;
+  cursor: pointer; transition: background var(--paso), border-color var(--paso);
+}
+.hb-mes-nav button:hover { background: var(--hb-panel-alto); border-color: var(--hb-borde-vivo); }
+.hb-mes-nombre { flex: 1; text-align: center; min-width: 0; }
+.hb-mes-nombre { overflow: hidden; }
+.hb-mes-nombre b {
+  display: block;
+  font-family: var(--hb-fuente-rotulo);
+  /* «septiembre» en versalitas espaciadas es la palabra más larga del año y la
+     que decide este tamaño. */
+  font-size: clamp(13px, 1.15vw, var(--hb-t-titulo)); font-weight: var(--hb-peso-rotulo);
+  text-transform: var(--hb-caps); letter-spacing: var(--hb-tracking);
+  /* La versalita con tracking deja un hueco muerto al final de la palabra. */
+  margin-right: calc(var(--hb-tracking) * -1);
+}
+.hb-mes-nombre span { color: var(--hb-tinta-suave); font-size: var(--hb-t-mini); }
+
+.hb-mes-saltos { display: flex; gap: var(--e2); width: 100%; }
+.hb-mes-saltos select {
+  flex: 1; min-width: 0;
+  background: var(--hb-panel-alto); border: 1px solid var(--hb-borde);
+  color: var(--hb-tinta); font: inherit; font-size: var(--hb-t-mini);
+  padding: 5px 6px; cursor: pointer; text-align: center;
+}
+.hb-mes-saltos select:hover { border-color: var(--hb-borde-vivo); }
+
+.hb-hoy {
+  width: 100%;
+  background: none; border: 1px solid var(--hb-hoy-filo);
+  color: var(--hb-tinta); font: inherit; font-size: var(--hb-t-mini);
+  padding: 5px 8px; cursor: pointer;
+  transition: background var(--paso);
+}
+.hb-hoy:hover { background: var(--hb-hoy); }
+
+/* ── Las gráficas de barras ──────────────────────────────────────────────── */
+
+/* Las columnas se estiran a lo alto de la caja (`stretch`) y es dentro de cada
+   una donde la barra se pega al suelo. Con `align-items: flex-end` aquí, las
+   columnas medían lo que medía su rótulo y el `height: %` de la barra se
+   resolvía contra cero: treinta y una barras de un píxel. */
+.hb-barras {
+  flex: 1;
+  display: flex; align-items: stretch; gap: 2px;
+  padding: var(--e2) var(--e3);
+  min-height: 0;
+}
+/* La semanal tiene cinco barras donde la diaria tiene treinta y una: sin más
+   hueco, cinco palos finos en una caja ancha parecen un error de dibujo. */
+.hb-barras-anchas { gap: var(--e2); padding-inline: var(--e4); }
+
+.hb-col { flex: 1; display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.hb-col-carril { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+.hb-col-relleno {
+  width: 100%;
+  background: var(--hb-acento);
+  min-height: 1px;
+  transition: height var(--paso);
+}
+/* El fin de semana en tono bajo y el futuro medio apagado: la forma de la
+   gráfica cuenta lo mismo, pero se distingue de un vistazo lo que ya pasó de
+   lo que aún no ha llegado. */
+.hb-col.finde .hb-col-relleno { background: var(--hb-tinta-suave); }
+.hb-col.futuro { opacity: .4; }
+.hb-col.hoy .hb-col-relleno { background: var(--hb-hoy-filo); }
+.hb-col:hover .hb-col-relleno { opacity: .75; }
+.hb-col-rotulo {
+  font-size: var(--hb-t-micro); color: var(--hb-tinta-suave);
+  margin-top: var(--e1); white-space: nowrap; overflow: hidden; max-width: 100%;
+}
+.hb-col.hoy .hb-col-rotulo { color: var(--hb-hoy-filo); font-weight: 600; }
+
+/* ── El resumen del mes: anillo y cifras ─────────────────────────────────── */
+
+.hb-resumen-cuerpo {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: minmax(0, 118px) minmax(0, 1fr);
+  align-items: center; gap: var(--e3);
+  padding: var(--e2) var(--e3);
+  overflow: hidden;
+}
+
+.hb-anillo { position: relative; display: flex; align-items: center; justify-content: center; }
+.hb-anillo svg { width: 100%; height: auto; max-height: clamp(52px, 8vh, 96px); }
+.hb-anillo circle { fill: none; stroke-width: 12; }
+.hb-anillo-resto { stroke: var(--hb-borde); }
+.hb-anillo-hecho { stroke: var(--hb-acento); transition: stroke-dasharray .4s ease; }
+/* La cifra va en el hueco del anillo: es el número más grande de la pantalla y
+   el que contesta la única pregunta que uno se hace al abrirla. Un trazo fino
+   (12 y no 22) es lo que deja sitio para ponerla dentro. */
+.hb-anillo-centro {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.hb-anillo-centro b {
+  font-family: var(--hb-fuente-rotulo);
+  font-size: var(--hb-t-cifra); font-weight: var(--hb-peso-rotulo); line-height: 1;
+}
+.hb-anillo-pct { font-size: var(--hb-t-mini); margin-left: 1px; }
+.hb-anillo-pie { font-size: var(--hb-t-micro); color: var(--hb-tinta-suave); margin-top: 3px; }
+
+.hb-cifras { display: flex; flex-direction: column; margin: 0; min-height: 0; }
+.hb-cifras > div {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--e2);
+  box-shadow: inset 0 -1px 0 var(--hb-borde);
+  padding: 2px 0;
+}
+.hb-cifras > div:last-child { box-shadow: none; }
+.hb-cifras dt {
+  font-family: var(--hb-fuente-rotulo);
+  font-size: var(--hb-t-micro); color: var(--hb-tinta-suave);
+  text-transform: var(--hb-caps); letter-spacing: var(--hb-tracking);
+}
+.hb-cifras dd {
+  margin: 0; line-height: 1.2;
+  font-family: var(--hb-fuente-rotulo);
+  font-size: var(--hb-t-medio); font-weight: var(--hb-peso-rotulo);
+}
+
+/* ── La rejilla de hábitos ───────────────────────────────────────────────── */
+
+.hb-rejilla-cabeza { padding-right: var(--e2); }
+.hb-anadir {
+  margin-left: auto; flex: none;
+  background: none; border: 1px solid var(--hb-borde-vivo);
+  color: var(--hb-tinta); font-family: var(--font); font-size: var(--hb-t-mini);
+  font-weight: 400; text-transform: none; letter-spacing: 0;
+  padding: 4px 12px; cursor: pointer;
+  transition: background var(--paso), border-color var(--paso);
+}
+.hb-anadir:hover { background: var(--hb-panel-alto); border-color: var(--hb-tinta); }
+
+/* Lo que no cabe no se desplaza, se encoge: `useEncaje` mide esta caja y calcula
+   el alto de fila, el ancho de la columna de nombres y el tamaño de la casilla
+   para que las 31 columnas y todos los hábitos quepan dentro.
+
+   El `overflow: auto` es la red y no el plan. Hay un suelo por debajo del cual
+   una casilla deja de ser pulsable —trece píxeles de fila—, y con treinta
+   hábitos en una ventana baja ni ese suelo alcanza. Cuando eso pasa es mejor
+   una barra que una rejilla ilegible; en un mes normal no aparece nunca. */
+.hb-rejilla-lienzo { overflow: auto; display: flex; }
+
+/* `table-layout: fixed` **con `width: 100%`**: las dos cosas juntas o ninguna.
+   Sin el ancho declarado, el algoritmo fijo no tiene de dónde repartir y vuelve
+   a dejar que mande el contenido — la columna de nombres se quedaba en 167 px
+   aunque se le hubieran pedido 132, y la tabla se salía por la derecha.
+
+   Con las dos, el reparto es exacto: la columna de nombres toma `--hb-nombre` y
+   los días se reparten a partes iguales lo que queda. La tabla mide entonces
+   justo su hueco, ni un píxel más. */
+.hb-tabla { border-collapse: collapse; table-layout: fixed; width: 100%; }
+.hb-tabla th, .hb-tabla td { border: 1px solid var(--hb-borde); padding: 0; text-align: center; }
+
+.hb-th-nombre {
+  width: var(--hb-nombre); min-width: var(--hb-nombre);
+  background: var(--hb-panel-alto);
+  font-family: var(--hb-fuente-rotulo);
+  font-size: var(--hb-t-micro); font-weight: var(--hb-peso-rotulo);
+  text-transform: var(--hb-caps); letter-spacing: var(--hb-tracking);
+  color: var(--hb-tinta-suave);
+  text-align: right; padding: 0 var(--e3);
+  /* La columna de nombres se queda quieta al desplazar los días: en 31 columnas
+     uno acaba marcando la casilla de la fila de al lado sin darse cuenta. */
+  position: sticky; left: 0; z-index: 2;
+}
+
+.hb-th-dia, .hb-th-numero {
+  background: var(--hb-panel-alto);
+  color: var(--hb-tinta-suave);
+  font-size: var(--hb-t-micro); font-weight: 400; line-height: 1;
+  padding: 3px 0;
+}
+.hb-th-numero { padding: 0; }
+.hb-th-numero button {
+  width: 100%; height: 100%;
+  background: none; border: none; color: inherit;
+  font: inherit; font-size: var(--hb-t-mini);
+  padding: 3px 0; cursor: pointer;
+  transition: background var(--paso), color var(--paso);
+}
+.hb-th-numero button:hover { background: var(--hb-borde); color: var(--hb-tinta); }
+
+.hb-th-dia.finde, .hb-th-numero.finde { background: var(--hb-finde); }
+.hb-th-dia.futuro, .hb-th-numero.futuro { color: var(--hb-tinta-tenue); }
+/* Hoy, señalado en las dos filas de cabecera y en toda la columna: es el sitio
+   al que se viene a pulsar, y buscarlo contando días era el gesto tonto que
+   más se repetía. */
+.hb-th-dia.hoy, .hb-th-numero.hoy {
+  background: var(--hb-hoy); color: var(--hb-hoy-filo); font-weight: 600;
+}
+.hb-th-dia.hoy { box-shadow: inset 0 2px 0 var(--hb-hoy-filo); }
+
+.hb-td-nombre {
+  background: var(--hb-panel);
+  position: sticky; left: 0; z-index: 1;
+  height: var(--hb-fila); line-height: 0;
+}
+/* Sin relleno vertical ni interlineado suelto en ninguna pieza de la fila: el
+   alto lo fija `--hb-fila`, que es lo que `useEncaje` calcula para que quepan
+   todos los hábitos. Un `padding: 5px` en el campo del nombre bastaba para que
+   la fila se negara a bajar de 27 px y la rejilla se saliera por abajo. */
+/* Alto clavado y `overflow: hidden`, no `height: 100%`: una celda de tabla
+   crece con su contenido pase lo que pase, y el aspa de quitar —diecisiete
+   píxeles de letra con su interlineado— le imponía veinte de alto aunque se
+   hubieran pedido catorce. Con el alto fijo aquí dentro, la celda no se entera
+   de lo que lleva. */
+.hb-habito {
+  display: flex; align-items: center; gap: var(--e1);
+  padding-left: var(--e2);
+  height: var(--hb-fila); overflow: hidden;
+}
+.hb-habito-nombre {
+  flex: 1; min-width: 0; height: 100%;
+  background: none; border: none; color: inherit;
+  font: inherit; font-size: var(--hb-t-mini); line-height: 1; text-align: right;
+  padding: 0 4px; cursor: text;
+}
+.hb-habito-nombre:hover { background: var(--hb-panel-alto); }
+.hb-habito-nombre:focus { background: var(--hb-panel-alto); outline: 1px solid var(--hb-borde-vivo); }
+/* La cruz de quitar solo aparece con el ratón encima de la fila: doce cruces
+   permanentes en una columna de nombres es lo primero que se ve de la pantalla,
+   y no es lo importante. */
+.hb-quitar {
+  width: 20px; height: 100%; flex: none;
+  background: none; border: none; cursor: pointer;
+  color: var(--hb-tinta-suave); font: inherit; line-height: 1;
+  /* A la escala de la fila: con 16 px clavados, en una rejilla apretada el aspa
+     medía más que la fila que la contiene y salía recortada. */
+  font-size: min(16px, calc(var(--hb-fila) - 1px));
+  padding: 0;
+  opacity: 0; transition: opacity var(--paso), color var(--paso);
+}
+.hb-tabla tbody tr:hover .hb-quitar { opacity: 1; }
+.hb-quitar:hover, .hb-quitar:focus-visible { opacity: 1; color: #f87171; }
+
+/* `line-height: 0` y la casilla en bloque: la casilla es un elemento en línea,
+   así que el td le reservaba además el alto de una línea de texto —diecinueve
+   píxeles donde se habían pedido quince— y doce filas se salían de su hueco por
+   veinte. Aquí no hay texto que interlinear. */
+.hb-td-celda {
+  height: var(--hb-fila); background: var(--hb-panel);
+  line-height: 0; vertical-align: middle;
+}
+.hb-td-celda.finde { background: var(--hb-finde); }
+.hb-td-celda.hoy { background: var(--hb-hoy); }
+.hb-td-celda.futuro .hb-casilla { opacity: .45; }
+
+.hb-casilla {
+  width: var(--hb-marca); height: var(--hb-marca);
+  background: none;
+  border: 1px solid var(--hb-marca-filo);
+  cursor: pointer; padding: 0;
+  display: block; margin: 0 auto; position: relative;
+  transition: background var(--paso), border-color var(--paso), opacity var(--paso);
+}
+.hb-casilla:hover { border-color: var(--hb-tinta); }
+.hb-casilla.marcada { background: var(--hb-marca-fondo); border-color: var(--hb-marca-fondo); }
+/* El palito de la ✓ va dibujado con dos bordes girados y no con un carácter:
+   la ✓ tipográfica cae distinta en cada fuente instalada. */
+.hb-casilla.marcada::after {
+  content: '';
+  position: absolute; left: 50%; top: 50%;
+  width: calc(var(--hb-marca) * .3);
+  height: calc(var(--hb-marca) * .58);
+  border: solid var(--hb-marca-tinta);
+  border-width: 0 2px 2px 0;
+  /* Centrada por transformación y no por posiciones fijas: la casilla mide
+     entre 9 y 18 px según lo apretada que vaya la rejilla, y una ✓ colocada a
+     4 px del borde se salía por la derecha en las pequeñas. */
+  transform: translate(-60%, -60%) rotate(42deg);
+}
+
+/* ── Hábito a hábito ─────────────────────────────────────────────────────── */
+
+/* La tabla se estira hasta el fondo de su caja: tiene las mismas filas que la
+   rejilla de al lado, así que repartiéndose el mismo alto quedan las dos a la
+   par, línea con línea. Sin esto sobraba un dedo de negro al pie. */
+.hb-analisis-lienzo { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+.hb-analisis-lienzo .hb-tabla-analisis { height: 100%; }
+.hb-tabla-analisis { border-collapse: collapse; width: 100%; }
+.hb-tabla-analisis th {
+  background: var(--hb-panel-alto);
+  border-bottom: 1px solid var(--hb-borde);
+  line-height: 1;
+  font-family: var(--hb-fuente-rotulo);
+  font-size: var(--hb-t-micro); font-weight: var(--hb-peso-rotulo);
+  text-transform: var(--hb-caps); letter-spacing: var(--hb-tracking);
+  color: var(--hb-tinta-suave);
+  padding: 5px 8px; text-align: center;
+  position: sticky; top: 0; z-index: 1;
+}
+.hb-tabla-analisis td {
+  border-bottom: 1px solid var(--hb-borde);
+  font-size: var(--hb-t-mini); line-height: 1;
+  padding: 0 8px; height: var(--hb-fila); text-align: center;
+}
+.hb-tabla-analisis tr:last-child td { border-bottom: none; }
+.hb-tabla-analisis tbody tr:hover td { background: var(--hb-panel-alto); }
+/* El nombre a la izquierda y con sitio: es lo que se busca al leer la tabla, y
+   centrarlo entre columnas de cifras lo escondía. */
+.hb-col-hab {
+  text-align: left; max-width: 0; width: 40%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hb-col-barra { width: 27%; }
+.hb-num { font-family: var(--hb-fuente-rotulo); white-space: nowrap; }
+.hb-de { color: var(--hb-tinta-tenue); font-size: var(--hb-t-micro); }
+/* Una racha de una semana o más se enciende: es el único dato de la tabla que
+   premia seguir, y en gris no premiaba nada. */
+.hb-num.viva { color: var(--hb-hoy-filo); font-weight: 600; }
+
+.hb-barra-carril {
+  height: 8px; width: 100%;
+  background: var(--hb-panel-alto);
+  border: 1px solid var(--hb-borde);
+}
+.hb-barra-carril span {
+  display: block; height: 100%;
+  background: var(--hb-acento);
+  transition: width var(--paso);
+}
+
+/* ── Estado mental ───────────────────────────────────────────────────────── */
+
+.hb-mental-fila {
+  display: grid; grid-template-columns: 116px minmax(0, 1fr);
+  align-items: stretch;
+  border-bottom: 1px solid var(--hb-borde);
+  flex: none;
+}
+.hb-mental-etiqueta {
+  display: flex; align-items: center; gap: var(--e2);
+  padding-left: var(--e3);
+  background: var(--hb-panel-alto);
+  border-right: 1px solid var(--hb-borde);
+  font-size: var(--hb-t-mini); color: var(--hb-tinta-suave);
+}
+/* El cuadrito de color junto al nombre de la serie ES la leyenda: dos áreas
+   superpuestas sin decir cuál es cuál no significan nada. */
+.hb-muestra { width: 10px; height: 10px; flex: none; display: block; }
+.hb-mental-etiqueta.animo .hb-muestra { background: var(--hb-serie-a); }
+.hb-mental-etiqueta.motivacion .hb-muestra { background: var(--hb-serie-b); }
+
+.hb-mental-cifras { display: grid; }
+.hb-mental-celda {
+  background: none;
+  border: none; border-right: 1px solid var(--hb-borde);
+  color: var(--hb-tinta); font: inherit; font-size: var(--hb-t-mini);
+  text-align: center; padding: 5px 0; min-width: 0; cursor: text;
+}
+.hb-mental-celda:hover { background: var(--hb-panel-alto); }
+.hb-mental-celda:focus { background: var(--hb-panel-alto); outline: 1px solid var(--hb-borde-vivo); }
+.hb-mental-celda.hoy { background: var(--hb-hoy); }
+
+/* `flex: 1` con `min-height: 0`: ahora la fila de abajo tiene altura definida,
+   así que el dibujo se queda con lo que sobre tras las dos filas de cifras. El
+   `min-height: 0` es imprescindible — el SVG lleva `viewBox` de 310×100 y, sin
+   una altura definida encima, el navegador le da la que le pide su proporción:
+   en una caja ancha, cuatrocientos píxeles de dibujo. */
+.hb-mental-grafica {
+  flex: 1; min-height: 36px;
+  display: grid; grid-template-columns: 116px minmax(0, 1fr);
+  padding-bottom: var(--e2);
+}
+.hb-mental-grafica svg { width: 100%; height: 100%; display: block; }
+.hb-mental-escala {
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 2px var(--e3) 0 0;
+  text-align: right;
+  font-size: var(--hb-t-micro); color: var(--hb-tinta-tenue);
+  border-right: 1px solid var(--hb-borde);
+}
+.hb-guia { stroke: var(--hb-borde); stroke-dasharray: 3 3; }
+/* El ánimo delante, la motivación detrás. Superpuestas y sin ejes se comparan
+   de un vistazo, que es para lo que están juntas. */
+.hb-area { fill: var(--hb-serie-a-relleno); }
+.hb-area.suave { fill: var(--hb-serie-b-relleno); }
+.hb-linea { fill: none; stroke: var(--hb-serie-a); stroke-width: 1.5; }
+.hb-linea.suave { stroke: var(--hb-serie-b); }
+
+/* ── Los que mejor van ───────────────────────────────────────────────────── */
+
+/* Los diez puestos se reparten el alto de la caja (`grid-auto-rows: 1fr`) en
+   vez de medir cada uno lo suyo y desbordar: la lista siempre se ve entera,
+   apretada o desahogada según la ventana. */
+.hb-top-lista {
+  list-style: none; margin: 0; padding: 0;
+  flex: 1; min-height: 0; overflow: hidden;
+  display: grid; grid-auto-rows: 1fr;
+}
+.hb-top-lista li {
+  /* El nombre y la barra se reparten el ancho sobrante a partes iguales y
+     ambos ceden: con la barra en columna fija de 46 px era un palito que no
+     decía nada junto a nombres de doscientos. */
+  display: grid; grid-template-columns: 18px minmax(0, 1.2fr) minmax(0, 1fr) 30px;
+  align-items: center; gap: var(--e2);
+  box-shadow: inset 0 -1px 0 var(--hb-borde);
+  padding: 0 var(--e3);
+  min-height: 0; overflow: hidden;
+  /* Los diez puestos se reparten el alto de la caja, así que en una ventana
+     baja cada uno se queda en trece píxeles y una letra de doce justa cabe: se
+     encoge con la ventana en vez de salirse recortada, pero sin bajar de un
+     suelo que se pueda leer a un metro. */
+  font-size: clamp(10px, 1.3vh, var(--hb-t-mini)); line-height: 1;
+}
+.hb-top-lista li:last-child { box-shadow: none; }
+.hb-top-lista li:hover { background: var(--hb-panel-alto); }
+.hb-top-puesto {
+  font-family: var(--hb-fuente-rotulo);
+  color: var(--hb-tinta-tenue); text-align: right;
+}
+.hb-top-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* La barra mide lo mismo de alta que la del análisis (8 px): dos grosores
+   distintos para la misma cifra parecerían descuido. */
+.hb-top-barra { height: 8px; background: var(--hb-panel-alto); border: 1px solid var(--hb-borde); }
+.hb-top-barra span { display: block; height: 100%; background: var(--hb-acento); }
+.hb-top-cuenta {
+  font-family: var(--hb-fuente-rotulo);
+  text-align: right; font-weight: var(--hb-peso-rotulo);
+}
+
+/* ── Ventanas estrechas ──────────────────────────────────────────────────── */
+
+/* La rejilla nunca se reordena: ya tiene su propio scroll horizontal, que es lo
+   correcto para 31 columnas. Lo que se apila es todo lo demás. */
+@media (max-width: 1400px) {
+  .hb-fila-rejilla { grid-template-columns: minmax(0, 1fr) 330px; }
+}
+@media (max-width: 1180px) {
+  .hb-fila-alta { grid-template-columns: 250px minmax(0, 1fr) 296px; }
+  .hb-grafica-semanal { grid-column: 1 / -1; min-height: 120px; }
+  .hb-fila-rejilla, .hb-fila-baja { grid-template-columns: minmax(0, 1fr); }
+}

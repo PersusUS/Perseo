@@ -19,7 +19,13 @@
  *     pantalla negra.
  */
 import React, { useEffect, useState } from 'react';
-import { defaultConfig, guardarAjuste, SYSTEM_PROMPT_POR_DEFECTO, type AspectoLive } from '../lib/config';
+import {
+  defaultConfig,
+  guardarAjuste,
+  SYSTEM_PROMPT_POR_DEFECTO,
+  type AspectoLive,
+  type EstiloHabitos,
+} from '../lib/config';
 import {
   borrarPerfil,
   capturarCara,
@@ -36,6 +42,9 @@ interface Props {
   llamadaActiva?: boolean;
   /** Aplica el aspecto en caliente, para poder verlo mientras se elige. */
   onAspecto?: (aspecto: AspectoLive) => void;
+  /** Ídem para el aire de la pantalla de hábitos. Misma regla que el aspecto:
+   *  si hay que guardar para saber cómo queda, no es elegir, es apostar. */
+  onEstiloHabitos?: (estilo: EstiloHabitos) => void;
 }
 
 /** Los tres aspectos del modo live. Ver components/Escenografia.tsx. */
@@ -45,6 +54,12 @@ const ASPECTOS: { valor: AspectoLive; nombre: string; que: string }[] = [
   { valor: 'cartel', nombre: 'Cartel', que: 'Descentrada, con el estado en letras grandes y el kanji al fondo.' },
 ];
 
+/** Los dos aires de la pantalla de hábitos. Ver components/Habitos.tsx. */
+const ESTILOS_HABITOS: { valor: EstiloHabitos; nombre: string; que: string }[] = [
+  { valor: 'perseo', nombre: 'Perseo', que: 'Negro, versalitas y monoespaciada, como el panel y la llamada.' },
+  { valor: 'plantilla', nombre: 'Plantilla', que: 'El beige y el taupe de la hoja de la que salió la pantalla.' },
+];
+
 const VOCES: { valor: string; nombre: string; como: string }[] = [
   { valor: 'Charon', nombre: 'Charon', como: 'Muy grave' },
   { valor: 'Orus', nombre: 'Orus', como: 'Grave' },
@@ -52,13 +67,16 @@ const VOCES: { valor: string; nombre: string; como: string }[] = [
   { valor: 'Puck', nombre: 'Puck', como: 'Clara' },
 ];
 
-export const Settings: React.FC<Props> = ({ onClose, llamadaActiva = false, onAspecto }) => {
+export const Settings: React.FC<Props> = ({
+  onClose, llamadaActiva = false, onAspecto, onEstiloHabitos,
+}) => {
   const [voice, setVoice] = useState(defaultConfig.voiceName);
   const [prompt, setPrompt] = useState(defaultConfig.systemPrompt);
   const [guardarHistorial, setGuardarHistorial] = useState(defaultConfig.saveHistoryEnabled);
   const [pantallaAuto, setPantallaAuto] = useState(defaultConfig.pantallaAuto);
   const [identidad, setIdentidad] = useState(defaultConfig.identidadActivada);
   const [aspecto, setAspecto] = useState<AspectoLive>(defaultConfig.aspectoLive);
+  const [estiloHabitos, setEstiloHabitos] = useState<EstiloHabitos>(defaultConfig.estiloHabitos);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
 
@@ -171,6 +189,7 @@ export const Settings: React.FC<Props> = ({ onClose, llamadaActiva = false, onAs
   // El que había al abrir, para devolverlo si se cancela: el aspecto se aplica
   // al pulsar la ficha, así que sin esto «Cancelar» dejaría el cambio hecho.
   const [aspectoOriginal] = useState<AspectoLive>(defaultConfig.aspectoLive);
+  const [estiloHabitosOriginal] = useState<EstiloHabitos>(defaultConfig.estiloHabitos);
 
   const voiceCambiada = voice !== defaultConfig.voiceName;
   const hayClave = !!defaultConfig.geminiApiKey;
@@ -180,8 +199,14 @@ export const Settings: React.FC<Props> = ({ onClose, llamadaActiva = false, onAs
     onAspecto?.(valor);
   };
 
+  const elegirEstiloHabitos = (valor: EstiloHabitos) => {
+    setEstiloHabitos(valor);
+    onEstiloHabitos?.(valor);
+  };
+
   const cerrarSinGuardar = () => {
     if (aspecto !== aspectoOriginal) onAspecto?.(aspectoOriginal);
+    if (estiloHabitos !== estiloHabitosOriginal) onEstiloHabitos?.(estiloHabitosOriginal);
     onClose();
   };
 
@@ -197,6 +222,7 @@ export const Settings: React.FC<Props> = ({ onClose, llamadaActiva = false, onAs
       await guardarAjuste('pantallaAuto', pantallaAuto);
       await guardarAjuste('identidadActivada', identidad);
       await guardarAjuste('aspectoLive', aspecto);
+      await guardarAjuste('estiloHabitos', estiloHabitos);
       onClose();
     } catch (e) {
       setError(`No se pudo guardar: ${e}`);
@@ -228,6 +254,26 @@ export const Settings: React.FC<Props> = ({ onClose, llamadaActiva = false, onAs
               ))}
             </div>
             <p className="ajustes-nota">Se aplica al pulsar. Cancelar devuelve el que había.</p>
+          </section>
+
+          <section className="ajustes-bloque">
+            <div className="ajustes-titulo">Aire de la pantalla de hábitos</div>
+            <div className="ajustes-fichas">
+              {ESTILOS_HABITOS.map(e => (
+                <button
+                  key={e.valor}
+                  className={`ajustes-ficha ${estiloHabitos === e.valor ? 'elegida' : ''}`}
+                  onClick={() => elegirEstiloHabitos(e.valor)}
+                >
+                  <span className="ajustes-ficha-nombre">{e.nombre}</span>
+                  <span className="ajustes-ficha-que">{e.que}</span>
+                </button>
+              ))}
+            </div>
+            <p className="ajustes-nota">
+              Solo cambian los colores y la tipografía: el reparto, las cifras y lo que
+              se puede tocar son los mismos en los dos.
+            </p>
           </section>
 
           <section className="ajustes-bloque">

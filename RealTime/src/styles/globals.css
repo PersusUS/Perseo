@@ -10,6 +10,7 @@
                    proyectos: todo lo que se ve durante una llamada
      panel.css     cola, correo, memoria y estado (clases `pnl-`)
      aspectos.css  la escenografía de los tres aspectos del modo live (T-11)
+     habitos.css   el seguimiento de hábitos (clases `hb-`)
 
    `main.tsx` sigue importando este fichero y nada más. Los `@import` van los
    primeros a propósito: CSS descarta los que vengan después de una regla. */
@@ -17,3 +18,4 @@
 @import './llamada.css';
 @import './panel.css';
 @import './aspectos.css';
+@import './habitos.css';
