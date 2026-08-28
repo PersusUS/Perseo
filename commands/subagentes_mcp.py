@@ -80,22 +80,24 @@ MARCA_AUTOLLAMADA = RAIZ / ".perseo-autollamada"
 # --------------------------------------------------------------------------- #
 
 
-#: Los modelos GRATIS de opencode Zen, de más contexto a menos. Salen de
-#: `opencode models opencode --verbose` filtrando los que tienen `cost.input` y
-#: `cost.output` a cero — no de lo que suene conocido. Los seis saben usar
-#: herramientas y razonar, que es lo que necesita un agente de código.
+#: Los modelos GRATIS de opencode Zen que **contestan**, de más rápido a menos.
+#: Salen de `opencode models opencode` y de probarlos uno a uno el 2026-08-28:
+#: los dos que encabezaban la lista —los nemotron— no devolvían una sola línea
+#: en cien segundos. Un modelo que no contesta no falla: se cuelga hasta el
+#: tope, y desde fuera eso es un encargo que no termina nunca.
 #:
-#: Es la MISMA lista que ofrece la pestaña de encargos del panel
-#: (`RealTime/src/components/Panel.tsx`); si cambia una, cambia la otra.
+#: Es la MISMA lista que `perseo_core/dev.py` y las dos pantallas. Si cambia
+#: una, cambian todas.
 MODELOS_GRATIS = (
+    "opencode/big-pickle",
+    "opencode/hy3-free",
+    "opencode/muse-spark-1.2-contributor-free",
+    "opencode/ling-3.0-flash-fin-free",
+    "opencode/mimo-v2.5-free",
+    # No contestaban el 2026-08-28. Al final, para que nadie los coja sin
+    # pedirlos por su nombre.
     "opencode/nemotron-3-ultra-free",
     "opencode/nemotron-3.5-lightning-free",
-    "opencode/hy3-free",
-    "opencode/big-pickle",
-    "opencode/mimo-v2.5-free",
-    # Pide ser contribuidor de opencode: puede no estar disponible en esta
-    # cuenta, y por eso va el último pese a su millón de contexto.
-    "opencode/muse-spark-1.2-contributor-free",
 )
 
 #: Con qué modelo trabaja opencode si nadie dice otra cosa. Explícito y
@@ -146,6 +148,37 @@ DENEGADAS = (
 )
 
 
+def _ejecutable_real(ruta: str) -> str:
+    """El binario de verdad detrás de un envoltorio `.cmd` de npm.
+
+    Copia deliberada de `perseo_core.dev.ejecutable_real`, por lo mismo que
+    `DENEGADAS`: este servidor corre como proceso suelto y no importa el
+    núcleo. En Windows, lanzar el `.cmd` de npm pasa por `cmd.exe`, que **corta
+    la orden en el primer salto de línea**: al subagente le llegaba la primera
+    línea de la tarea y nada más. Medido el 2026-08-28.
+    """
+    if os.name != "nt" or not ruta.lower().endswith((".cmd", ".bat")):
+        return ruta
+    try:
+        texto = Path(ruta).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ruta
+    base = Path(ruta).parent
+    for linea in texto.splitlines():
+        if "%*" not in linea:
+            continue
+        entrecomillados = re.findall(r'"([^"]+)"', linea)
+        if len(entrecomillados) != 1:
+            return ruta
+        destino = entrecomillados[0]
+        for marca in ("%~dp0", "%dp0%"):
+            destino = destino.replace(marca, "")
+        candidato = base / destino.lstrip("\\/")
+        if candidato.suffix.lower() == ".exe" and candidato.exists():
+            return str(candidato)
+    return ruta
+
+
 def _modelo_de(motor: str, pedido: str = "") -> str:
     """Con qué modelo trabaja este encargo. Vacío para Claude, que usa el suyo.
 
@@ -169,7 +202,7 @@ def _comando(motor: str, tarea: str, directorio: Path | None = None, modelo: str
         # escribir fuera del proyecto, nadie contesta —esto no es interactivo— y
         # el propio programa se lo deniega («auto-rejecting») y sale con código
         # 0. El encargo se daba por hecho con el disco intacto.
-        comando = [shutil.which("opencode") or "opencode", "run", "--auto"]
+        comando = [_ejecutable_real(shutil.which("opencode") or "opencode"), "run", "--auto"]
         # `--dir` NO es redundante con el `cwd` del proceso, y en el agente
         # `dev` costó un fichero escrito dos carpetas más arriba para verlo
         # (2026-08-26): `opencode run` levanta su propio servidor y resuelve el
@@ -180,7 +213,7 @@ def _comando(motor: str, tarea: str, directorio: Path | None = None, modelo: str
         comando += ["-m", _modelo_de(motor, modelo)]
         return [*comando, tarea]
     linea = [
-        shutil.which("claude") or "claude",
+        _ejecutable_real(shutil.which("claude") or "claude"),
         "-p",
         tarea,
         "--output-format",

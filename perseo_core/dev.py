@@ -233,7 +233,9 @@ class MotorClaude:
     """
 
     def __init__(self, ejecutable: str) -> None:
-        self._ejecutable = ejecutable
+        # El envoltorio `.cmd` de npm corta la orden en el primer salto de
+        # línea, y el prompt de un encargo lleva dos. Ver `ejecutable_real`.
+        self._ejecutable = ejecutable_real(ejecutable)
 
     async def ejecutar(self, encargo: Encargo, avisar: Aviso | None = None) -> Resultado:
         argumentos = [
@@ -320,27 +322,75 @@ def fracaso_encubierto(texto: str) -> str:
     return ""
 
 
-#: Los modelos GRATIS de opencode Zen, de más contexto a menos. Salen de
-#: `opencode models opencode --verbose` filtrando los que tienen `cost.input` y
-#: `cost.output` a cero — no de lo que suene conocido.
+#: Los modelos GRATIS de opencode Zen que **contestan**, de más rápido a menos.
+#: Salen de `opencode models opencode` y de probarlos uno a uno: la lista de
+#: antes se ordenaba por contexto y encabezaba con dos que ya no responden.
+#:
+#: Medido el 2026-08-28, un «di HOLA» por modelo:
+#:   big-pickle 10 s · hy3-free 9 s · muse-spark 9 s · ling-3.0-flash 7 s
+#:   mimo-v2.5 27 s · nemotron-3-ultra NADA en 100 s · nemotron-3.5 NADA en 100 s
+#:
+#: Los dos nemotron se quedan al final y no de adorno: si vuelven, ahí están;
+#: mientras no vuelvan, no los coge nadie por defecto. Un modelo que no
+#: contesta no falla — se cuelga hasta `dev_tope` (900 s), y desde el panel eso
+#: se ve como un encargo que no termina nunca.
 #:
 #: Es la MISMA lista que ofrecen la pestaña de encargos del panel
 #: (`RealTime/src/components/Panel.tsx`, `perseo_core/interfaz/index.html`) y el
 #: servidor MCP de subagentes (`commands/subagentes_mcp.py`). Si cambia una,
-#: cambian todas: se vuelven a sacar del mismo comando.
+#: cambian todas: se vuelven a sacar del mismo comando y se vuelven a probar.
 MODELOS_GRATIS_OPENCODE = (
+    "opencode/big-pickle",
+    "opencode/hy3-free",
+    "opencode/muse-spark-1.2-contributor-free",
+    "opencode/ling-3.0-flash-fin-free",
+    "opencode/mimo-v2.5-free",
+    # No contestaban el 2026-08-28: cien segundos sin una sola línea. Van al
+    # final para que nadie los coja sin pedirlos.
     "opencode/nemotron-3-ultra-free",
     "opencode/nemotron-3.5-lightning-free",
-    "opencode/hy3-free",
-    "opencode/big-pickle",
-    "opencode/mimo-v2.5-free",
-    # Pide ser contribuidor de opencode: puede no estar disponible en esta
-    # cuenta, y por eso va el último pese a su millón de contexto.
-    "opencode/muse-spark-1.2-contributor-free",
 )
 
-#: Con qué trabaja opencode si nadie elige. El de más contexto de los gratuitos.
+#: Con qué trabaja opencode si nadie elige. El primero de los que contestan.
 MODELO_OPENCODE_POR_DEFECTO = MODELOS_GRATIS_OPENCODE[0]
+
+
+def ejecutable_real(ruta: str) -> str:
+    """El binario de verdad detrás de un envoltorio `.cmd` de npm.
+
+    En Windows `shutil.which("opencode")` devuelve `opencode.CMD`, y lanzar un
+    `.cmd` pasa por `cmd.exe`, que **corta la línea de órdenes en el primer
+    salto de línea**. El prompt de un encargo es `contexto + "\n\n" + encargo`:
+    al modelo le llegaba el contexto y **nunca el encargo**. Contestaba «¿cuál
+    es la tarea?», el trabajo se apuntaba como HECHO, y el disco intacto.
+    Medido el 2026-08-28 con dos modelos distintos, los dos igual.
+
+    El envoltorio de npm no hace nada más que llamar al `.exe` con `%*`, así
+    que se llama a ese directamente y el salto de línea sobrevive. Si el
+    envoltorio tiene otra forma —dos rutas entrecomilladas, como los que llaman
+    a `node.exe script.js`— se deja como estaba: mejor el fallo conocido que
+    una orden mal montada.
+    """
+    if os.name != "nt" or not ruta.lower().endswith((".cmd", ".bat")):
+        return ruta
+    try:
+        texto = Path(ruta).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ruta
+    base = Path(ruta).parent
+    for linea in texto.splitlines():
+        if "%*" not in linea:
+            continue
+        entrecomillados = re.findall(r'"([^"]+)"', linea)
+        if len(entrecomillados) != 1:
+            return ruta
+        destino = entrecomillados[0]
+        for marca in ("%~dp0", "%dp0%"):
+            destino = destino.replace(marca, "")
+        candidato = base / destino.lstrip("\\/")
+        if candidato.suffix.lower() == ".exe" and candidato.exists():
+            return str(candidato)
+    return ruta
 
 
 def modelo_opencode(pedido: str = "") -> str:
@@ -375,7 +425,9 @@ class MotorOpencode:
     _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
     def __init__(self, ejecutable: str) -> None:
-        self._ejecutable = ejecutable
+        # El envoltorio `.cmd` de npm corta la orden en el primer salto de
+        # línea, y el prompt de un encargo lleva dos. Ver `ejecutable_real`.
+        self._ejecutable = ejecutable_real(ejecutable)
 
     async def ejecutar(self, encargo: Encargo, avisar: Aviso | None = None) -> Resultado:
         # `--auto` no es una comodidad: sin él, `opencode run` pide permiso para

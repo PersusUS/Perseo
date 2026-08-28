@@ -875,24 +875,27 @@ const SISTEMAS_AGENTE: [string, string][] = [
   ['', 'El configurado por defecto'],
 ];
 
-/** Los modelos GRATIS de opencode Zen, de más contexto a menos.
+/** Los modelos GRATIS de opencode Zen que **contestan**, de más rápido a menos.
  *
- *  Salen de `opencode models opencode --verbose`, filtrando los que tienen
- *  `cost.input` y `cost.output` a cero — no de lo que suene conocido. Los dos
- *  que había aquí antes eran inventados a medias: `glm-5` existe pero **se
- *  paga**, y `qwen3-coder` no existe en este proveedor (2026-08-26).
+ *  Salen de `opencode models opencode` y de probarlos uno a uno el 2026-08-28.
+ *  El orden no es capricho: los dos que encabezaban esta lista —los nemotron—
+ *  no devolvían una sola línea en cien segundos, y un modelo que no contesta no
+ *  da error: se cuelga hasta el tope de 900 s. Desde esta pantalla eso se veía
+ *  como un encargo que no termina nunca, que es justo lo que pasaba.
  *
- *  Los seis saben usar herramientas y razonar, que es lo que hace falta para
- *  un agente de código. Cuando cambien, se vuelven a sacar del mismo comando. */
+ *  Es la MISMA lista que `perseo_core/dev.py`, `perseo_core/interfaz/index.html`
+ *  y `commands/subagentes_mcp.py`. Si cambia una, cambian todas: se vuelven a
+ *  sacar del mismo comando y se vuelven a probar. */
 const MODELOS_OPENCODE: [string, string][] = [
-  ['opencode/nemotron-3-ultra-free', 'nemotron-3-ultra · 1M contexto'],
-  ['opencode/nemotron-3.5-lightning-free', 'nemotron-3.5-lightning · rápido'],
-  ['opencode/hy3-free', 'hy3 · 190k'],
   ['opencode/big-pickle', 'big-pickle · 200k'],
-  ['opencode/mimo-v2.5-free', 'mimo-v2.5 · 200k'],
-  // Pide ser contribuidor de opencode: puede no estar disponible en esta
-  // cuenta, y por eso va el último y no de primero pese a su contexto.
-  ['opencode/muse-spark-1.2-contributor-free', 'muse-spark · 1M (contribuidores)'],
+  ['opencode/hy3-free', 'hy3 · 190k'],
+  ['opencode/muse-spark-1.2-contributor-free', 'muse-spark · 1M'],
+  ['opencode/ling-3.0-flash-fin-free', 'ling-3.0-flash'],
+  ['opencode/mimo-v2.5-free', 'mimo-v2.5 · 200k (lento)'],
+  // No contestaban el 2026-08-28: cien segundos sin una línea. Al final, para
+  // que nadie los coja sin pedirlos. Ver `perseo_core/dev.py`.
+  ['opencode/nemotron-3-ultra-free', 'nemotron-3-ultra · 1M (no contestaba)'],
+  ['opencode/nemotron-3.5-lightning-free', 'nemotron-3.5-lightning (no contestaba)'],
   ['', 'El que tenga configurado opencode'],
 ];
 

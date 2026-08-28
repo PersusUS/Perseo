@@ -579,3 +579,92 @@ def test_al_acabar_el_encargo_no_queda_progreso(dev_falso) -> None:
     """Si no se limpiara, el panel enseñaría para siempre el último paso."""
     asyncio.run(dev._dev({"id": 12, "peticion": {"texto": "algo"}}))
     assert dev.progreso_de(12) == ""
+
+
+# --------------------------------------------------------------------------- #
+# El envoltorio `.cmd` de npm, que se comía el encargo
+# --------------------------------------------------------------------------- #
+
+
+def _envoltorio(tmp_path, linea: str, con_exe: bool = True):
+    """Un `.cmd` de npm de mentira, con su `.exe` al lado si se pide."""
+    destino = tmp_path / "node_modules" / "opencode-ai" / "bin"
+    destino.mkdir(parents=True)
+    if con_exe:
+        (destino / "opencode.exe").write_bytes(b"MZ")
+    cmd = tmp_path / "opencode.CMD"
+    cmd.write_text(linea, encoding="utf-8")
+    return cmd
+
+
+@pytest.mark.skipif(os.name != "nt", reason="El envoltorio `.cmd` es de Windows")
+def test_el_envoltorio_cmd_se_cambia_por_el_exe_de_verdad(tmp_path) -> None:
+    """La causa de que un encargo saliera «hecho» sin haber hecho nada.
+
+    `cmd.exe` corta la línea de órdenes en el primer salto de línea, y el
+    prompt de un encargo es `contexto + "\n\n" + encargo`: al modelo le
+    llegaba el contexto y jamás la tarea. Contestaba «¿cuál es el encargo?» y
+    el trabajo se apuntaba como hecho. Medido el 2026-08-28.
+    """
+    cmd = _envoltorio(tmp_path, '"%dp0%\\node_modules\\opencode-ai\\bin\\opencode.exe"   %*\n')
+    real = dev.ejecutable_real(str(cmd))
+    assert real.endswith("opencode.exe")
+    assert Path(real).exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="El envoltorio `.cmd` es de Windows")
+def test_un_envoltorio_que_no_se_entiende_se_deja_como_estaba(tmp_path) -> None:
+    """Mejor el fallo conocido que una orden mal montada: los envoltorios que
+    llaman a `node.exe script.js` llevan DOS rutas, y quedarse con la primera
+    daría un `node` sin guion."""
+    cmd = _envoltorio(tmp_path, '"%dp0%\\node.exe" "%dp0%\\cli.js" %*\n', con_exe=False)
+    assert dev.ejecutable_real(str(cmd)) == str(cmd)
+
+
+def test_un_ejecutable_de_verdad_no_se_toca() -> None:
+    """`claude` ya es un `.EXE`: pasar por aquí no puede cambiarlo."""
+    assert dev.ejecutable_real("C:\\bin\\claude.EXE") == "C:\\bin\\claude.EXE"
+    assert dev.ejecutable_real("/usr/bin/opencode") == "/usr/bin/opencode"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="El envoltorio `.cmd` es de Windows")
+def test_el_motor_de_opencode_resuelve_el_envoltorio_al_construirse(tmp_path) -> None:
+    """En el constructor y no en `abrir_motor`: por ahí pasan todos los
+    caminos —el de serie, el elegido por encargo y el de las pruebas—."""
+    cmd = _envoltorio(tmp_path, '"%dp0%\\node_modules\\opencode-ai\\bin\\opencode.exe" %*\n')
+    assert dev.MotorOpencode(str(cmd))._ejecutable.endswith("opencode.exe")
+
+
+# --------------------------------------------------------------------------- #
+# Qué modelo sale puesto
+# --------------------------------------------------------------------------- #
+
+
+def test_el_modelo_por_defecto_es_uno_que_contesta() -> None:
+    """Los dos nemotron encabezaban la lista y no devolvían una sola línea en
+    cien segundos (2026-08-28). Un modelo que no contesta no da error: se
+    cuelga hasta el tope de 900 s, y en el panel eso es un encargo eterno."""
+    muertos = ("opencode/nemotron-3-ultra-free", "opencode/nemotron-3.5-lightning-free")
+    assert dev.MODELO_OPENCODE_POR_DEFECTO not in muertos
+    assert dev.modelo_opencode("") not in muertos
+    # Siguen en la lista por si vuelven, pero los últimos.
+    for muerto in muertos:
+        assert muerto in dev.MODELOS_GRATIS_OPENCODE
+        assert dev.MODELOS_GRATIS_OPENCODE.index(muerto) >= len(dev.MODELOS_GRATIS_OPENCODE) - 2
+
+
+def test_las_cuatro_listas_de_modelos_dicen_lo_mismo() -> None:
+    """La lista vive copiada en cuatro sitios —el núcleo, las dos pantallas y
+    el MCP— y ya se desincronizó una vez. Esto lo cuenta antes que el usuario."""
+    raiz = Path(__file__).resolve().parent.parent
+    ficheros = (
+        raiz / "commands" / "subagentes_mcp.py",
+        raiz / "perseo_core" / "interfaz" / "index.html",
+        raiz / "RealTime" / "src" / "components" / "Panel.tsx",
+    )
+    for fichero in ficheros:
+        texto = fichero.read_text(encoding="utf-8")
+        encontrados = [m for m in dev.MODELOS_GRATIS_OPENCODE if m in texto]
+        assert encontrados == list(dev.MODELOS_GRATIS_OPENCODE), (
+            f"{fichero.name} no ofrece los mismos modelos, o no en el mismo orden"
+        )
