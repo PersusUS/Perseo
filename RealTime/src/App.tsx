@@ -1,3 +1,25 @@
+/**
+ * La ventana de Perseo: quién enciende qué, y en qué orden.
+ *
+ * Es el orquestador de la cara de voz. No habla con Gemini —eso es
+ * `lib/gemini-live.ts`—, no dibuja la escenografía —`components/Escenografia.tsx`—
+ * y no decide nada de lo que se hace: reparte estado y escucha eventos.
+ *
+ * Lo que sostiene desde aquí:
+ *
+ * - **El estado de la llamada** (conectando, conectado, error), el silencio del
+ *   micrófono, la transcripción de los dos lados y quién está hablando.
+ * - **Las cuatro pantallas que se abren encima**: ajustes, panel, hábitos y el
+ *   riel de proyectos. Cada una es un componente propio; aquí solo vive el
+ *   interruptor.
+ * - **Lo que llega de fuera sin pedirlo**: los eventos de Tauri (`listen`) para
+ *   abrir el panel desde la bandeja, las llamadas entrantes y las
+ *   confirmaciones pendientes que el núcleo deja esperando un sí.
+ *
+ * La clave de la API nunca pasa por aquí: la lee Rust del almacén cifrado y
+ * este fichero solo se entera de si está lista (`apiKeyReady`).
+ */
+
 import { useEffect, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -18,7 +40,7 @@ import { audioPlayer } from './lib/audio-player';
 import { cameraManager } from './lib/camera-manager';
 import { screenManager } from './lib/screen-manager';
 import { vigilante, type CaraDetectada } from './lib/identidad';
-import { avisoCaras, avisoHablante, esElSenor } from './lib/quien-hay';
+import { avisoCaras, avisoHablante, esElSenor, sinAvisoDeIdentidad } from './lib/quien-hay';
 import {
   defaultConfig,
   cargarAjustesPersistidos,
@@ -120,6 +142,10 @@ function App() {
   // descarta — encolarlo era que saliera horas después en otra llamada.
   const conectadoRef = useRef(false);
   const ultimaIdentidad = useRef<{ texto: string; cuando: number }>({ texto: '', cuando: 0 });
+  // Los últimos avisos mandados, para reconocerlos si el modelo los lee en voz
+  // alta y quitarlos de la transcripción. Tres bastan: un aviso viejo ya no
+  // puede estar saliendo por la boca de Perseo.
+  const avisosRecientes = useRef<string[]>([]);
   const carasVistas = useRef('');
   const avisarIdentidad = (texto: string) => {
     if (!conectadoRef.current) return;
@@ -131,6 +157,7 @@ function App() {
       return;
     }
     ultimaIdentidad.current = { texto, cuando: ahora };
+    avisosRecientes.current = [texto, ...avisosRecientes.current].slice(0, 3);
     geminiClient.informarIdentidad(texto);
   };
 
@@ -477,13 +504,24 @@ function App() {
       }
       if (!delta) return prev;
 
+      // Los avisos de identidad son información del sistema; si el modelo los
+      // lee en voz alta, al menos no se quedan escritos en la pantalla ni en la
+      // bitácora que se guarda en el vault. Se limpia el texto entero y no el
+      // trozo: la marca llega partida entre fragmentos. Ver lib/quien-hay.ts.
       const ultimo = prev[prev.length - 1];
       if (ultimo && ultimo.type === rol && ultimo.abierto) {
-        return [...prev.slice(0, -1), { ...ultimo, text: ultimo.text + delta }];
+        const texto = sinAvisoDeIdentidad(ultimo.text + delta, avisosRecientes.current);
+        return [...prev.slice(0, -1), { ...ultimo, text: texto }];
       }
       return [
         ...prev,
-        { id: `${Date.now()}-${Math.random()}`, text: delta, type: rol, abierto: true, hora: ahoraCorta() },
+        {
+          id: `${Date.now()}-${Math.random()}`,
+          text: sinAvisoDeIdentidad(delta, avisosRecientes.current),
+          type: rol,
+          abierto: true,
+          hora: ahoraCorta(),
+        },
       ].slice(-MAX_MENSAJES);
     });
   };

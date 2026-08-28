@@ -176,18 +176,29 @@ export const Settings: React.FC<Props> = ({
 
   const confirmarRenombrar = async () => {
     if (!renombrarDe || !nombreNuevo.trim()) return;
-    const resultado = await renombrarPerfil(renombrarDe, nombreNuevo.trim());
-    if (resultado.error) { setError(resultado.error); return; }
-    setRenombrarDe(null);
-    setNombreNuevo('');
-    refrescarBiometria();
+    try {
+      const resultado = await renombrarPerfil(renombrarDe, nombreNuevo.trim());
+      if (resultado.error) { setError(resultado.error); return; }
+      setRenombrarDe(null);
+      setNombreNuevo('');
+      refrescarBiometria();
+    } catch (e) {
+      setError(`No se pudo renombrar a «${renombrarDe}»: ${e}`);
+    }
   };
 
+  // El núcleo contesta 400 o 404 con un `Err` de Rust, y eso aquí llega como
+  // excepción, no como `{ error }`. Sin el try el botón parecía muerto: se
+  // pulsaba «¿Seguro?» y no pasaba nada ni se decía por qué.
   const borrarUno = async (nombre: string) => {
-    const resultado = await borrarPerfil(nombre);
-    if (resultado.error) { setError(resultado.error); return; }
-    setBorrarConfirmando(null);
-    refrescarBiometria();
+    try {
+      const resultado = await borrarPerfil(nombre);
+      if (resultado.error) { setError(resultado.error); return; }
+      setBorrarConfirmando(null);
+      refrescarBiometria();
+    } catch (e) {
+      setError(`No se pudo borrar a «${nombre}»: ${e}`);
+    }
   };
 
   // El que había al abrir, para devolverlo si se cancela: el aspecto se aplica

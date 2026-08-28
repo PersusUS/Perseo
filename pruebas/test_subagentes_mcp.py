@@ -35,17 +35,22 @@ def todos_instalados(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PERSEO_SUBAGENTE_MOTOR", raising=False)
 
 
-def test_por_defecto_manda_claude(todos_instalados) -> None:
-    """El gratuito se cae a ratos y no siempre lo dice: no puede ser el de serie."""
-    assert subagentes_mcp._motor() == "claude"
-
-
-def test_pedir_opencode_se_respeta(todos_instalados, monkeypatch) -> None:
-    monkeypatch.setenv("PERSEO_SUBAGENTE_MOTOR", "opencode")
+def test_por_defecto_manda_opencode(todos_instalados) -> None:
+    """El que no gasta suscripción es el de serie, y lo pidió él con esas palabras."""
     assert subagentes_mcp._motor() == "opencode"
 
 
-def test_si_el_pedido_no_esta_queda_claude(monkeypatch) -> None:
+def test_pedir_claude_en_el_encargo_se_respeta(todos_instalados) -> None:
+    """Perseo puede decir «mándalo con Claude» sin tocar ninguna variable."""
+    assert subagentes_mcp._motor("claude") == "claude"
+
+
+def test_el_entorno_tambien_puede_pedir_claude(todos_instalados, monkeypatch) -> None:
+    monkeypatch.setenv("PERSEO_SUBAGENTE_MOTOR", "claude")
+    assert subagentes_mcp._motor() == "claude"
+
+
+def test_si_el_pedido_no_esta_queda_el_que_haya(monkeypatch) -> None:
     monkeypatch.setenv("PERSEO_SUBAGENTE_MOTOR", "opencode")
     monkeypatch.setattr(
         subagentes_mcp.shutil, "which", lambda nombre: "/bin/claude" if nombre == "claude" else None
@@ -68,6 +73,33 @@ def test_sin_ningun_motor_el_error_dice_que_instalar(monkeypatch) -> None:
 def test_opencode_va_con_auto(monkeypatch) -> None:
     monkeypatch.setattr(subagentes_mcp.shutil, "which", lambda nombre: f"/bin/{nombre}")
     assert "--auto" in subagentes_mcp._comando("opencode", "haz algo")
+
+
+def test_opencode_lleva_la_carpeta_escrita(monkeypatch, tmp_path) -> None:
+    """`opencode run` levanta su propio servidor y se OLVIDA del `cwd` (H-67).
+
+    Sin `--dir`, el fichero acababa en la carpeta que a él le pareciera. Es el
+    mismo fallo que costó un fichero perdido en el agente `dev` el 2026-08-26.
+    """
+    monkeypatch.setattr(subagentes_mcp.shutil, "which", lambda nombre: f"/bin/{nombre}")
+    comando = subagentes_mcp._comando("opencode", "haz algo", tmp_path)
+    assert comando[comando.index("--dir") + 1] == str(tmp_path)
+
+
+def test_opencode_nunca_sale_sin_modelo(monkeypatch) -> None:
+    """Sin `-m` usa el que tenga configurado, y ese puede ser DE PAGO."""
+    monkeypatch.delenv("PERSEO_SUBAGENTE_MODELO", raising=False)
+    monkeypatch.setattr(subagentes_mcp.shutil, "which", lambda nombre: f"/bin/{nombre}")
+    comando = subagentes_mcp._comando("opencode", "haz algo")
+    elegido = comando[comando.index("-m") + 1]
+    assert elegido == subagentes_mcp.MODELO_POR_DEFECTO
+    assert elegido in subagentes_mcp.MODELOS_GRATIS
+
+
+def test_el_modelo_dictado_a_medias_se_completa(monkeypatch) -> None:
+    """Perseo oye «el hy3» y lo manda a medias: el proveedor se le pone aquí."""
+    monkeypatch.delenv("PERSEO_SUBAGENTE_MODELO", raising=False)
+    assert subagentes_mcp._modelo_de("opencode", "hy3-free") == "opencode/hy3-free"
 
 
 def test_claude_trabaja_sin_pedir_permiso(monkeypatch) -> None:

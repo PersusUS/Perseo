@@ -179,7 +179,11 @@ class Configuracion:
     dev_motor: str
     #: Qué se ejecuta cuando el motor es el de verdad.
     dev_ejecutable: str
-    #: Raíz de la que no puede salir un encargo de código.
+    #: Desde dónde trabaja un encargo de código, y de dónde no puede salir.
+    #: Por defecto la CARPETA DEL USUARIO, no este repositorio: los proyectos
+    #: del señor Persus están interconectados y un agente encerrado en uno solo
+    #: no puede leer el de al lado (2026-08-26). Se estrecha con
+    #: `PERSEO_DEV_RAIZ` si alguna vez hace falta.
     dev_raiz: str
     #: Segundos que se le dan a un encargo antes de cortarlo.
     dev_tope: float
@@ -282,6 +286,12 @@ _RUTAS_TAILSCALE = (
 
 LOCALES = ("127.0.0.1", "localhost", "::1")
 
+#: Que preguntarle su IP a Tailscale no abra una consola. El núcleo arranca sin
+#: ventana —lo lanza `pythonw` desde el vigilante—, y `tailscale.exe` es un
+#: programa de consola: sin esto parpadeaba una caja negra en cada arranque
+#: (H-75). La salida se captura, así que nadie se pierde nada.
+_SIN_VENTANA = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+
 
 def direcciones_tailscale() -> tuple[str, ...]:
     """Las direcciones de esta máquina en el tailnet: la IPv4 y la IPv6.
@@ -303,6 +313,7 @@ def direcciones_tailscale() -> tuple[str, ...]:
             salida = subprocess.run(
                 [str(ruta), "ip"],
                 capture_output=True,
+                creationflags=_SIN_VENTANA,
                 text=True,
                 timeout=10,
                 check=False,
@@ -494,7 +505,7 @@ def cargar_configuracion() -> Configuracion:
         correo_falso=var("PERSEO_CORREO_FALSO", str(directorio / "buzon.json")),
         dev_motor=var("PERSEO_DEV_MOTOR", "").strip().lower(),
         dev_ejecutable=var("PERSEO_DEV_CLAUDE", "claude"),
-        dev_raiz=var("PERSEO_DEV_RAIZ", str(RAIZ.parent)),
+        dev_raiz=var("PERSEO_DEV_RAIZ", str(Path.home())),
         dev_tope=float(var("PERSEO_DEV_TOPE", "900")),
         dev_tardanza_falsa=float(var("PERSEO_DEV_TARDANZA", "0")),
         google_credenciales=var("PERSEO_GOOGLE_CREDENCIALES", str(directorio / "google.json")),

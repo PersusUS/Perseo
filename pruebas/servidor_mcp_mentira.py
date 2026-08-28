@@ -64,6 +64,18 @@ def main() -> None:
                     "tools": [
                         {"name": "eco", "description": "Devuelve lo que le mandes."},
                         {"name": "tarda", "description": "Se duerme antes de contestar."},
+                        {
+                            "name": "estricto",
+                            "description": "Exige sus nombres en inglés, como los de verdad.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {"type": "string"},
+                                    "path": {"type": "string"},
+                                },
+                                "required": ["command", "path"],
+                            },
+                        },
                     ]
                 },
             )
@@ -75,6 +87,29 @@ def main() -> None:
                     identificador,
                     {"content": [{"type": "text", "text": "eco: " + json.dumps(argumentos)}]},
                 )
+            elif nombre == "estricto":
+                faltan = [k for k in ("command", "path") if not argumentos.get(k)]
+                if faltan:
+                    # Como los de verdad: el rechazo por argumentos viaja como
+                    # error de JSON-RPC, no dentro del resultado.
+                    print(
+                        json.dumps(
+                            {
+                                "jsonrpc": "2.0",
+                                "id": identificador,
+                                "error": {
+                                    "code": -32602,
+                                    "message": "Input validation error: " + ", ".join(faltan),
+                                },
+                            }
+                        ),
+                        flush=True,
+                    )
+                else:
+                    responder(
+                        identificador,
+                        {"content": [{"type": "text", "text": "estricto: " + json.dumps(argumentos)}]},
+                    )
             elif nombre == "tarda":
                 time.sleep(30)
                 responder(identificador, {"content": [{"type": "text", "text": "demasiado tarde"}]})

@@ -72,6 +72,15 @@ pub async fn panel_trabajo(app: AppHandle, id: i64) -> Result<Value, String> {
     traer(&app, &format!("/trabajos/{id}")).await
 }
 
+/// El paso a paso de un encargo de codigo: el suyo y el de sus subagentes.
+///
+/// Es lo que convierte un "HECHO (16 vueltas)" en algo que se puede depurar:
+/// que herramienta uso, que contesto cada una y que hizo cada subagente.
+#[tauri::command]
+pub async fn panel_actividad(app: AppHandle, id: i64) -> Result<Value, String> {
+    traer(&app, &format!("/trabajos/{id}/actividad")).await
+}
+
 /// Aprobar, rechazar o cancelar.
 ///
 /// La decision se valida aqui: sin esto, `decision` seria un trozo de URL que
@@ -319,6 +328,24 @@ pub async fn panel_encolar(
 #[tauri::command]
 pub async fn panel_mensaje(app: AppHandle, texto: String) -> Result<Value, String> {
     mandar(&app, "/mensaje", json!({ "texto": texto, "origen": "texto" })).await
+}
+
+/// Deja en el nucleo una copia del seguimiento de habitos.
+///
+/// Los habitos viven en el `localStorage` de esta ventana —marcar una casilla no
+/// puede depender de que el nucleo este encendido— y eso dejaba fuera a media
+/// casa: el Perseo de la llamada corre AQUI y podia leerlos, pero el chat
+/// escrito y los agentes son Python y no ven dentro de un navegador.
+///
+/// Lo que viaja es el texto ya redactado, no las casillas: quien cuenta es
+/// `src/lib/habitos.ts` y nadie mas (ver `perseo_core/habitos.py`).
+///
+/// Un fallo aqui no es un fallo de la pantalla: si el nucleo esta apagado, el
+/// señor Persus sigue marcando sus habitos igual y la copia se manda con el
+/// cambio siguiente. Por eso el frontend se traga el error en vez de enseñarlo.
+#[tauri::command]
+pub async fn habitos_espejo(app: AppHandle, texto: String, foto: Value) -> Result<Value, String> {
+    mandar(&app, "/habitos", json!({ "texto": texto, "foto": foto })).await
 }
 
 /// Enciende o apaga el modo confianza.

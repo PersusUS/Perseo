@@ -411,7 +411,7 @@ pub async fn ejecutar_herramienta(
 
     // La confirmacion no encola nada: resuelve un trabajo que ya esta parado.
     // Va antes de `traducir` porque no es un trabajo nuevo para un agente, es
-    // una decision sobre uno que existe. Ver N-1 en bitacora/06_HANDOFF.md §12:
+    // una decision sobre uno que existe. Ver N-1 en bitacora/11_HISTORIA.md §12:
     // desde que Telegram dejo de tener botones, el si se da aqui, de viva voz.
     if tool_name == "responder_confirmacion" {
         return responder_confirmacion(&app, &args).await;
@@ -818,11 +818,31 @@ pub async fn biometria_borrar(app: AppHandle, nombre: String) -> Result<Value, S
 /// Codifica un nombre para meterlo en la ruta. Los perfiles pueden llamarse
 /// «Desconocido 1» o «Fátima»: espacios y acentos no pueden ir crudos en una URL.
 /// Lo codifica el propio parser de URL que trae reqwest, sin dependencia nueva.
+///
+/// Devuelve SOLO el segmento, no la ruta entera: quien llama ya escribe
+/// `/biometria/perfiles/{}`. Cuando esto devolvía la ruta completa salía
+/// `/biometria/perfiles//biometria/perfiles/Desconocido%201`, y el núcleo
+/// contestaba 404 a todo borrado y a todo renombrado (H-69).
 fn encode_ruta(nombre: &str) -> String {
-    let mut url = reqwest::Url::parse("http://localhost/biometria/perfiles")
+    let mut url = reqwest::Url::parse("http://localhost/")
         .expect("la URL semilla es fija y válida");
     url.path_segments_mut()
         .expect("la URL semilla no puede ser «cannot-be-a-base»")
         .push(nombre);
-    url.path().to_string()
+    url.path().trim_start_matches('/').to_string()
+}
+
+#[cfg(test)]
+mod pruebas_ruta {
+    use super::encode_ruta;
+
+    #[test]
+    fn codifica_un_solo_segmento_sin_prefijo() {
+        assert_eq!(encode_ruta("Desconocido 1"), "Desconocido%201");
+        assert_eq!(encode_ruta("Fátima"), "F%C3%A1tima");
+        assert_eq!(
+            format!("/biometria/perfiles/{}", encode_ruta("Desconocido 1")),
+            "/biometria/perfiles/Desconocido%201"
+        );
+    }
 }

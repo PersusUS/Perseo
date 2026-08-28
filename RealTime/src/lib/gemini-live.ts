@@ -1,3 +1,27 @@
+/**
+ * El cliente de Gemini Live: la boca y los oídos de la llamada.
+ *
+ * Es el fichero más grande de `src/lib/` y hasta el 2026-08-26 fue el único sin
+ * una línea que dijera qué era. Lo que hay dentro, en orden:
+ *
+ * 1. **La sesión**: apertura contra `v1alpha` con audio nativo, testigo de
+ *    reanudación guardado (`perseo.sesion.testigo`) y cierre limpio. El porqué
+ *    de cada constante está anotado justo debajo de ella.
+ * 2. **Las herramientas**: lo que el modelo puede pedir. Aquí NO se ejecuta
+ *    ninguna. Cada `toolCall` se convierte en un `invoke(...)` hacia Rust, y
+ *    Rust lo encola en el núcleo (`src-tauri/src/nucleo.rs`). Es la regla de la
+ *    casa: las caras no piensan. `PLANIFICACION` decide, herramienta por
+ *    herramienta, si la respuesta corta lo que se esté diciendo o espera turno.
+ * 3. **La reconexión**, cuya aritmética vive aparte —`reconexion.ts`— para
+ *    poder probarla sin abrir un WebSocket.
+ * 4. **Lo que se le cuenta al modelo sin que lo pida**: quién está delante
+ *    (`quien-hay.ts`), quién empezó la llamada y qué avisos quedan pendientes
+ *    (`aviso-llamada.ts`), y cómo va el seguimiento de hábitos (`habitos.ts`).
+ *
+ * Quien toque esto: la interfaz va incrustada en el binario, así que editar
+ * este fichero no cambia nada hasta `python commands/perseo.py actualizar`.
+ */
+
 import {
   Behavior,
   FunctionResponseScheduling,
@@ -30,6 +54,7 @@ import {
   type OrigenLlamada,
 } from './aviso-llamada';
 import { bloqueCenso, type PerfilConocido } from './quien-hay';
+import { resumenGuardado } from './habitos';
 
 /**
  * Modelo de la Fase C. Se baja del 3.1 a propósito: el 3.1 **no soporta audio
@@ -70,6 +95,10 @@ const PLANIFICACION: Record<string, FunctionResponseScheduling> = {
   responder_confirmacion: FunctionResponseScheduling.WHEN_IDLE,
   consultar_agenda: FunctionResponseScheduling.INTERRUPT,
   situacion_actual: FunctionResponseScheduling.INTERRUPT,
+  // Quien preguntó qué pone en sus notas espera la respuesta ahora, no
+  // detrás de lo que se esté diciendo.
+  buscar_en_memoria: FunctionResponseScheduling.INTERRUPT,
+  leer_nota: FunctionResponseScheduling.INTERRUPT,
   listar_mcp: FunctionResponseScheduling.INTERRUPT,
   usar_mcp: FunctionResponseScheduling.INTERRUPT,
   ver_pantalla: FunctionResponseScheduling.INTERRUPT,
@@ -77,6 +106,10 @@ const PLANIFICACION: Record<string, FunctionResponseScheduling> = {
   // de decir cómo se llama espera oírlo de vuelta, no treinta segundos después.
   nombrar_persona: FunctionResponseScheduling.INTERRUPT,
   quien_conozco: FunctionResponseScheduling.INTERRUPT,
+  // Los hábitos se leen del `localStorage` de esta misma ventana: no hay viaje
+  // de red que esperar, así que la respuesta corta lo que se esté diciendo en
+  // vez de hacer cola detrás de ello.
+  consultar_habitos: FunctionResponseScheduling.INTERRUPT,
 };
 
 export class GeminiLiveClient {
@@ -95,7 +128,7 @@ export class GeminiLiveClient {
   public onAprobacionPendiente: (id: number, pregunta: string) => void = () => {};
   /** Un trabajo pendiente que acaba de resolverse por voz. Saca su tarjeta de
    *  la pantalla: seguir ahí invitaba a pulsar lo que ya se contestó hablando.
-   *  Ver N-1 en bitacora/06_HANDOFF.md §12. */
+   *  Ver N-1 en bitacora/11_HISTORIA.md §12. */
   public onAprobacionResuelta: (id: number) => void = () => {};
   /** Enciende o apaga la vista de pantalla. Lo pone la aplicación, que es
    *  quien vive el ciclo de captura; devuelve la frase que lee el modelo. */
@@ -204,14 +237,26 @@ export class GeminiLiveClient {
 
   /**
    * Aviso de identidad en vivo («ahora habla Persus», «delante hay X e Y»).
-   * Va por realtime-input, el mismo canal barato que los trozos de audio y el
-   * motivo de llamada: una línea de texto sobre el WebSocket ya abierto, sin
-   * petición nueva ni interrupción del sonido. Si la sesión está cerrada se
-   * guarda para entregarse al abrir, igual que `entregarAlAbrir`.
+   *
+   * Va por `sendClientContent` con `turnComplete: false`, que es el canal para
+   * añadir contexto SIN pedir turno. Antes iba por realtime-input, igual que el
+   * motivo de llamada, y ahí el aviso entra como si alguien acabara de hablar:
+   * el modelo contesta a lo que "ha oído" y el 2026-08-26 abrió la llamada
+   * leyendo la marca —«[IDENTIDAD] Persus Buenos días, señor Persus»—. Como
+   * contexto a secas, el aviso está cuando le toque hablar y no le empuja a
+   * hablar por sí solo. Si la sesión está cerrada se guarda para entregarse al
+   * abrir, igual que `entregarAlAbrir`.
    */
   informarIdentidad(texto: string): void {
     if (!texto) return;
     try {
+      if (typeof (this.session as any)?.sendClientContent === 'function') {
+        (this.session as any).sendClientContent({
+          turns: [{ role: 'user', parts: [{ text: texto }] }],
+          turnComplete: false,
+        });
+        return;
+      }
       if (typeof (this.session as any)?.sendRealtimeInput === 'function') {
         (this.session as any).sendRealtimeInput({ text: texto });
         return;
@@ -443,6 +488,69 @@ ${censo}`;
                 }
               },
               {
+                // La memoria de verdad, que por voz no existía: el puente de
+                // Rust traducía `buscar_en_memoria` desde el primer día, pero
+                // nadie se la había declarado al modelo. Sin ella, preguntar
+                // por lo que hay escrito en el vault acababa en `search_files`
+                // del MCP, que solo mira NOMBRES de fichero — de ahí que Perseo
+                // no supiera contestar con sus propias notas (H-78).
+                name: "buscar_en_memoria",
+                behavior: Behavior.NON_BLOCKING,
+                description: "Busca DENTRO del texto de las notas del vault de Obsidian y devuelve las que hablan de eso, con su ruta y un extracto. Es la memoria a largo plazo del señor Persus y la tuya: úsala SIEMPRE que la pregunta sea sobre lo que él tiene apuntado —sus proyectos, sus gustos, su salud, vuestras conversaciones— antes de decir que no lo sabes. Las carpetas 01_ a 09_ son cosas suyas; 10_PERSEO/ son las tuyas. No confundir con el servidor MCP 'vault', que maneja ficheros y solo busca por nombre.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    texto: {
+                      type: Type.STRING,
+                      description: "Lo que se busca, en palabras sueltas y sin comillas ('té con limón', 'proyecto Perseo')."
+                    },
+                    carpeta: {
+                      type: Type.STRING,
+                      description: "Vacío para todo el vault; '10_PERSEO' para tus memorias."
+                    }
+                  },
+                  required: ["texto"]
+                }
+              },
+              {
+                name: "leer_nota",
+                behavior: Behavior.NON_BLOCKING,
+                description: "Abre entera una nota del vault. La ruta sale tal cual de buscar_en_memoria; no te la inventes.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    ruta: {
+                      type: Type.STRING,
+                      description: "La ruta relativa que devolvió buscar_en_memoria, por ejemplo '10_PERSEO/Sobre Perseo.md'."
+                    }
+                  },
+                  required: ["ruta"]
+                }
+              },
+              {
+                name: "guardar_recuerdo",
+                behavior: Behavior.NON_BLOCKING,
+                description: "Apunta algo en el vault para acordarse mañana. Añade, nunca sobrescribe. Úsala cuando el señor Persus cuente algo que merezca quedar escrito.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    entidad: {
+                      type: Type.STRING,
+                      description: "De quién o de qué es el recuerdo: el título de la nota."
+                    },
+                    contexto: {
+                      type: Type.STRING,
+                      description: "Lo que hay que recordar, en prosa."
+                    },
+                    descripcion_visual: {
+                      type: Type.STRING,
+                      description: "Solo si viene de algo que estás VIENDO por la cámara o la pantalla. Si no, se deja vacío."
+                    }
+                  },
+                  required: ["entidad"]
+                }
+              },
+              {
                 name: "situacion_actual",
                 behavior: Behavior.NON_BLOCKING,
                 description: "Un briefing del momento, hablado como un mayordomo: en qué está trabajando Perseo ahora mismo (y en qué consiste), qué asuntos esperan tu sí con su pregunta literal para poder decidirlos al momento, qué falló por última vez, el buzón por cajones y la batería. Úsala para «¿qué hay?», «¿tengo algo pendiente?» o antes de despedirte de una llamada.",
@@ -495,6 +603,16 @@ ${censo}`;
                 name: "quien_conozco",
                 behavior: Behavior.NON_BLOCKING,
                 description: "A quién reconoce este ordenador por voz o por cara, con los que aún esperan nombre. Úsala cuando te pregunten a quién conoces, o antes de 'nombrar_persona' para no repetir un nombre que ya existe.",
+                parameters: { type: Type.OBJECT, properties: {}, required: [] }
+              },
+              {
+                // Los hábitos estaban en la pantalla de hábitos y en ningún
+                // sitio más: el señor Persus podía verlos y Perseo no. Con esto
+                // el seguimiento deja de ser una hoja bonita y pasa a ser algo
+                // que se puede preguntar de viva voz a mitad de una llamada.
+                name: "consultar_habitos",
+                behavior: Behavior.NON_BLOCKING,
+                description: "El seguimiento de hábitos del señor Persus tal como está ahora mismo: cuántas casillas lleva del mes y su porcentaje, cuáles le faltan HOY, las rachas vivas, los que peor van, el detalle hábito por hábito y las medias de ánimo y motivación. Úsala siempre que pregunte cómo va, qué le falta hoy, por su racha de algo, o cuando te pida que le animes o le eches en cara un hábito concreto: sin ella te lo estarías inventando. Es de solo lectura y no gasta cuota; no pidas permiso para llamarla. NO sirve para marcar ni desmarcar nada — eso lo hace él en la pantalla de hábitos.",
                 parameters: { type: Type.OBJECT, properties: {}, required: [] }
               },
               {
@@ -890,6 +1008,18 @@ ${censo}`;
           censo ??
           'El reconocimiento de personas está apagado o todavía no reconoce a nadie en este ordenador.',
       };
+    } else if (name === 'consultar_habitos') {
+      // Tampoco viaja al núcleo: el seguimiento vive en el `localStorage` de
+      // esta ventana y esta ventana es donde corre este código. Un viaje a
+      // Python para leer algo que está en la memoria del proceso sería un rodeo
+      // con dos formas nuevas de fallar —el núcleo apagado y el espejo viejo—
+      // para llegar al mismo texto. El núcleo tiene su copia (ver `espejar()`)
+      // porque el chat escrito no puede leer este almacén, no al revés.
+      try {
+        response = { result: resumenGuardado() };
+      } catch (e: any) {
+        response = { error: `No se pudo leer el seguimiento de hábitos: ${e}` };
+      }
     } else {
       try {
         const argumentos = await this.traducirSiSeñala(name, args);

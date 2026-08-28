@@ -460,10 +460,13 @@ const NotaVault: React.FC<{ n: any }> = ({ n }) => {
   );
 };
 
-const TarjetaTrabajo: React.FC<{ t: Trabajo; onResponder: (id: number, d: string) => void }> = ({
-  t,
-  onResponder,
-}) => {
+const TarjetaTrabajo: React.FC<{
+  t: Trabajo;
+  onResponder: (id: number, d: string) => void;
+  /** Lo que la pestaña de agentes cuelga debajo: la bitácora del encargo. La
+   *  cola no la enseña —ahí se mira el ciclo de vida, no el paso a paso—. */
+  extra?: React.ReactNode;
+}> = ({ t, onResponder, extra }) => {
   const notas: any[] = Array.isArray(t.resultado?.notas) ? t.resultado.notas : [];
   const clasificados: any[] = Array.isArray(t.resultado?.clasificados) ? t.resultado.clasificados : [];
 
@@ -532,6 +535,125 @@ const TarjetaTrabajo: React.FC<{ t: Trabajo; onResponder: (id: number, d: string
           </button>
         </div>
       )}
+
+      {extra}
+    </div>
+  );
+};
+
+/** Un paso de la bitácora de un encargo. */
+type Paso = {
+  tipo: string;
+  titulo: string;
+  detalle: string;
+  agente: string;
+  ok: boolean;
+  momento: string;
+};
+
+type Actividad = {
+  id: number;
+  vivo: boolean;
+  estado?: string;
+  pasos: Paso[];
+  agentes: { id: string; titulo: string; pasos: number; fallos: number }[];
+};
+
+const NOMBRES_DE_PASO: Record<string, string> = {
+  herramienta: 'hace',
+  resultado: 'sale',
+  dice: 'dice',
+  piensa: 'piensa',
+  subagente: 'subagente',
+  fin: 'fin',
+  error: 'error',
+};
+
+/** La bitácora de un encargo: qué hizo el agente principal y qué hizo cada
+ *  subagente, paso a paso y con el detalle a mano.
+ *
+ *  Existe por el 2026-08-25: dos encargos seguidos dijeron HECHO —«16 vueltas»—
+ *  sin haber abierto la app que se les pidió, y no había forma de saber qué
+ *  habían hecho durante esas dieciséis vueltas sin abrir el registro del
+ *  núcleo desde otro ordenador. Ahora se abre aquí, y se puede entrar dentro de
+ *  cada subagente. */
+const Bitacora: React.FC<{ id: number; vivo: boolean }> = ({ id, vivo }) => {
+  const [actividad, setActividad] = useState<Actividad | null>(null);
+  const [mirado, setMirado] = useState<string>('todo');
+  const [fallo, setFallo] = useState('');
+
+  const cargar = useCallback(async () => {
+    try {
+      setActividad(await invoke<Actividad>('panel_actividad', { id }));
+      setFallo('');
+    } catch (e: any) {
+      setFallo(String(e));
+    }
+  }, [id]);
+
+  useEffect(() => {
+    cargar();
+    // Un encargo terminado ya no cambia: sondearlo sería repintar encima de lo
+    // que estás leyendo cada tres segundos, sin nada nuevo que enseñar.
+    if (!vivo) return;
+    const t = setInterval(cargar, 3000);
+    return () => clearInterval(t);
+  }, [cargar, vivo]);
+
+  if (fallo) return <div className="pnl-motivo">No se pudo leer la actividad: {fallo}</div>;
+  if (!actividad) return <div className="pnl-motivo">Leyendo la actividad…</div>;
+
+  const visibles = actividad.pasos.filter(p => mirado === 'todo' || p.agente === mirado);
+
+  return (
+    <div className="pnl-actividad">
+      {actividad.agentes.length > 1 && (
+        <div className="pnl-filtros">
+          <button
+            type="button"
+            className="pnl-ficha"
+            aria-pressed={mirado === 'todo'}
+            onClick={() => setMirado('todo')}
+          >
+            todo ({actividad.pasos.length})
+          </button>
+          {actividad.agentes.map(a => (
+            <button
+              key={a.id}
+              type="button"
+              className="pnl-ficha"
+              aria-pressed={mirado === a.id}
+              onClick={() => setMirado(a.id)}
+              title={a.id}
+            >
+              {a.titulo} ({a.pasos}){a.fallos ? ' ⚠' : ''}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="pnl-pasos">
+        {visibles.length === 0 && (
+          <div className="pnl-motivo">
+            Sin pasos apuntados. Los motores de consola no cuentan nada hasta el final.
+          </div>
+        )}
+        {visibles.map((p, i) => (
+          <div key={i} className={`pnl-paso${p.ok ? '' : ' mal'}`}>
+            <span className="pnl-hora">{(p.momento || '').slice(11, 19)}</span>
+            <span className="pnl-tipo-paso">{NOMBRES_DE_PASO[p.tipo] ?? p.tipo}</span>
+            <div className="pnl-que">
+              <div>{p.titulo || '(sin título)'}</div>
+              {p.detalle && p.detalle !== p.titulo && (
+                <details>
+                  <summary>detalle</summary>
+                  <pre>{p.detalle}</pre>
+                </details>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -737,13 +859,69 @@ const ChatTab: React.FC = () => {
 const EJEMPLOS_ENCARGO = [
   'En CVScraper: ejecuta los tests, arregla los que fallen y cuenta qué pasaba.',
   'Añade un README con qué es este proyecto y cómo arrancarlo.',
-  'Con claude: revisa la pestaña de ajustes y propón cómo hacerla más clara.',
+  'Arranca la app de Armario y déjala escuchando para poder usarla desde el móvil.',
 ];
+
+/** Con qué SISTEMA trabaja un encargo. Lo que ya no se elige es la carpeta.
+ *
+ *  **opencode va primero y es lo que sale puesto**: es el que no gasta
+ *  suscripción, y el señor Persus lo dijo con todas las letras el 2026-08-26
+ *  —«usar Claude es secundario, quiero la opción gratuita»—. Claude sigue ahí
+ *  para el encargo que lo merezca, un escalón por debajo. */
+const SISTEMAS_AGENTE: [string, string][] = [
+  ['opencode', 'opencode · gratis'],
+  ['sdk', 'Claude · SDK'],
+  ['claude', 'Claude · consola'],
+  ['', 'El configurado por defecto'],
+];
+
+/** Los modelos GRATIS de opencode Zen, de más contexto a menos.
+ *
+ *  Salen de `opencode models opencode --verbose`, filtrando los que tienen
+ *  `cost.input` y `cost.output` a cero — no de lo que suene conocido. Los dos
+ *  que había aquí antes eran inventados a medias: `glm-5` existe pero **se
+ *  paga**, y `qwen3-coder` no existe en este proveedor (2026-08-26).
+ *
+ *  Los seis saben usar herramientas y razonar, que es lo que hace falta para
+ *  un agente de código. Cuando cambien, se vuelven a sacar del mismo comando. */
+const MODELOS_OPENCODE: [string, string][] = [
+  ['opencode/nemotron-3-ultra-free', 'nemotron-3-ultra · 1M contexto'],
+  ['opencode/nemotron-3.5-lightning-free', 'nemotron-3.5-lightning · rápido'],
+  ['opencode/hy3-free', 'hy3 · 190k'],
+  ['opencode/big-pickle', 'big-pickle · 200k'],
+  ['opencode/mimo-v2.5-free', 'mimo-v2.5 · 200k'],
+  // Pide ser contribuidor de opencode: puede no estar disponible en esta
+  // cuenta, y por eso va el último y no de primero pese a su contexto.
+  ['opencode/muse-spark-1.2-contributor-free', 'muse-spark · 1M (contribuidores)'],
+  ['', 'El que tenga configurado opencode'],
+];
+
+const MODELOS_CLAUDE: [string, string][] = [
+  ['', 'Modelo por defecto'],
+  ['opus', 'opus'],
+  ['sonnet', 'sonnet'],
+  ['haiku', 'haiku'],
+];
+
+/** Y con qué modelo. Cada sistema tiene los suyos. */
+const MODELOS_AGENTE: Record<string, [string, string][]> = {
+  opencode: MODELOS_OPENCODE,
+  sdk: MODELOS_CLAUDE,
+  claude: MODELOS_CLAUDE,
+  '': MODELOS_CLAUDE,
+};
 
 const AgentesTab: React.FC<{ onEncargado: () => void }> = ({ onEncargado }) => {
   const [tarea, setTarea] = useState('');
   const [aviso, setAviso] = useState('');
   const [encargos, setEncargos] = useState<Trabajo[]>([]);
+  // Se arranca en opencode y en su primer modelo gratis: lo que no cuesta
+  // suscripción es lo que debe salir puesto, no lo que hay que ir a buscar.
+  const [motor, setMotor] = useState(SISTEMAS_AGENTE[0][0]);
+  const [modelo, setModelo] = useState(MODELOS_OPENCODE[0][0]);
+  /** Qué bitácoras están abiertas. Fuera del render de cada tarjeta: la lista
+   *  se recarga sola y cerrar lo que estás leyendo sería inservible. */
+  const [abiertos, setAbiertos] = useState<Set<number>>(new Set());
 
   const cargar = useCallback(async () => {
     try {
@@ -764,8 +942,15 @@ const AgentesTab: React.FC<{ onEncargado: () => void }> = ({ onEncargado }) => {
     e.preventDefault();
     const texto = tarea.trim();
     if (!texto) { setAviso('Escribe primero qué tiene que hacer.'); return; }
+    // Sin `directorio`: el núcleo trabaja desde la carpeta del usuario y el
+    // agente entra en el proyecto que haga falta. Elegir la raíz era el
+    // impuesto de cada encargo, y mandaba una URL cuando el proyecto era un
+    // servicio (2026-08-26).
+    const peticion: Record<string, string> = { texto };
+    if (motor) peticion.motor = motor;
+    if (modelo) peticion.modelo = modelo;
     try {
-      const trabajo = await invoke<Trabajo>('panel_encolar', { agente: 'dev', peticion: { texto } });
+      const trabajo = await invoke<Trabajo>('panel_encolar', { agente: 'dev', peticion });
       setTarea('');
       setAviso(`Encargo #${trabajo.id} en marcha. Puede tardar minutos: trabaja solo.`);
       onEncargado();
@@ -782,9 +967,29 @@ const AgentesTab: React.FC<{ onEncargado: () => void }> = ({ onEncargado }) => {
   const terminados = encargos.filter(t => !ESTADOS_ABIERTOS.has(t.estado));
 
   const tarjeta = (t: Trabajo) => (
-    <TarjetaTrabajo key={t.id} t={t} onResponder={(id, d) => {
-      invoke('panel_responder', { id, decision: d }).then(cargar).catch(() => {});
-    }} />
+    <TarjetaTrabajo
+      key={t.id}
+      t={t}
+      onResponder={(id, d) => {
+        invoke('panel_responder', { id, decision: d }).then(cargar).catch(() => {});
+      }}
+      extra={
+        <div className="pnl-acciones">
+          <button
+            type="button"
+            className="pnl-pildora"
+            onClick={() => setAbiertos(previo => {
+              const copia = new Set(previo);
+              if (copia.has(t.id)) copia.delete(t.id); else copia.add(t.id);
+              return copia;
+            })}
+          >
+            {abiertos.has(t.id) ? 'Ocultar actividad' : 'Ver actividad'}
+          </button>
+          {abiertos.has(t.id) && <Bitacora id={t.id} vivo={ESTADOS_ABIERTOS.has(t.estado)} />}
+        </div>
+      }
+    />
   );
 
   return (
@@ -793,12 +998,35 @@ const AgentesTab: React.FC<{ onEncargado: () => void }> = ({ onEncargado }) => {
         <div className="pnl-cabeza">Encargos de código</div>
         <div className="pnl-detalle">
           Escribe el encargo como se habla: el proyecto va en el texto
-          («en CVScraper…») y el motor si quieres elegirlo («con opencode»,
-          «con claude»). Sin nada de eso: raíz de Perseo y opencode.
+          («en CVScraper…»). El agente trabaja desde tu carpeta de usuario y
+          puede entrar en cualquier proyecto: no hay que elegir raíz. Con qué
+          trabaja se elige abajo.
         </div>
       </div>
 
       <form className="pnl-tarjeta pnl-agentes-form" onSubmit={lanzar}>
+        <div className="pnl-opciones-agente">
+          {/* Al cambiar de sistema, el modelo pasa a ser el PRIMERO del nuevo y
+              no vacío: con opencode, vacío significa «el que tenga configurado»,
+              que puede ser de pago. */}
+          <select
+            value={motor}
+            onChange={e => {
+              const elegido = e.target.value;
+              setMotor(elegido);
+              setModelo((MODELOS_AGENTE[elegido] ?? MODELOS_CLAUDE)[0][0]);
+            }}
+          >
+            {SISTEMAS_AGENTE.map(([valor, nombre]) => (
+              <option key={valor} value={valor}>{nombre}</option>
+            ))}
+          </select>
+          <select value={modelo} onChange={e => setModelo(e.target.value)}>
+            {(MODELOS_AGENTE[motor] ?? MODELOS_AGENTE['']).map(([valor, nombre]) => (
+              <option key={valor} value={valor}>{nombre}</option>
+            ))}
+          </select>
+        </div>
         <textarea
           value={tarea}
           onChange={e => setTarea(e.target.value)}

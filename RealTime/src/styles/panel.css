@@ -404,6 +404,56 @@
   outline: none; border-color: rgba(255, 255, 255, .35);
 }
 .pnl-agentes-form textarea { resize: vertical; min-height: 96px; }
+/* La lista desplegada la pinta el navegador, no esta hoja: `color-scheme: dark`
+   en `base.css` es lo que la vuelve oscura. Estas dos reglas son el cinturón
+   por si el WebView de turno no lo respeta — dan el mismo negro a mano. */
+.pnl-agentes-form option {
+  background: var(--bg);
+  color: var(--fg);
+}
+.pnl-agentes-form option:checked { background: var(--surface-hover); }
+/* Sistema y modelo, uno al lado del otro. La carpeta ya no se elige: el agente
+   sale de la carpeta del usuario y entra donde haga falta (2026-08-26). */
+.pnl-opciones-agente { display: flex; gap: 8px; }
+.pnl-opciones-agente select { flex: 1; min-width: 0; }
+
+/* ── La bitácora de un encargo ───────────────────────────────────────────────
+   El paso a paso del agente y de cada subagente. Es una pantalla de depuración
+   dentro de una tarjeta, así que manda la densidad: línea corta, monoespaciada
+   para la hora y el tipo, y el detalle plegado hasta que se pide. */
+.pnl-actividad {
+  width: 100%; margin-top: var(--e2);
+  border-top: 1px solid var(--border); padding-top: var(--e2);
+}
+.pnl-actividad .pnl-filtros { margin-bottom: var(--e2); }
+.pnl-actividad .pnl-ficha { cursor: pointer; background: none; }
+.pnl-actividad .pnl-ficha[aria-pressed="true"] { color: var(--fg); border-color: var(--fg); }
+.pnl-pasos {
+  display: flex; flex-direction: column;
+  max-height: 320px; overflow-y: auto;
+}
+.pnl-paso {
+  display: flex; gap: 8px; align-items: baseline;
+  font-size: 12px; line-height: 1.4; padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+.pnl-paso:last-child { border-bottom: none; }
+.pnl-paso.mal .pnl-que { color: #f87171; }
+.pnl-hora {
+  flex: none; font-family: var(--mono); font-size: 10px; color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+.pnl-tipo-paso {
+  flex: none; font-family: var(--mono); font-size: 9px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--fg-dim); min-width: 62px;
+}
+.pnl-que { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--fg-muted); }
+.pnl-que details summary { cursor: pointer; font-size: 10px; color: var(--fg-dim); }
+.pnl-que pre {
+  margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere;
+  font-family: var(--mono); font-size: 11px; color: var(--fg-dim);
+  max-height: 200px; overflow-y: auto;
+}
 
 /* El rótulo de cada campo: versalitas monoespaciadas, la casa de siempre. */
 .pnl-rotulo {

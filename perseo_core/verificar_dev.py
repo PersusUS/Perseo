@@ -77,6 +77,36 @@ def comprobar_en_proceso() -> None:
         ", ".join(h for h in dev.HERRAMIENTAS_PERMITIDAS if h.startswith("Bash")),
     )
     comprobar("Hay tope de vueltas", dev.MAX_VUELTAS > 0, str(dev.MAX_VUELTAS))
+    # La lista ancha es para lo que pide el señor Persus con el dedo; sin ella,
+    # "abre la app de armario" acaba en verde sin abrir nada (H-74).
+    comprobar(
+        "La lista ancha puede arrancar procesos",
+        "Bash" in dev.HERRAMIENTAS_PERMITIDAS_AMPLIAS
+        and "Task" in dev.HERRAMIENTAS_PERMITIDAS_AMPLIAS,
+    )
+    comprobar(
+        "Y lo denegado sigue denegado con ella",
+        all(h in dev.HERRAMIENTAS_DENEGADAS for h in ("Bash(git push*)", "Bash(rm *)")),
+    )
+    comprobar(
+        "Una URL no se toma por directorio",
+        not dev._parece_carpeta("http://127.0.0.1:8000") and dev._parece_carpeta("C:\\algo"),
+    )
+
+    # 2 bis. La bitacora: es lo que convierte "HECHO (16 vueltas)" en algo que
+    #        se puede depurar sin abrir el registro del nucleo.
+    dev._anotar(9001, dev.Paso(tipo="herramienta", titulo="Leyendo api.py"))
+    dev._anotar(9001, dev.Paso(tipo="resultado", titulo="Error", agente="tu_1", ok=False))
+    actividad = dev.actividad_de(9001)
+    comprobar(
+        "La bitacora apunta el paso a paso",
+        len(actividad["pasos"]) == 2 and len(actividad["agentes"]) == 2,
+        f"{len(actividad['pasos'])} pasos, {len(actividad['agentes'])} agentes",
+    )
+    comprobar(
+        "Y separa lo de cada subagente",
+        any(a["id"] == "tu_1" and a["fallos"] == 1 for a in actividad["agentes"]),
+    )
 
     # 3. Un encargo vacio se rechaza antes de arrancar nada.
     async def vacio() -> bool:
@@ -143,6 +173,15 @@ def comprobar_de_punta_a_punta() -> None:
         str(resultado.get("texto"))[:80],
     )
     comprobar("Trae titular para el canal", bool(resultado.get("titular")), str(resultado.get("titular")))
+
+    # 6 bis. Y la bitacora se puede leer por la API DESPUES de terminar, que es
+    #        cuando uno se pregunta que hizo de verdad (H-74).
+    codigo_bitacora, bitacora = nucleo.pedir(f"/trabajos/{encargo['id']}/actividad", token)
+    comprobar(
+        "La actividad del encargo se lee por la API",
+        codigo_bitacora == 200 and len(bitacora.get("pasos") or []) > 0,
+        f"HTTP {codigo_bitacora}, {len(bitacora.get('pasos') or [])} pasos",
+    )
     comprobar(
         "Y la sesion, para poder continuar el encargo",
         bool(resultado.get("sesion")),

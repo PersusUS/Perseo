@@ -64,6 +64,22 @@ def test_la_confianza_baja_lo_irreversible() -> None:
     assert not politica.pide_confirmacion("pc", {"accion": "escribir_teclado"})
 
 
+def test_la_confianza_no_tapa_lo_critico() -> None:
+    """La llamada de voz enciende la confianza sola, y con ella nada preguntaba.
+
+    Tener a alguien hablando no es su sí a ESTA orden: lo que no se deshace
+    pregunta igual. Ver H-80.
+    """
+    politica.registrar_niveles(lambda agente, peticion: politica.CRITICO)
+    try:
+        politica.activar_confianza(30)
+        assert politica.hay_confianza()
+        assert politica.pide_confirmacion("mcp", {"servidor": "windows"})
+        assert "no se puede deshacer" in politica.resumir("mcp", {"accion": "llamar"})
+    finally:
+        politica.registrar_niveles(None)
+
+
 def test_la_confianza_no_cambia_lo_libre() -> None:
     politica.activar_confianza(30)
     assert not politica.pide_confirmacion("memoria", {"accion": "buscar"})

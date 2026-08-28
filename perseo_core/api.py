@@ -41,7 +41,7 @@ from typing import Any
 
 from aiohttp import web
 
-from . import almacen, biometria, dev, estado, grafo, politica, proyectos
+from . import almacen, biometria, dev, estado, grafo, habitos, politica, proyectos
 from .agentes import REGISTRO, Router
 from .bus import Bus
 
@@ -444,6 +444,25 @@ async def _ver_trabajo(peticion: web.Request) -> web.Response:
     return web.json_response(_con_progreso(trabajo))
 
 
+async def _ver_actividad(peticion: web.Request) -> web.Response:
+    """El paso a paso de un encargo de código: el suyo y el de sus subagentes.
+
+    Es lo que convierte «HECHO (16 vueltas)» en algo que se puede depurar. La
+    bitácora sobrevive al encargo —y al reinicio del núcleo, porque también se
+    escribe en disco—, así que esto contesta igual a los cinco minutos que a la
+    mañana siguiente, que es cuando uno se pregunta qué hizo de verdad.
+    """
+    id_trabajo = _id_de_ruta(peticion)
+    trabajo = await asyncio.to_thread(almacen.obtener, id_trabajo)
+    if trabajo is None:
+        raise web.HTTPNotFound(
+            text=json.dumps({"error": "No existe ese trabajo"}),
+            content_type="application/json",
+        )
+    actividad = await asyncio.to_thread(dev.actividad_de, id_trabajo)
+    return web.json_response({**actividad, "estado": trabajo.get("estado")})
+
+
 def _con_progreso(trabajo: dict[str, Any]) -> dict[str, Any]:
     """Añade por dónde va el encargo, si es uno de código y sigue vivo.
 
@@ -649,6 +668,39 @@ async def _hablar_chat(peticion: web.Request) -> web.Response:
             "trabajo_id": trabajo["id"],
         },
         status=202,
+    )
+
+
+async def _habitos_espejo(peticion: web.Request) -> web.Response:
+    """La ventana deja aquí su copia del seguimiento de hábitos.
+
+    El seguimiento vive en el `localStorage` de la app, y esta ruta es cómo el
+    núcleo se entera de él: sin ella, el chat escrito y los agentes son los
+    únicos de la casa que no saben cómo van los hábitos del señor Persus.
+
+    El cuerpo trae el texto YA redactado por la ventana. El núcleo no vuelve a
+    contar nada (ver `habitos.py`): dos contabilidades del mismo dato acaban
+    discrepando, y entonces ninguna de las dos vale.
+    """
+    cuerpo = await _cuerpo_json(peticion)
+    texto = str(cuerpo.get("texto", "")).strip()
+    if not texto:
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "Falta 'texto'"}), content_type="application/json"
+        )
+    cfg = peticion.app[CLAVE_CFG]
+    foto = cuerpo.get("foto")
+    copia = await asyncio.to_thread(
+        habitos.guardar, cfg.directorio_datos, texto, foto if isinstance(foto, dict) else None
+    )
+    return web.json_response({"sellado": copia["sellado"]})
+
+
+async def _habitos_ver(peticion: web.Request) -> web.Response:
+    """Lo último que mandó la ventana, con el aviso delante si viene vieja."""
+    cfg = peticion.app[CLAVE_CFG]
+    return web.json_response(
+        {"resumen": await asyncio.to_thread(habitos.resumen, cfg.directorio_datos)}
     )
 
 
@@ -920,6 +972,7 @@ def crear_app(cfg: almacen.Configuracion, bus: Bus, router: Router) -> web.Appli
             web.post("/trabajos", _crear_trabajo),
             web.get("/trabajos", _listar_trabajos),
             web.get("/trabajos/{id}", _ver_trabajo),
+            web.get("/trabajos/{id}/actividad", _ver_actividad),
             web.post("/trabajos/{id}/cancelar", _cancelar_trabajo),
             web.post("/trabajos/{id}/{decision:aprobar|rechazar}", _responder_confirmacion),
             web.get("/correos", _listar_correos),
@@ -936,6 +989,8 @@ def crear_app(cfg: almacen.Configuracion, bus: Bus, router: Router) -> web.Appli
             web.post("/grafo/abrir", _abrir_nota_grafo),
             web.get("/confianza", _ver_confianza),
             web.post("/confianza", _cambiar_confianza),
+            web.post("/habitos", _habitos_espejo),
+            web.get("/habitos", _habitos_ver),
             web.get("/biometria", _biometria_estado),
             web.post("/biometria/voz", _biometria_voz),
             web.post("/biometria/cara", _biometria_cara),

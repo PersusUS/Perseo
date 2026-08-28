@@ -1,181 +1,121 @@
 /**
- * El seguimiento de hábitos, dentro de la ventana de la app.
+ * El seguimiento de hábitos: la plantilla original, en la ventana de la app.
  *
- * Salió de una plantilla de hoja de cálculo y se rehízo el 2026-08-25 por
- * encargo del señor Persus —*«más intuitivo, sin emoticonos, todo más grande y
- * con el aire de Perseo»*—. Lo que cambió, y por qué:
+ * ── Qué es esto y por qué está así ──────────────────────────────────────────
  *
- *  1. **Dos aires, una pantalla.** `estilo` decide la paleta: `perseo` —negro,
- *     versalitas, monoespaciada— o `plantilla` —el beige del que salió—. Mismo
- *     reparto, mismas cifras, mismos gestos; solo cambian los colores. Se elige
- *     en Ajustes y se aplica al pulsar.
- *  2. **Sin iconos.** Cada hábito llevaba un emoji al lado del nombre. En una
- *     rejilla de 31 columnas era ruido de colores compitiendo con lo único que
- *     importa: si la casilla está marcada o no. Un `icono` guardado de antes se
- *     descarta al leer.
- *  3. **Se lee a un metro.** La plantilla original tenía tipografías de 7 a
- *     12 px porque en una hoja de cálculo se hace zoom; una ventana no. Toda la
- *     escala vive en variables (`--hb-t-*`, `--hb-celda`) y subió de golpe.
- *  4. **Lo que un tracker necesita y una hoja no tiene:** hoy va señalado, los
- *     días que aún no han llegado se apagan, los fines de semana se distinguen,
- *     se pinta arrastrando el ratón por varias casillas, la cabecera de un día
- *     marca la columna entera y cada hábito enseña su racha viva.
+ * Esto salió de una hoja de cálculo —un «habit tracker» de plantilla— que el
+ * señor Persus ya usaba. Se rehízo tres veces buscando algo mejor y la tercera
+ * acabó en una sola tabla sin cajas; él miró la foto de la plantilla y dijo la
+ * frase que cierra el asunto: *«mejor vuélvelo al diseño original de esta foto
+ * […] mantén los colores y todo, solo quita los emoticonos»*.
  *
- * Todo se edita: nombres, casillas, ánimo, motivación, alta y baja de hábitos.
- * Las cifras de la derecha —objetivo, hechos, faltan, porcentajes, el anillo,
- * las barras y el ranking— no se escriben nunca a mano: salen de las casillas.
- * Dos sitios donde teclear el mismo dato acaban discrepando.
+ * Así que el reparto es el de la plantilla, literal, y lo que se conserva de
+ * las vueltas anteriores es **solo lo que no se ve**: el manejo. La lección,
+ * apuntada para no repetirla: una plantilla que alguien ya usa a diario no es
+ * un borrador que mejorar, es un requisito. Lo que sobraba no era el reparto.
  *
- * Dónde vive el dato: en el `localStorage` de la ventana, bajo `ALMACEN`. Es la
- * excepción consciente a «las caras no piensan» —el núcleo no tiene agente de
- * hábitos y no se le va a inventar uno para guardar doce casillas—, y está
- * aislada en una sola constante para el día que se mude a `perseo_core`.
+ * ── El reparto, que es el de la foto ────────────────────────────────────────
+ *
+ *   ┌──────────┬─────────────────────────┬──────────────────┐
+ *   │ título   │ progreso diario         │ objetivo/hechas  │
+ *   │ ajustes  │ progreso semanal        │ resumen (rosco)  │
+ *   ├──────────┼─────────────────────────┼──────────────────┤
+ *   │ mis      │ semana 1 … semana 5     │ análisis         │
+ *   │ hábitos  │ (la rejilla de casillas)│ por hábito       │
+ *   ├──────────┴─────────────────────────┼──────────────────┤
+ *   │ estado mental (ánimo, motivación)  │ los diez mejores │
+ *   └────────────────────────────────────┴──────────────────┘
+ *
+ * La columna de la izquierda mide lo mismo en las tres filas (`--hb-izq`): el
+ * bloque del título, la columna de nombres de la rejilla y las etiquetas del
+ * estado mental están a plomo, como en la hoja. Es lo primero que se nota si se
+ * descuadra, y por eso la medida es una sola variable y no tres.
+ *
+ * ── Lo único que NO viene de la plantilla ───────────────────────────────────
+ *
+ * Sin emoticonos. En la hoja cada hábito llevaba uno al lado del nombre y el
+ * «top 10» los repetía. En una rejilla de 31 columnas es ruido de colores
+ * compitiendo con lo único que importa: si la casilla está marcada o no. Un
+ * `icono` guardado de antes se descarta al leer (ver `lib/habitos.ts`).
+ *
+ * ── Y lo que se conserva de las vueltas intermedias, porque no se ve ────────
+ *
+ *  - **La casilla es la celda entera**, no un cuadrito de 16 px en el centro de
+ *    un hueco de 26 × 27. Mismo aspecto, casi el triple de diana.
+ *  - **Cruceta**: al pasar el ratón se encienden la fila y la columna. En un mes
+ *    de 31 columnas es la diferencia entre marcar el 17 y marcar el 18.
+ *  - **Teclado**: flechas para moverse, espacio para marcar, `Shift`+flecha para
+ *    pintar sin soltar — el arrastre del ratón, para quien no lo usa.
+ *  - **`Ctrl+Z`**. Se pinta arrastrando, y un arrastre torcido borra una semana
+ *    en un gesto. Un arrastre entero cuenta como un solo paso.
+ *  - **Marcar un hábito entero** hasta hoy, **marcar un día entero**, y
+ *    **reordenar** la lista arrastrando por el asa.
+ *  - **La racha cruza el mes** (ver `racha()` en `lib/habitos.ts`): contada
+ *    dentro del mes valía como mucho 1 cada día 1.
+ *
+ * Todo se edita; ninguna cifra se teclea. Las cuentas de la derecha —objetivo,
+ * hechas, faltan, porcentajes, el rosco, las barras y el ranking— salen de las
+ * casillas, porque dos sitios donde escribir el mismo dato acaban discrepando.
+ *
+ * Dónde vive el dato: en `lib/habitos.ts`, sobre el `localStorage` de la
+ * ventana. Esta pantalla es una de sus dos lectoras; la otra es Perseo, que lo
+ * consulta en llamada con la herramienta `consultar_habitos`.
  */
+import React, {
+  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
+} from 'react';
 
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 
 import type { EstiloHabitos } from '../lib/config';
+import {
+  DIAS_SEMANA, DIAS_SEMANA_LARGO, MESES, MES_VACIO,
+  acotar, clave, diasDelMes, foto, guardar, leer, porcentaje, racha, resumen, semanaDe,
+  type Datos, type Mes,
+} from '../lib/habitos';
+import '../styles/habitos.css';
 
-const ALMACEN = 'perseo.habitos.v1';
-
-type Habito = { id: string; nombre: string };
-
-/** Un mes de datos. Las marcas van en un objeto plano con clave
- *  `idHabito|día` en vez de una matriz: añadir o quitar un hábito no tiene
- *  entonces que recolocar nada, y un hábito borrado se lleva sus marcas al
- *  filtrarlas por id. */
-type Mes = {
-  marcas: Record<string, boolean>;
-  animo: Record<string, number>;
-  motivacion: Record<string, number>;
-};
-
-type Datos = { habitos: Habito[]; meses: Record<string, Mes> };
-
-const MESES = [
-  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
-];
-
-/** Los rótulos del encabezado, empezando en domingo porque `getDay()` devuelve
- *  0 para el domingo y así el índice es el propio día de la semana. */
-const DIAS_SEMANA = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
-const DIAS_SEMANA_LARGO = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-
-/** Los doce de la plantilla, traducidos. Es la lista con la que se estrena la
- *  pantalla; a partir de ahí manda lo que haya guardado. */
-const HABITOS_INICIALES: Habito[] = [
-  { id: 'h1', nombre: 'Levantarse a las 06:00' },
-  { id: 'h2', nombre: 'Meditar' },
-  { id: 'h3', nombre: 'Gimnasio' },
-  { id: 'h4', nombre: 'Ducha fría' },
-  { id: 'h5', nombre: 'Trabajo' },
-  { id: 'h6', nombre: 'Leer 10 páginas' },
-  { id: 'h7', nombre: 'Aprender algo nuevo' },
-  { id: 'h8', nombre: 'Sin azúcar' },
-  { id: 'h9', nombre: 'Sin alcohol' },
-  { id: 'h10', nombre: 'Una hora de redes' },
-  { id: 'h11', nombre: 'Planificar el día' },
-  { id: 'h12', nombre: 'Dormir antes de las 23:00' },
-];
-
-const MES_VACIO: Mes = { marcas: {}, animo: {}, motivacion: {} };
-
-function clave(anio: number, mes: number): string {
-  return `${anio}-${String(mes + 1).padStart(2, '0')}`;
-}
-
-function diasDelMes(anio: number, mes: number): number {
-  return new Date(anio, mes + 1, 0).getDate();
-}
-
-/** Lee lo guardado, y si no hay nada —o hay algo roto— arranca con la lista de
- *  fábrica en vez de dejar la pantalla en blanco.
- *
- *  Los hábitos se normalizan de paso: hasta el 2026-08-25 llevaban un campo
- *  `icono` con un emoji, y lo guardado de entonces sigue en el disco. Se cae
- *  aquí, en la puerta, y no en cada sitio donde se dibuja un hábito. */
-function leer(): Datos {
-  try {
-    const crudo = localStorage.getItem(ALMACEN);
-    if (crudo) {
-      const d = JSON.parse(crudo) as { habitos?: any[]; meses?: Record<string, Mes> };
-      if (Array.isArray(d.habitos) && d.meses) {
-        return {
-          habitos: d.habitos.map(h => ({ id: String(h.id), nombre: String(h.nombre ?? '') })),
-          meses: d.meses,
-        };
-      }
-    }
-  } catch {
-    // Un almacén ilegible se sustituye; avisar de esto no le sirve a nadie.
-  }
-  return { habitos: HABITOS_INICIALES, meses: {} };
-}
-
-/** Un mes sin nada marcado da 0 en vez de `NaN`. */
-function porcentaje(parte: number, total: number): number {
-  if (!total) return 0;
-  return (parte / total) * 100;
-}
-
-/** Las semanas son bloques de siete días desde el 1, no semanas naturales: es
- *  como están agrupadas las columnas de la rejilla, y la gráfica de la derecha
- *  tiene que contar lo mismo que se ve debajo. */
-function semanaDe(dia: number): number {
-  return Math.ceil(dia / 7);
-}
-
-/** Días seguidos marcados que llegan hasta `hasta`, contando hacia atrás.
- *
- *  Es la cifra que se mira de verdad en un seguimiento de hábitos: no cuántas
- *  veces lo hiciste este mes, sino si la cadena sigue viva. Por eso cuenta
- *  desde hoy hacia atrás y se rompe en el primer hueco. */
-function racha(marcas: Record<string, boolean>, id: string, hasta: number): number {
-  let n = 0;
-  for (let d = hasta; d >= 1; d--) {
-    if (!marcas[`${id}|${d}`]) break;
-    n++;
-  }
-  return n;
-}
-
-function acotar(v: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, v));
-}
-
-/** Lo que la fila de abajo —estado mental y ranking— reserva para sí antes de
- *  que la rejilla se reparta el resto. Es el `min-height` de `.hb-fila-baja`, y
- *  las dos cifras tienen que decir lo mismo. */
-const ALTO_MINIMO_ABAJO = 168;
-/** Los dos huecos entre las tres filas del lienzo (`gap: var(--e3)`). */
-const HUECOS = 24;
 /** Suelo y techo del alto de fila. Por debajo del suelo una casilla deja de ser
- *  pulsable; por encima del techo la rejilla se hincha y una fila parece un
- *  cartel. */
-const FILA_MINIMA = 13;
-const FILA_MAXIMA = 40;
+ *  pulsable con el ratón; por encima del techo la rejilla se hincha y deja
+ *  calvas entre las casillas y sus filos. */
+const FILA_MINIMA = 14;
+/* El techo es alto a propósito: con cinco hábitos en vez de doce hay alto de
+   sobra, y una rejilla desahogada se maneja mejor. Por encima de esto no sube,
+   porque una fila de sesenta píxeles para una casilla parece un cartel — y
+   además el ancho de columna suele topar antes: el cuadrito es un cuadrado y
+   manda la medida más corta de las dos. */
+const FILA_MAXIMA = 44;
+/** Lo que reservan la fila de arriba y la de abajo del lienzo, y los dos huecos
+ *  entre las tres. Entran en la cuenta del encaje, así que tienen que decir lo
+ *  mismo que la hoja (`.hb-lienzo`): si se cambian ahí, se cambian aquí. */
+const ALTO_ARRIBA = 128;
+const ALTO_ABAJO = 186;
+const HUECOS = 16;
+/** Cuántos pasos atrás guarda `Ctrl+Z`. Un arrastre largo es UN paso —el estado
+ *  entero se apila una vez por gesto—, así que veinte son veinte gestos. */
+const PASOS_ATRAS = 20;
+/** Cuánto se espera, sin que nadie toque nada, antes de mandarle la copia al
+ *  núcleo. Pintar arrastrando cambia el estado decenas de veces en un segundo y
+ *  cada cambio sería un POST; con la espera, un arrastre entero manda uno. */
+const ESPERA_ESPEJO = 2000;
 
-/** Encaja la rejilla en el hueco que le toca, en vez de dejarla desbordar.
+/**
+ * Encaja la rejilla en el hueco que le toca, en vez de dejarla desbordar.
  *
- *  La pantalla no se desplaza: cabe entera o no cabe. Pero cuánto mide «entera»
- *  depende de dos cosas que el CSS no sabe —cuántos hábitos hay y cuántos días
- *  tiene el mes—, así que el alto de fila, el ancho de columna y el tamaño de la
- *  casilla se calculan aquí y se escriben como variables sobre la raíz `.hb`.
- *  Trece hábitos en un portátil y cinco en un monitor grande salen con la misma
- *  pantalla, apretada o desahogada.
+ * La pantalla no se desplaza: cabe entera o no cabe. Pero cuánto mide «entera»
+ * depende de dos cosas que el CSS no sabe —cuántos hábitos hay y cuántos días
+ * tiene el mes—, así que el alto de fila, el lado del cuadrito y el alto de la
+ * cabecera de la tabla se calculan aquí y se escriben como variables sobre la
+ * raíz `.hb`. Trece hábitos en un portátil y cinco en un monitor grande salen
+ * con la misma pantalla, apretada o desahogada.
  *
- *  Los topes no son decorativos: por debajo de 15 px de fila no se acierta con
- *  el ratón, y por encima de 30 la rejilla se hincha y deja calvas. Si con el
- *  mínimo aún no cupiera —cuarenta hábitos en una ventana pequeña—, lo que sobra
- *  se recorta, que es visible; una barra de scroll no lo sería.
+ * `--hb-cabeza` no es decorativa: la tabla del análisis, a la derecha, tiene que
+ * empezar sus filas a la misma altura que la rejilla o las dos listas de doce
+ * dejan de estar a plomo, que es lo primero que se ve mal en esta pantalla.
  *
- *  Para que estos números manden de verdad, en la hoja no queda un solo relleno
- *  vertical dentro de la rejilla: un `padding: 5px` en el campo del nombre
- *  bastaba para que la fila se negara a bajar de 27 px.
- *
- *  `useLayoutEffect` y no `useEffect`: esto corrige medidas antes de pintar. Con
- *  el segundo se vería un fotograma con la rejilla del tamaño anterior. */
+ * `useLayoutEffect` y no `useEffect`: esto corrige medidas antes de pintar. Con
+ * el segundo se vería un fotograma con la rejilla del tamaño anterior.
+ */
 function useEncaje(
   raiz: React.RefObject<HTMLDivElement | null>,
   hueco: React.RefObject<HTMLDivElement | null>,
@@ -192,65 +132,79 @@ function useEncaje(
       const ancho = nodoHueco.clientWidth;
       if (!ancho) return;
 
-      /* Cuánto alto le toca a la rejilla. No se le pregunta a su propia caja:
-         ahora esa caja mide lo que la rejilla decida (`grid-template-rows` la
-         pone en `auto`), así que preguntarle sería preguntarse a uno mismo. Se
-         calcula restando al lienzo lo que se llevan la fila de arriba —que tiene
-         altura propia— y el mínimo que reserva la de abajo. */
+      /* Cuánto alto le toca a la rejilla. No se le pregunta a su propia caja
+         —ahora esa caja mide lo que la rejilla decida—, así que se calcula
+         restando al lienzo lo que se llevan la fila de arriba y la de abajo. */
       const lienzo = nodoHueco.closest('.hb-lienzo') as HTMLElement | null;
-      const filaAlta = lienzo?.firstElementChild as HTMLElement | null;
-      if (!lienzo || !filaAlta) return;
-      const alto = lienzo.clientHeight - filaAlta.offsetHeight - ALTO_MINIMO_ABAJO - HUECOS;
+      if (!lienzo) return;
+      const cajaLienzo = getComputedStyle(lienzo);
+      const relleno = parseFloat(cajaLienzo.paddingTop) + parseFloat(cajaLienzo.paddingBottom);
+      /* Cuánto alto puede pedir la rejilla como mucho. No es lo que va a ocupar:
+         su fila de la retícula es `auto`, así que si con el techo de fila le
+         sobra sitio, la fila encoge y el sobrante se lo lleva el estado mental.
+         Esto solo pone el LÍMITE, para que con veinte hábitos no desborde. */
+      const alto = lienzo.clientHeight - relleno - ALTO_ARRIBA - ALTO_ABAJO - HUECOS;
       if (alto <= 0) return;
 
-      // Lo que ocupan las dos filas de cabecera de la tabla se mide, no se
-      // supone: cambia con el estilo elegido y con la fuente del sistema.
-      const altoCabecera = cabecera.current?.offsetHeight ?? 44;
-      // Los dos píxeles son los filos de la celda, que se suman al alto pedido:
-      // sin descontarlos, doce filas se pasan de su hueco por veinticuatro.
-      // Una primera estimación, que las vueltas de abajo afinan.
-      const fila = acotar(Math.floor((alto - altoCabecera) / habitos) - 2, FILA_MINIMA, FILA_MAXIMA);
+      // Lo que ocupan las tres filas de cabecera —semanas, letras y números— se
+      // mide, no se supone: cambia con el estilo elegido y con la fuente.
+      const altoCabecera = cabecera.current?.offsetHeight ?? 58;
+      nodoRaiz.style.setProperty('--hb-cabeza', `${altoCabecera}px`);
 
-      // El ancho de los días lo reparte la tabla (`table-layout: fixed`); aquí
-      // solo se decide cuánto se queda la columna de nombres. Cede ella primero
-      // —un nombre se lee igual algo más estrecho— hasta dejar a los días en 24,
-      // y de ahí en adelante ya se aprietan los días.
-      const nombre = acotar(ancho - 24 * dias, 120, 232);
-      const celda = (ancho - nombre) / dias;
+      /* Y lo que le toca a la cabecera del análisis, que arranca más abajo: su
+         caja lleva encima la barra del título («Análisis») y la rejilla no —su
+         rótulo, «Mis hábitos», va DENTRO de la tabla—. Sin descontarla, las dos
+         listas de doce empezaban con veintitrés píxeles de desfase, que en dos
+         tablas puestas la una al lado de la otra se ve a la primera. */
+      const tituloAnalisis = (lienzo.querySelector('.hb-analisis .hb-caja-titulo') as HTMLElement | null)
+        ?.offsetHeight ?? 23;
+      nodoRaiz.style.setProperty(
+        '--hb-cabeza-ana', `${Math.max(16, altoCabecera - tituloAnalisis)}px`,
+      );
 
-      nodoRaiz.style.setProperty('--hb-nombre', `${nombre}px`);
-      nodoRaiz.style.setProperty('--hb-marca', `${acotar(Math.floor(Math.min(fila, celda)) - 8, 8, 18)}px`);
+      /* El alto de fila, calculado y no tanteado.
+         
+         Antes esto era un bucle: se ponía una altura, se miraba si la caja
+         desbordaba y se corregía. Dejó de valer en cuanto la fila del centro
+         pasó a medir lo que necesita (`auto`), porque entonces la pregunta se
+         muerde la cola — encoger la fila encoge la tabla, que encoge la caja,
+         que vuelve a desbordar—. Y medir el lienzo entero tampoco vale: sus
+         filas están acotadas, así que nunca desborda y el bucle subía hasta el
+         techo escondiendo lo que sobraba tras una barra de desplazamiento.
 
-      /* Y ahora se comprueba contra la única medida que importa: si el lienzo
-         entero desborda, hay barra de scroll. La estimación de arriba no puede
-         acertar al píxel —no sabe lo que miden el título de cada caja, los
-         filos ni los redondeos—, así que se pone, se mira y se corrige. Leer
-         `scrollHeight` fuerza el recálculo, de modo que cada vuelta ve el
-         resultado de la anterior y no el de antes.
+         Con el hueco disponible conocido, la cuenta es directa. El píxel por
+         fila es el filo de la celda, que se suma al alto pedido. */
+      const altoPie = (nodoHueco.parentElement?.querySelector('.hb-rejilla-pie') as HTMLElement | null)
+        ?.offsetHeight ?? 30;
 
-         Las vueltas están contadas: esto corre al abrir y al redimensionar, no
-         en cada repintado, y un tope bajo vale más que un bucle elegante que
-         algún día no converja. */
-      const poner = (v: number) => nodoRaiz.style.setProperty('--hb-fila', `${v}px`);
-      const desborda = () => lienzo.scrollHeight > lienzo.clientHeight;
+      /* Y el hueco que hay que reservarle al análisis por abajo para que su
+         cajón de desplazamiento mida EXACTAMENTE lo mismo que el de la rejilla.
+         La rejilla cede alto por los botones del pie y el análisis por su barra
+         de título; como no miden lo mismo, sin igualarlos los dos cajones
+         desplazan distinto y al arrastrar la rejilla con treinta hábitos el
+         análisis se quedaba veinte píxeles atrás — es decir, una fila y media
+         de desfase entre un hábito y sus cifras. */
+      nodoRaiz.style.setProperty(
+        '--hb-hueco-ana', `${Math.max(0, altoPie - tituloAnalisis)}px`,
+      );
+      const fila = acotar(
+        Math.floor((alto - altoCabecera - altoPie) / habitos) - 1,
+        FILA_MINIMA, FILA_MAXIMA,
+      );
+      nodoRaiz.style.setProperty('--hb-fila', `${fila}px`);
 
-      let actual = fila;
-      poner(actual);
-
-      // Primero se baja hasta que quepa.
-      for (let vuelta = 0; vuelta < 8 && desborda() && actual > FILA_MINIMA; vuelta++) {
-        const exceso = lienzo.scrollHeight - lienzo.clientHeight;
-        actual = acotar(actual - Math.max(1, Math.ceil(exceso / habitos)), FILA_MINIMA, FILA_MAXIMA);
-        poner(actual);
-      }
-
-      // Y después se sube mientras siga cabiendo, para no dejar media caja en
-      // negro con la rejilla flotando arriba.
-      for (let vuelta = 0; vuelta < 30 && actual < FILA_MAXIMA; vuelta++) {
-        poner(actual + 1);
-        if (desborda()) { poner(actual); break; }
-        actual++;
-      }
+      /* El lado del cuadrito. Manda el más corto de los dos —alto de fila o
+         ancho de columna—, porque es un cuadrado y tiene que caber en los dos
+         sentidos. El hueco es proporcional (18 %) con un suelo de 4 px, así que
+         crece con la rejilla en vez de quedarse plantado: un cuadrito de 18 px
+         en una celda de 37 dejaba más hueco muerto que marca, y trescientas
+         setenta y dos celdas medio vacías se leen como puntos sueltos. */
+      const celda = (ancho - parseFloat(getComputedStyle(nodoRaiz).getPropertyValue('--hb-izq') || '152')) / dias;
+      const lado = Math.min(fila, celda);
+      nodoRaiz.style.setProperty(
+        '--hb-marca',
+        `${acotar(Math.floor(lado - Math.max(4, lado * 0.18)), 8, 26)}px`,
+      );
     };
 
     /* Dos pasadas: la primera calcula con la cabecera que había —que puede ser
@@ -278,140 +232,61 @@ function useEncaje(
   }, [raiz, hueco, cabecera, habitos, dias]);
 }
 
-/** Una barra de las gráficas de arriba. */
-const BarraCol: React.FC<{
-  valor: number;
-  rotulo: string;
-  titulo: string;
-  finde?: boolean;
-  hoy?: boolean;
-  futuro?: boolean;
+/** Una barra de las dos gráficas de arriba.
+ *
+ *  El carril se dibuja siempre, tenga la barra la altura que tenga. Sin él, un
+ *  mes recién empezado enseñaba dos cajas tituladas y absolutamente vacías, y
+ *  una caja vacía no se lee como «llevas cero»: se lee como «esto está roto». */
+const Barra: React.FC<{
+  valor: number; rotulo: string; titulo: string;
+  finde?: boolean; hoy?: boolean; futuro?: boolean;
 }> = ({ valor, rotulo, titulo, finde, hoy, futuro }) => (
   <div
     className={'hb-col' + (finde ? ' finde' : '') + (hoy ? ' hoy' : '') + (futuro ? ' futuro' : '')}
     title={titulo}
   >
     <div className="hb-col-carril">
-      <div className="hb-col-relleno" style={{ height: `${Math.max(0, Math.min(100, valor))}%` }} />
+      <div className="hb-col-relleno" style={{ height: `${acotar(valor, 0, 100)}%` }} />
     </div>
     <span className="hb-col-rotulo">{rotulo}</span>
   </div>
 );
 
-/** El anillo del mes, con el porcentaje dentro.
+/** El rosco del resumen, con los dos porcentajes fuera y el grande dentro.
  *
- *  La cifra va en el hueco del centro y no a un lado: es el número más grande
- *  de la pantalla y el que contesta la única pregunta que se hace uno al
- *  abrirla. */
-const Anillo: React.FC<{ hecho: number; total: number }> = ({ hecho, total }) => {
+ *  Como en la hoja: el trozo hecho y el que falta, con su cifra cada uno. Un
+ *  anillo que empieza a las tres en punto se lee como si le faltara un trozo,
+ *  así que arranca arriba (`rotate(-90)`). */
+const Rosco: React.FC<{ hecho: number; total: number }> = ({ hecho, total }) => {
   const pct = porcentaje(hecho, total);
-  const r = 46;
+  const r = 42;
   const vuelta = 2 * Math.PI * r;
   const arco = (pct / 100) * vuelta;
 
   return (
-    <div className="hb-anillo">
-      <svg viewBox="0 0 120 120" aria-hidden>
-        <circle className="hb-anillo-resto" cx="60" cy="60" r={r} />
-        <circle
-          className="hb-anillo-hecho"
-          cx="60" cy="60" r={r}
-          strokeDasharray={`${arco} ${vuelta - arco}`}
-          /* Arranca arriba y no a las tres en punto: un anillo que empieza en el
-             costado se lee como si le faltara un trozo. */
-          transform="rotate(-90 60 60)"
-        />
-      </svg>
-      <div className="hb-anillo-centro">
-        <b>{Math.round(pct)}<span className="hb-anillo-pct">%</span></b>
-        <span className="hb-anillo-pie">del mes</span>
-      </div>
-    </div>
-  );
-};
-
-/** El estado mental: las dos filas de cifras y, debajo, las dos áreas.
- *
- *  Las cifras y el dibujo comparten anchura de columna a propósito —cada punto
- *  cae en el centro de su casilla—, que es lo que permite leer un pico de la
- *  línea y bajar el dedo hasta el número que lo produjo. */
-const EstadoMental: React.FC<{
-  dias: number;
-  animo: Record<string, number>;
-  motivacion: Record<string, number>;
-  hoy: number | null;
-  onCambiar: (serie: 'animo' | 'motivacion', dia: number, valor: number | null) => void;
-}> = ({ dias, animo, motivacion, hoy, onCambiar }) => {
-  const ancho = dias * 10;
-
-  const camino = (fuente: Record<string, number>) => {
-    const puntos: [number, number][] = [];
-    for (let d = 1; d <= dias; d++) {
-      const v = fuente[d];
-      if (typeof v === 'number') {
-        puntos.push([(d - 1) * 10 + 5, 100 - (Math.max(0, Math.min(10, v)) / 10) * 100]);
-      }
-    }
-    return puntos;
-  };
-
-  const linea = (puntos: [number, number][]) =>
-    puntos.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-
-  const area = (puntos: [number, number][]) =>
-    puntos.length < 2 ? '' : `${linea(puntos)} L${puntos[puntos.length - 1][0]},100 L${puntos[0][0]},100 Z`;
-
-  const pAnimo = camino(animo);
-  const pMoti = camino(motivacion);
-
-  const fila = (serie: 'animo' | 'motivacion', fuente: Record<string, number>, etiqueta: string) => (
-    <div className="hb-mental-fila">
-      <span className={`hb-mental-etiqueta ${serie}`}>
-        <i className="hb-muestra" aria-hidden />
-        {etiqueta}
-      </span>
-      <div className="hb-mental-cifras" style={{ gridTemplateColumns: `repeat(${dias}, 1fr)` }}>
-        {Array.from({ length: dias }, (_, i) => i + 1).map(d => (
-          <input
-            key={d}
-            className={'hb-mental-celda' + (d === hoy ? ' hoy' : '')}
-            value={fuente[d] ?? ''}
-            inputMode="numeric"
-            maxLength={2}
-            title={`Día ${d} · ${etiqueta.toLowerCase()} de 0 a 10`}
-            onChange={e => {
-              const t = e.target.value.trim();
-              if (t === '') return onCambiar(serie, d, null);
-              const n = Number(t);
-              // Fuera de 0..10 no se guarda nada: la escala del dibujo es esa, y
-              // un 47 suelto aplastaría las dos líneas contra el suelo.
-              if (Number.isFinite(n) && n >= 0 && n <= 10) onCambiar(serie, d, n);
-            }}
+    <div className="hb-rosco">
+      {/* El anillo y su cifra van en el MISMO cajón, y la cifra se centra sobre
+          él con `inset: 0`. Antes la cifra se colocaba con un ancho calculado a
+          mano contra la caja entera —`calc(100% - 16px - 62px)`— y bastaba con
+          que la leyenda de al lado cambiara de ancho para que el número se
+          descolgara del agujero del rosco. */}
+      <div className="hb-rosco-anillo">
+        <svg viewBox="0 0 120 120" aria-hidden>
+          <circle className="hb-rosco-resto" cx="60" cy="60" r={r} />
+          <circle
+            className="hb-rosco-hecho"
+            cx="60" cy="60" r={r}
+            strokeDasharray={`${arco} ${vuelta - arco}`}
+            transform="rotate(-90 60 60)"
           />
-        ))}
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="hb-caja hb-mental">
-      <div className="hb-caja-titulo">
-        Estado mental
-        <span className="hb-caja-pie">de 0 a 10, un número por día</span>
-      </div>
-      {fila('animo', animo, 'Ánimo')}
-      {fila('motivacion', motivacion, 'Motivación')}
-      <div className="hb-mental-grafica">
-        {/* La escala a la izquierda: sin ella, dos áreas superpuestas dicen
-            «arriba» y «abajo» pero no cuánto. */}
-        <div className="hb-mental-escala"><span>10</span><span>5</span><span>0</span></div>
-        <svg viewBox={`0 0 ${ancho} 100`} preserveAspectRatio="none" aria-hidden>
-          <line className="hb-guia" x1="0" y1="50" x2={ancho} y2="50" vectorEffect="non-scaling-stroke" />
-          <path className="hb-area suave" d={area(pMoti)} />
-          <path className="hb-linea suave" d={linea(pMoti)} vectorEffect="non-scaling-stroke" />
-          <path className="hb-area" d={area(pAnimo)} />
-          <path className="hb-linea" d={linea(pAnimo)} vectorEffect="non-scaling-stroke" />
         </svg>
+        <div className="hb-rosco-centro">
+          <b>{Math.round(pct)}<span>%</span></b>
+        </div>
+      </div>
+      <div className="hb-rosco-pies">
+        <span className="hecho">{Math.round(pct)} % hechas</span>
+        <span className="resto">{Math.round(100 - pct)} % faltan</span>
       </div>
     </div>
   );
@@ -425,15 +300,63 @@ export const Habitos: React.FC<{ onCerrar: () => void; estilo: EstiloHabitos }> 
   const [mes, setMes] = useState(hoy.getMonth());
   const [datos, setDatos] = useState<Datos>(leer);
 
-  // Cada cambio se guarda entero. Son unos pocos kilobytes y el mes cabe en una
-  // escritura: llevar un diario de cambios aquí sería fontanería sin cliente.
+  useEffect(() => { guardar(datos); }, [datos]);
+
+  /** Y una copia al núcleo, para que Perseo lo sepa también fuera de la llamada.
+   *
+   *  Los hábitos viven en el `localStorage` de esta ventana, que es lo correcto
+   *  —marcar una casilla no puede depender de que el núcleo esté encendido— y a
+   *  la vez deja fuera a media casa: el Perseo de la llamada corre AQUÍ y los
+   *  lee sin más, pero el chat escrito y los agentes son Python y no ven dentro
+   *  de un navegador. Esto es el puente, y va en una sola dirección.
+   *
+   *  Si falla, se calla: el núcleo apagado es un estado normal de esta app, y un
+   *  aviso rojo por no haber podido mandar una copia que nadie ha pedido sería
+   *  alarmar por nada. El cambio siguiente la manda otra vez. */
   useEffect(() => {
-    try {
-      localStorage.setItem(ALMACEN, JSON.stringify(datos));
-    } catch {
-      // Almacén lleno o bloqueado: la pantalla sigue funcionando en memoria.
-    }
+    const t = setTimeout(() => {
+      invoke('habitos_espejo', { texto: resumen(datos), foto: foto(datos) })
+        .catch(e => console.debug('[Hábitos] El núcleo no recogió la copia:', e));
+    }, ESPERA_ESPEJO);
+    return () => clearTimeout(t);
   }, [datos]);
+
+  /** Lo que había antes de cada gesto, para `Ctrl+Z`.
+   *
+   *  La pila se llena en el manejador y no dentro del actualizador de estado:
+   *  React invoca los actualizadores dos veces en modo estricto, y apilar ahí
+   *  dentro dejaría la mitad de los pasos duplicados. Por eso hace falta también
+   *  el espejo `datosAhora`: el manejador necesita ver el estado de este
+   *  instante, no el que se cerró cuando se creó la función. */
+  const historia = useRef<Datos[]>([]);
+  const datosAhora = useRef(datos);
+  datosAhora.current = datos;
+  const [hayQueDeshacer, setHayQueDeshacer] = useState(false);
+
+  const aplicar = useCallback((cambio: (d: Datos) => Datos) => {
+    historia.current.push(datosAhora.current);
+    if (historia.current.length > PASOS_ATRAS) historia.current.shift();
+    setHayQueDeshacer(true);
+    setDatos(cambio);
+  }, []);
+
+  const deshacer = useCallback(() => {
+    const previo = historia.current.pop();
+    if (!previo) return;
+    setDatos(previo);
+    setHayQueDeshacer(historia.current.length > 0);
+  }, []);
+
+  useEffect(() => {
+    const teclas = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        deshacer();
+      }
+    };
+    window.addEventListener('keydown', teclas);
+    return () => window.removeEventListener('keydown', teclas);
+  }, [deshacer]);
 
   const k = clave(anio, mes);
   const dias = diasDelMes(anio, mes);
@@ -447,18 +370,17 @@ export const Habitos: React.FC<{ onCerrar: () => void; estilo: EstiloHabitos }> 
    *  el día de hoy aunque el mes entero estuviera lleno.
    *
    *  Y manda también sobre el objetivo: a mitad de mes, «faltan» no puede
-   *  incluir los días que aún no han llegado — el anillo no llegaría nunca al
-   *  100 % aunque fueras perfecto hasta hoy, y el objetivo contaría días que
-   *  no existen. */
+   *  incluir los días que aún no han llegado — el rosco no llegaría nunca al
+   *  100 % aunque fueras perfecto hasta hoy. */
   const ultimoContable = diaDeHoy ?? dias;
 
   const tocarMes = useCallback((cambio: (m: Mes) => Mes) => {
-    setDatos(d => {
+    aplicar(d => {
       const k = clave(anio, mes);
       const previo = d.meses[k] ?? MES_VACIO;
       return { ...d, meses: { ...d.meses, [k]: cambio(previo) } };
     });
-  }, [anio, mes]);
+  }, [aplicar, anio, mes]);
 
   const poner = useCallback((idHabito: string, dia: number, valor: boolean) => {
     tocarMes(m => {
@@ -474,9 +396,22 @@ export const Habitos: React.FC<{ onCerrar: () => void; estilo: EstiloHabitos }> 
    *  crucen toman ESE mismo valor —no el contrario del suyo—. Marcar catorce
    *  días de gimnasio a catorce clics era el gesto que más se repetía.
    *
-   *  El valor en curso vive en una `ref` y no en el estado: cambia en cada
-   *  `pointerenter` y no debe repintar nada. */
+   *  Un arrastre entero es **un** paso de deshacer y no cuarenta: el primer
+   *  `pointerdown` apila, y mientras `pintando` siga vivo los demás escriben
+   *  sobre el mismo estado sin volver a apilar. */
   const pintando = useRef<boolean | null>(null);
+  const ponerPintando = useCallback((idHabito: string, dia: number, valor: boolean) => {
+    setDatos(d => {
+      const k = clave(anio, mes);
+      const previo = d.meses[k] ?? MES_VACIO;
+      const c = `${idHabito}|${dia}`;
+      if (!!previo.marcas[c] === valor) return d;
+      const marcas = { ...previo.marcas };
+      if (valor) marcas[c] = true; else delete marcas[c];
+      return { ...d, meses: { ...d.meses, [k]: { ...previo, marcas } } };
+    });
+  }, [anio, mes]);
+
   useEffect(() => {
     const soltar = () => { pintando.current = null; };
     window.addEventListener('pointerup', soltar);
@@ -501,6 +436,27 @@ export const Habitos: React.FC<{ onCerrar: () => void; estilo: EstiloHabitos }> 
     });
   }, [tocarMes, habitos]);
 
+  /** Y la fila entera, hasta hoy. El gesto simétrico: «este mes he ido al
+   *  gimnasio todos los días y no lo había apuntado».
+   *
+   *  Llega hasta `ultimoContable` y no hasta fin de mes a propósito: marcar por
+   *  adelantado días que no han pasado no es un descuido que se arregle luego,
+   *  es meter datos falsos en la única cifra que hace que esto sirva. */
+  const alternarFila = useCallback((id: string) => {
+    tocarMes(m => {
+      let lleno = true;
+      for (let d = 1; d <= ultimoContable; d++) {
+        if (!m.marcas[`${id}|${d}`]) { lleno = false; break; }
+      }
+      const marcas = { ...m.marcas };
+      for (let d = 1; d <= ultimoContable; d++) {
+        const c = `${id}|${d}`;
+        if (lleno) delete marcas[c]; else marcas[c] = true;
+      }
+      return { ...m, marcas };
+    });
+  }, [tocarMes, ultimoContable]);
+
   const cambiarMental = useCallback((serie: 'animo' | 'motivacion', dia: number, valor: number | null) => {
     tocarMes(m => {
       const fuente = { ...m[serie] };
@@ -510,18 +466,19 @@ export const Habitos: React.FC<{ onCerrar: () => void; estilo: EstiloHabitos }> 
   }, [tocarMes]);
 
   const renombrar = (id: string, nombre: string) => {
-    setDatos(d => ({ ...d, habitos: d.habitos.map(h => (h.id === id ? { ...h, nombre } : h)) }));
+    aplicar(d => ({ ...d, habitos: d.habitos.map(h => (h.id === id ? { ...h, nombre } : h)) }));
   };
 
   const anadir = () => {
-    setDatos(d => ({ ...d, habitos: [...d.habitos, { id: `h${Date.now()}`, nombre: 'Hábito nuevo' }] }));
+    aplicar(d => ({ ...d, habitos: [...d.habitos, { id: `h${Date.now()}`, nombre: 'Hábito nuevo' }] }));
   };
 
   /** Quitar un hábito se lleva sus marcas de todos los meses. Dejarlas
    *  guardadas «por si acaso» hace que un hábito nuevo con el mismo id reviva
-   *  casillas de hace medio año. */
+   *  casillas de hace medio año. Se puede deshacer, que es lo que convierte una
+   *  cruz sin confirmación en algo aceptable. */
   const quitar = (id: string) => {
-    setDatos(d => {
+    aplicar(d => {
       const meses: Record<string, Mes> = {};
       for (const [mk, m] of Object.entries(d.meses)) {
         const marcas: Record<string, boolean> = {};
@@ -534,15 +491,34 @@ export const Habitos: React.FC<{ onCerrar: () => void; estilo: EstiloHabitos }> 
     });
   };
 
+  /** Reordenar arrastrando por el asa. El orden de la lista es información —lo
+   *  de la mañana arriba, lo de la noche abajo— y en la hoja estaba clavado.
+   *
+   *  El asa es lo arrastrable y no la fila entera: con la fila arrastrable, el
+   *  campo del nombre deja de poder seleccionarse con el ratón. */
+  const arrastrado = useRef<string | null>(null);
+  const [sobre, setSobre] = useState<string | null>(null);
+
+  const soltarSobre = (destino: string) => {
+    const origen = arrastrado.current;
+    arrastrado.current = null;
+    setSobre(null);
+    if (!origen || origen === destino) return;
+    aplicar(d => {
+      const lista = [...d.habitos];
+      const desde = lista.findIndex(h => h.id === origen);
+      const hasta = lista.findIndex(h => h.id === destino);
+      if (desde < 0 || hasta < 0) return d;
+      const [movido] = lista.splice(desde, 1);
+      lista.splice(hasta, 0, movido);
+      return { ...d, habitos: lista };
+    });
+  };
+
   const moverMes = (paso: number) => {
     const d = new Date(anio, mes + paso, 1);
     setAnio(d.getFullYear());
     setMes(d.getMonth());
-  };
-
-  const irAHoy = () => {
-    setAnio(hoy.getFullYear());
-    setMes(hoy.getMonth());
   };
 
   // ── Todo lo que se enseña a la derecha sale de aquí ────────────────────────
@@ -557,34 +533,39 @@ export const Habitos: React.FC<{ onCerrar: () => void; estilo: EstiloHabitos }> 
       let n = 0;
       for (let d = 1; d <= dias; d++) {
         if (mesActual.marcas[`${h.id}|${d}`]) {
-          // Las cifras de «cuánto llevas» llegan hasta hoy; las gráficas por
-          // día y por semana enseñan el mes entero, futuro incluido.
+          // Las cifras de «cuánto llevas» llegan hasta hoy; las gráficas por día
+          // y por semana enseñan el mes entero, futuro incluido.
           if (d <= ultimoContable) n++;
           porDia.set(d, (porDia.get(d) ?? 0) + 1);
           porSemana.set(semanaDe(d), (porSemana.get(semanaDe(d)) ?? 0) + 1);
         }
       }
       porHabito.set(h.id, n);
-      rachas.set(h.id, racha(mesActual.marcas, h.id, ultimoContable));
+      // La racha se pide al almacén entero y no solo al mes en pantalla: es la
+      // única cifra de aquí que tiene sentido cruzando el cambio de mes.
+      rachas.set(h.id, racha(datos, h.id, anio, mes, ultimoContable));
       total += n;
     }
     return { porHabito, rachas, porDia, porSemana, total };
-  }, [habitos, mesActual, dias, ultimoContable]);
+  }, [habitos, mesActual, dias, ultimoContable, datos, anio, mes]);
 
   const objetivo = habitos.length * ultimoContable;
   const hecho = cuentas.total;
   const restante = Math.max(0, objetivo - hecho);
 
+  /** Las semanas de la hoja: bloques de siete días desde el 1, no semanas
+   *  naturales. Es como se agrupan las columnas de la rejilla, y la gráfica de
+   *  arriba tiene que contar lo mismo que se ve debajo. */
   const semanas = useMemo(() => {
-    const lista: { nombre: string; pct: number; hecho: number; tope: number; desde: number; hasta: number }[] = [];
+    const lista: { n: number; desde: number; hasta: number; largo: number; pct: number; hecho: number; tope: number }[] = [];
     for (let s = 1; s <= semanaDe(dias); s++) {
       const desde = (s - 1) * 7 + 1;
       const hasta = Math.min(dias, s * 7);
-      // La semana en curso no pide los días que le faltan por llegar: su tope
-      // es lo que ya pasó de ella, o su barra nunca se llenaría.
+      // La semana en curso no pide los días que le faltan por llegar: su tope es
+      // lo que ya pasó de ella, o su barra nunca se llenaría.
       const tope = Math.max(0, Math.min(hasta, ultimoContable) - desde + 1) * habitos.length;
       const n = cuentas.porSemana.get(s) ?? 0;
-      lista.push({ nombre: `S${s}`, pct: porcentaje(n, tope), hecho: n, tope, desde, hasta });
+      lista.push({ n: s, desde, hasta, largo: hasta - desde + 1, hecho: n, tope, pct: porcentaje(n, tope) });
     }
     return lista;
   }, [dias, habitos.length, cuentas, ultimoContable]);
@@ -605,8 +586,98 @@ export const Habitos: React.FC<{ onCerrar: () => void; estilo: EstiloHabitos }> 
 
   const raiz = useRef<HTMLDivElement>(null);
   const huecoRejilla = useRef<HTMLDivElement>(null);
+  const huecoAnalisis = useRef<HTMLDivElement>(null);
   const cabeceraTabla = useRef<HTMLTableSectionElement>(null);
   useEncaje(raiz, huecoRejilla, cabeceraTabla, habitos.length, dias);
+
+  /** La cruceta: al pasar el ratón se enciende la columna entera del día, de la
+   *  cabecera al último hábito. La fila la enciende la hoja sola (`tr:hover`);
+   *  la columna no puede, porque en CSS no hay forma de decir «la celda que está
+   *  encima de esta» sin saber cuántas columnas hay.
+   *
+   *  Se toca el DOM a mano y no el estado: pasar el ratón por la rejilla
+   *  cambiaría de columna decenas de veces por segundo, y repintar 372 celdas de
+   *  React en cada una se nota en el ratón. Aquí son dos vueltas de `classList`
+   *  y solo al cruzar de columna, no en cada píxel. */
+  const cuerpoRejilla = useRef<HTMLTableSectionElement>(null);
+  useEffect(() => {
+    const nodo = huecoRejilla.current;
+    if (!nodo) return;
+
+    let vivo: string | null = null;
+    const encender = (dia: string | null) => {
+      if (dia === vivo) return;
+      if (vivo) nodo.querySelectorAll(`[data-dia="${vivo}"]`).forEach(n => n.classList.remove('cruz'));
+      if (dia) nodo.querySelectorAll(`[data-dia="${dia}"]`).forEach(n => n.classList.add('cruz'));
+      vivo = dia;
+    };
+    const mover = (e: PointerEvent) => {
+      const celda = (e.target as HTMLElement).closest?.<HTMLElement>('[data-dia]');
+      encender(celda?.dataset.dia ?? null);
+    };
+    const salir = () => encender(null);
+
+    nodo.addEventListener('pointermove', mover);
+    nodo.addEventListener('pointerleave', salir);
+    return () => {
+      nodo.removeEventListener('pointermove', mover);
+      nodo.removeEventListener('pointerleave', salir);
+      encender(null);
+    };
+  }, [dias, habitos.length]);
+
+  /** Moverse por la rejilla con las flechas, y pintar con `Shift` puesto.
+   *
+   *  Va en el `tbody` y no en cada casilla —un solo oyente para 372— y encuentra
+   *  el destino por los `data-` de la celda en vez de por un mapa de refs: la
+   *  rejilla ya está en el DOM, y mantener 372 referencias al día con las altas
+   *  y bajas de hábitos sería un segundo estado que puede discrepar. */
+  const navegar = (e: React.KeyboardEvent<HTMLTableSectionElement>) => {
+    const origen = e.target as HTMLElement;
+    const f = Number(origen.dataset.f);
+    const d = Number(origen.dataset.d);
+    if (!Number.isFinite(f) || !Number.isFinite(d)) return;
+
+    let nf = f;
+    let nd = d;
+    switch (e.key) {
+      case 'ArrowLeft': nd = d - 1; break;
+      case 'ArrowRight': nd = d + 1; break;
+      case 'ArrowUp': nf = f - 1; break;
+      case 'ArrowDown': nf = f + 1; break;
+      case 'Home': nd = 1; break;
+      case 'End': nd = dias; break;
+      default: return;
+    }
+    if (nf < 0 || nf >= habitos.length || nd < 1 || nd > dias) return;
+    e.preventDefault();
+
+    const destino = cuerpoRejilla.current?.querySelector<HTMLButtonElement>(
+      `[data-f="${nf}"][data-d="${nd}"]`,
+    );
+    if (!destino) return;
+    // `Shift` puesto: el destino toma el valor de donde se viene. Es el arrastre
+    // del ratón, para quien no lo usa.
+    if (e.shiftKey) poner(habitos[nf].id, nd, origen.getAttribute('aria-checked') === 'true');
+    destino.focus();
+  };
+
+  /** Con muchos hábitos la rejilla se desplaza —hay un suelo por debajo del cual
+   *  una casilla deja de ser pulsable, y con treinta ni ese suelo alcanza— y el
+   *  análisis de al lado tiene que irse con ella.
+   *
+   *  Antes el análisis estaba a `overflow: hidden`, así que a partir del hábito
+   *  que no cupiera sus cifras simplemente **desaparecían**, sin barra y sin
+   *  aviso: la rejilla decía que hay treinta hábitos y la tabla de al lado
+   *  enseñaba veinticuatro. Un dato escondido es peor que un dato feo.
+   *
+   *  Manda la rejilla y el análisis la sigue; su barra va oculta por la hoja,
+   *  para que no haya dos barras diciendo lo mismo. */
+  const seguirElScroll = () => {
+    const a = huecoAnalisis.current;
+    const r = huecoRejilla.current;
+    if (a && r) a.scrollTop = r.scrollTop;
+  };
 
   const finde = (d: number) => {
     const s = new Date(anio, mes, d).getDay();
@@ -617,118 +688,184 @@ export const Habitos: React.FC<{ onCerrar: () => void; estilo: EstiloHabitos }> 
     (d === diaDeHoy ? ' hoy' : '') +
     (diaDeHoy !== null && d > diaDeHoy ? ' futuro' : '');
 
+  /** Una de las dos filas del estado mental. Las cifras y el dibujo de abajo
+   *  comparten anchura de columna a propósito —cada punto cae en el centro de su
+   *  casilla—, que es lo que permite leer un pico de la línea y bajar el dedo
+   *  hasta el número que lo produjo.
+   *
+   *  Y se teclea con flechas: subir el ánimo de 6 a 7 son dos pulsaciones de
+   *  borrar y escribir, o una de `↑`. */
+  const filaMental = (serie: 'animo' | 'motivacion', etiqueta: string) => {
+    const fuente = mesActual[serie];
+    return (
+      <div className="hb-mental-fila">
+        <span className={`hb-mental-etiqueta ${serie}`}>{etiqueta}</span>
+        <div className="hb-mental-cifras" style={{ gridTemplateColumns: `repeat(${dias}, 1fr)` }}>
+          {listaDias.map(d => {
+            const v = fuente[d];
+            const tiene = typeof v === 'number';
+            return (
+              <input
+                key={d}
+                className={'hb-mental-celda' + (d === diaDeHoy ? ' hoy' : '') + (finde(d) ? ' finde' : '')}
+                value={tiene ? v : ''}
+                inputMode="numeric"
+                maxLength={2}
+                title={`Día ${d} · ${etiqueta.toLowerCase()} de 0 a 10 · flechas ↑ ↓ para ajustar`}
+                onKeyDown={e => {
+                  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+                  e.preventDefault();
+                  // Sin número puesto, la primera flecha entra por el 5 —la
+                  // mitad de la escala— en vez de por un extremo.
+                  const base = tiene ? v : 5;
+                  cambiarMental(serie, d, acotar(base + (e.key === 'ArrowUp' ? 1 : -1), 0, 10));
+                }}
+                onChange={e => {
+                  const t = e.target.value.trim();
+                  if (t === '') return cambiarMental(serie, d, null);
+                  const n = Number(t);
+                  // Fuera de 0..10 no se guarda: la escala del dibujo es esa, y
+                  // un 47 suelto aplastaría las dos líneas contra el suelo.
+                  if (Number.isFinite(n) && n >= 0 && n <= 10) cambiarMental(serie, d, n);
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // El dibujo de áreas del estado mental, como en la hoja.
+  const anchoMental = dias * 10;
+  const camino = (fuente: Record<string, number>) => {
+    const puntos: [number, number][] = [];
+    for (let d = 1; d <= dias; d++) {
+      const v = fuente[d];
+      if (typeof v === 'number') puntos.push([(d - 1) * 10 + 5, 100 - (acotar(v, 0, 10) / 10) * 100]);
+    }
+    return puntos;
+  };
+  const linea = (p: [number, number][]) =>
+    p.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const area = (p: [number, number][]) =>
+    p.length < 2 ? '' : `${linea(p)} L${p[p.length - 1][0]},100 L${p[0][0]},100 Z`;
+  const pAnimo = camino(mesActual.animo);
+  const pMoti = camino(mesActual.motivacion);
+
   return (
     <div className="hb" data-estilo={estilo} ref={raiz}>
-      <header className="hb-cabecera">
-        <h2>Hábitos</h2>
-        <span className="hb-cabecera-pie">
-          {hecho} de {objetivo} casillas {esMesDeHoy ? 'hasta hoy' : 'este mes'}
-        </span>
-        <button className="hb-volver" onClick={onCerrar}>Volver a la llamada</button>
-      </header>
-
       <div className="hb-lienzo">
-        {/* ── Fila de arriba ─────────────────────────────────────────────── */}
-        <div className="hb-fila hb-fila-alta">
-          <div className="hb-caja hb-mes">
-            <div className="hb-mes-nav">
+
+        {/* ── Arriba a la izquierda: el título y los ajustes del calendario ── */}
+        <div className="hb-izq-alta">
+          <div className="hb-titulo">
+            <b>Seguimiento de hábitos</b>
+            <span className="hb-titulo-mes">
               <button onClick={() => moverMes(-1)} title="El mes anterior" aria-label="El mes anterior">‹</button>
-              <div className="hb-mes-nombre">
-                <b>{MESES[mes]}</b>
-                <span>{anio}</span>
-              </div>
+              — {MESES[mes]} —
               <button onClick={() => moverMes(1)} title="El mes siguiente" aria-label="El mes siguiente">›</button>
-            </div>
-            <div className="hb-mes-saltos">
-              <select value={mes} onChange={e => setMes(Number(e.target.value))} title="Ir a un mes">
-                {MESES.map((m, i) => <option key={m} value={i}>{m}</option>)}
-              </select>
-              <select value={anio} onChange={e => setAnio(Number(e.target.value))} title="Ir a un año">
+            </span>
+          </div>
+          <div className="hb-ajustes">
+            <div className="hb-ajustes-titulo">Calendario</div>
+            <label>
+              <span>Año</span>
+              <select value={anio} onChange={e => setAnio(Number(e.target.value))}>
                 {anios.map(a => <option key={a} value={a}>{a}</option>)}
               </select>
-            </div>
-            {/* El botón solo existe cuando sirve de algo: en el mes en curso no
-                lleva a ninguna parte y sería un mando muerto. */}
-            {!esMesDeHoy && <button className="hb-hoy" onClick={irAHoy}>Volver a hoy</button>}
-          </div>
-
-          <div className="hb-caja hb-grafica">
-            <div className="hb-caja-titulo">
-              Cada día
-              <span className="hb-caja-pie">cuántos de {habitos.length}</span>
-            </div>
-            <div className="hb-barras">
-              {listaDias.map(d => {
-                const n = cuentas.porDia.get(d) ?? 0;
-                return (
-                  <BarraCol
-                    key={d}
-                    valor={porcentaje(n, habitos.length)}
-                    rotulo={String(d)}
-                    finde={finde(d)}
-                    hoy={d === diaDeHoy}
-                    futuro={diaDeHoy !== null && d > diaDeHoy}
-                    titulo={`${d} de ${MESES[mes]}, ${DIAS_SEMANA_LARGO[new Date(anio, mes, d).getDay()]} · ${n} de ${habitos.length}`}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="hb-caja hb-grafica hb-grafica-semanal">
-            <div className="hb-caja-titulo">
-              Cada semana
-              <span className="hb-caja-pie">bloques de siete días</span>
-            </div>
-            <div className="hb-barras hb-barras-anchas">
-              {semanas.map(s => (
-                <BarraCol
-                  key={s.nombre}
-                  valor={s.pct}
-                  rotulo={s.nombre}
-                  titulo={`Días ${s.desde} a ${s.hasta} · ${s.hecho} de ${s.tope} (${Math.round(s.pct)} %)`}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="hb-caja hb-resumen">
-            <div className="hb-caja-titulo">El mes</div>
-            <div className="hb-resumen-cuerpo">
-              <Anillo hecho={hecho} total={objetivo} />
-              <dl className="hb-cifras">
-                <div><dt>Hechos</dt><dd>{hecho}</dd></div>
-                <div><dt>Faltan</dt><dd>{restante}</dd></div>
-                <div><dt>Objetivo</dt><dd>{objetivo}</dd></div>
-              </dl>
-            </div>
+            </label>
+            <label>
+              <span>Mes</span>
+              <select value={mes} onChange={e => setMes(Number(e.target.value))}>
+                {MESES.map((m, i) => <option key={m} value={i}>{m}</option>)}
+              </select>
+            </label>
           </div>
         </div>
 
-        {/* ── Fila del centro: la rejilla y el análisis ───────────────────── */}
-        <div className="hb-fila hb-fila-rejilla">
-          <div className="hb-caja hb-rejilla">
-            <div className="hb-caja-titulo hb-rejilla-cabeza">
-              Mis hábitos
-              <span className="hb-caja-pie">
-                pulsa una casilla —o arrastra para varias—; pulsa el número de un día para su columna
-              </span>
-              <button className="hb-anadir" onClick={anadir}>Añadir hábito</button>
-            </div>
-            <div className="hb-rejilla-lienzo" ref={huecoRejilla}>
+        {/* ── Arriba en el centro: las dos gráficas ── */}
+        {/* Van dentro de un envoltorio y no sueltas en la retícula: la
+            columna del centro es UNA, y dos cajas puestas a pelo se
+            reparten filas distintas por colocación automática — que es
+            justo lo que pasó y desmontó el reparto entero. */}
+        <div className="hb-arriba-centro">
+        <div className="hb-caja hb-grafica hb-grafica-dia">
+          <div className="hb-caja-titulo">Progreso diario</div>
+          <div className="hb-barras">
+            {listaDias.map(d => {
+              const n = cuentas.porDia.get(d) ?? 0;
+              return (
+                <Barra
+                  key={d}
+                  valor={porcentaje(n, habitos.length)}
+                  rotulo={String(d)}
+                  finde={finde(d)}
+                  hoy={d === diaDeHoy}
+                  futuro={diaDeHoy !== null && d > diaDeHoy}
+                  titulo={`${d} de ${MESES[mes]}, ${DIAS_SEMANA_LARGO[new Date(anio, mes, d).getDay()]} · ${n} de ${habitos.length}`}
+                />
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="hb-caja hb-grafica hb-grafica-semana">
+          <div className="hb-caja-titulo">Progreso semanal</div>
+          <div className="hb-barras hb-barras-anchas">
+            {semanas.map(s => (
+              <Barra
+                key={s.n}
+                valor={s.pct}
+                rotulo={`sem. ${s.n}`}
+                titulo={`Días ${s.desde} a ${s.hasta} · ${s.hecho} de ${s.tope} (${Math.round(s.pct)} %)`}
+              />
+            ))}
+          </div>
+        </div>
+        </div>
+
+        {/* ── Arriba a la derecha: las tres cifras y el rosco ── */}
+        <div className="hb-arriba-dcha">
+        <div className="hb-metas">
+          <div><span>Objetivo</span><b>{objetivo}</b></div>
+          <div><span>Hechas</span><b>{hecho}</b></div>
+          <div><span>Faltan</span><b>{restante}</b></div>
+        </div>
+
+        <div className="hb-caja hb-resumen">
+          <div className="hb-caja-titulo">Resumen del mes</div>
+          <Rosco hecho={hecho} total={objetivo} />
+        </div>
+        </div>
+
+        {/* ── El centro: «mis hábitos» y la rejilla ── */}
+        <div className="hb-caja hb-rejilla">
+          <div className="hb-rejilla-lienzo" ref={huecoRejilla} onScroll={seguirElScroll}>
+            {habitos.length === 0 ? (
+              <p className="hb-vacio">No hay ningún hábito. Pulsa «Añadir» aquí abajo y ponle nombre.</p>
+            ) : (
               <table className="hb-tabla">
                 <thead ref={cabeceraTabla}>
                   <tr>
-                    <th className="hb-th-nombre" rowSpan={2}>Hábito</th>
+                    <th className="hb-th-mis" rowSpan={3}>
+                      Mis hábitos
+                      <span className="hb-pista">pulsa o arrastra · flechas y espacio</span>
+                    </th>
+                    {semanas.map(s => (
+                      <th key={s.n} className="hb-th-semana" colSpan={s.largo}>Semana {s.n}</th>
+                    ))}
+                  </tr>
+                  <tr>
                     {listaDias.map(d => (
-                      <th key={d} className={'hb-th-dia' + claseDia(d)}>
+                      <th key={d} className={'hb-th-dia' + claseDia(d)} data-dia={d}>
                         {DIAS_SEMANA[new Date(anio, mes, d).getDay()]}
                       </th>
                     ))}
                   </tr>
                   <tr>
                     {listaDias.map(d => (
-                      <th key={d} className={'hb-th-numero' + claseDia(d)}>
+                      <th key={d} className={'hb-th-numero' + claseDia(d)} data-dia={d}>
                         <button onClick={() => alternarColumna(d)} title={`Marcar o desmarcar todo el día ${d}`}>
                           {d}
                         </button>
@@ -736,11 +873,35 @@ export const Habitos: React.FC<{ onCerrar: () => void; estilo: EstiloHabitos }> 
                     ))}
                   </tr>
                 </thead>
-                <tbody>
-                  {habitos.map(h => (
-                    <tr key={h.id}>
+                <tbody ref={cuerpoRejilla} onKeyDown={navegar}>
+                  {habitos.map((h, f) => (
+                    <tr
+                      key={h.id}
+                      className={sobre === h.id ? 'hb-tr-destino' : undefined}
+                      onDragOver={e => { e.preventDefault(); setSobre(h.id); }}
+                      onDragLeave={() => setSobre(s => (s === h.id ? null : s))}
+                      onDrop={e => { e.preventDefault(); soltarSobre(h.id); }}
+                    >
                       <td className="hb-td-nombre">
                         <div className="hb-habito">
+                          <span
+                            className="hb-asa"
+                            draggable
+                            title="Arrastra para cambiarlo de sitio"
+                            aria-hidden
+                            onDragStart={() => { arrastrado.current = h.id; }}
+                            onDragEnd={() => { arrastrado.current = null; setSobre(null); }}
+                          >
+                            ⠿
+                          </span>
+                          <button
+                            className="hb-fila-toda"
+                            title={`Marcar o desmarcar «${h.nombre}» hasta ${diaDeHoy !== null ? 'hoy' : `el ${dias}`}`}
+                            aria-label={`Marcar o desmarcar ${h.nombre} en todo el mes`}
+                            onClick={() => alternarFila(h.id)}
+                          >
+                            ▤
+                          </button>
                           <input
                             className="hb-habito-nombre"
                             value={h.nombre}
@@ -760,22 +921,31 @@ export const Habitos: React.FC<{ onCerrar: () => void; estilo: EstiloHabitos }> 
                       {listaDias.map(d => {
                         const marcado = !!mesActual.marcas[`${h.id}|${d}`];
                         return (
-                          <td key={d} className={'hb-td-celda' + claseDia(d)}>
+                          <td key={d} className={'hb-td-celda' + claseDia(d)} data-dia={d}>
                             <button
                               className={'hb-casilla' + (marcado ? ' marcada' : '')}
                               role="checkbox"
                               aria-checked={marcado}
                               aria-label={`${h.nombre}, día ${d}`}
+                              /* El foco del tabulador entra por el día 1 y de
+                                 ahí se sigue con flechas: 372 paradas de
+                                 tabulador no son navegación, son un castigo. */
+                              tabIndex={d === 1 ? 0 : -1}
+                              data-f={f}
+                              data-d={d}
                               onPointerDown={e => {
                                 // El arrastre pinta; sin esto el navegador
                                 // empieza a seleccionar texto de la tabla y la
                                 // rejilla se queda azul a medio camino.
                                 e.preventDefault();
+                                (e.currentTarget as HTMLButtonElement).focus();
                                 pintando.current = !marcado;
                                 poner(h.id, d, !marcado);
                               }}
                               onPointerEnter={() => {
-                                if (pintando.current !== null) poner(h.id, d, pintando.current);
+                                // Las casillas del arrastre no vuelven a apilar
+                                // en la historia: el gesto entero es un paso.
+                                if (pintando.current !== null) ponerPintando(h.id, d, pintando.current);
                               }}
                               /* El teclado no arrastra: para él, pulsar es
                                  alternar, que es lo que hace una casilla. */
@@ -785,7 +955,9 @@ export const Habitos: React.FC<{ onCerrar: () => void; estilo: EstiloHabitos }> 
                                   poner(h.id, d, !marcado);
                                 }
                               }}
-                            />
+                            >
+                              <i className="hb-marca" aria-hidden />
+                            </button>
                           </td>
                         );
                       })}
@@ -793,81 +965,90 @@ export const Habitos: React.FC<{ onCerrar: () => void; estilo: EstiloHabitos }> 
                   ))}
                 </tbody>
               </table>
-            </div>
+            )}
           </div>
-
-          <div className="hb-caja hb-analisis">
-            <div className="hb-caja-titulo">
-              Hábito a hábito
-              <span className="hb-caja-pie">
-                racha: días seguidos hasta {diaDeHoy !== null ? 'hoy' : `el ${dias}`}
-              </span>
-            </div>
-            <div className="hb-analisis-lienzo">
-              <table className="hb-tabla-analisis">
-                <thead>
-                  <tr>
-                    <th className="hb-col-hab">Hábito</th>
-                    <th>Hechos</th>
-                    <th className="hb-col-barra">Progreso</th>
-                    <th>Racha</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {habitos.map(h => {
-                    const n = cuentas.porHabito.get(h.id) ?? 0;
-                    const pct = porcentaje(n, ultimoContable);
-                    const r = cuentas.rachas.get(h.id) ?? 0;
-                    return (
-                      <tr key={h.id}>
-                        <td className="hb-col-hab" title={h.nombre}>{h.nombre}</td>
-                        <td className="hb-num">{n}<span className="hb-de">/{ultimoContable}</span></td>
-                        <td className="hb-col-barra">
-                          <div className="hb-barra-carril" title={`${Math.round(pct)} %`}>
-                            <span style={{ width: `${pct}%` }} />
-                          </div>
-                        </td>
-                        <td className={'hb-num' + (r >= 7 ? ' viva' : '')}>{r}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+          {/* Los mandos van al pie y en pequeño: en la hoja no existen, y arriba
+              competirían con el título por la atención. */}
+          <div className="hb-rejilla-pie">
+            {hayQueDeshacer && (
+              <button onClick={deshacer} title="Deshacer el último cambio (Ctrl+Z)">Deshacer</button>
+            )}
+            <button onClick={anadir}>Añadir hábito</button>
+            <button className="hb-volver" onClick={onCerrar}>Volver a la llamada</button>
           </div>
         </div>
 
-        {/* ── Fila de abajo: estado mental y ranking ──────────────────────── */}
-        <div className="hb-fila hb-fila-baja">
-          <EstadoMental
-            dias={dias}
-            animo={mesActual.animo}
-            motivacion={mesActual.motivacion}
-            hoy={diaDeHoy}
-            onCambiar={cambiarMental}
-          />
-
-          <div className="hb-caja hb-top">
-            <div className="hb-caja-titulo">
-              Los que mejor van
-              <span className="hb-caja-pie">este mes</span>
-            </div>
-            <ol className="hb-top-lista">
-              {ranking.map((h, i) => {
-                const n = cuentas.porHabito.get(h.id) ?? 0;
-                return (
-                  <li key={h.id}>
-                    <span className="hb-top-puesto">{i + 1}</span>
-                    <span className="hb-top-nombre" title={h.nombre}>{h.nombre}</span>
-                    <span className="hb-top-barra" aria-hidden>
-                      <span style={{ width: `${porcentaje(n, ultimoContable)}%` }} />
-                    </span>
-                    <span className="hb-top-cuenta">{n}</span>
-                  </li>
-                );
-              })}
-            </ol>
+        {/* ── A la derecha: el análisis, hábito a hábito ── */}
+        <div className="hb-caja hb-analisis">
+          <div className="hb-caja-titulo">Análisis</div>
+          <div className="hb-analisis-lienzo" ref={huecoAnalisis}>
+            <table className="hb-tabla-analisis">
+              <thead>
+                <tr>
+                  {/* «Meta» y no «Objetivo»: la columna mide 36 px y el rótulo
+                      largo se cortaba por la mitad. */}
+                  <th>Meta</th>
+                  <th>Hechas</th>
+                  <th>Faltan</th>
+                  <th className="hb-col-barra">Progreso</th>
+                  <th>%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {habitos.map(h => {
+                  const n = cuentas.porHabito.get(h.id) ?? 0;
+                  const pct = porcentaje(n, ultimoContable);
+                  const r = cuentas.rachas.get(h.id) ?? 0;
+                  return (
+                    <tr key={h.id} title={`${h.nombre} · racha de ${r} ${r === 1 ? 'día' : 'días'}`}>
+                      <td>{ultimoContable}</td>
+                      <td>{n}</td>
+                      <td>{Math.max(0, ultimoContable - n)}</td>
+                      <td className="hb-col-barra">
+                        <div className="hb-barra-carril">
+                          <span style={{ width: `${pct}%` }} />
+                        </div>
+                      </td>
+                      <td className={'hb-pct' + (r >= 7 ? ' viva' : '')}>{Math.round(pct)}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
+        </div>
+
+        {/* ── Abajo: el estado mental ── */}
+        <div className="hb-caja hb-mental">
+          <div className="hb-caja-titulo">Estado mental</div>
+          {filaMental('animo', 'Ánimo')}
+          {filaMental('motivacion', 'Motivación')}
+          <div className="hb-mental-grafica">
+            {/* La escala a la izquierda: sin ella, dos áreas superpuestas dicen
+                «arriba» y «abajo» pero no cuánto. */}
+            <div className="hb-mental-escala"><span>10</span><span>5</span><span>0</span></div>
+            <svg viewBox={`0 0 ${anchoMental} 100`} preserveAspectRatio="none" aria-hidden>
+              <line className="hb-guia" x1="0" y1="50" x2={anchoMental} y2="50" vectorEffect="non-scaling-stroke" />
+              <path className="hb-area suave" d={area(pMoti)} />
+              <path className="hb-linea suave" d={linea(pMoti)} vectorEffect="non-scaling-stroke" />
+              <path className="hb-area" d={area(pAnimo)} />
+              <path className="hb-linea" d={linea(pAnimo)} vectorEffect="non-scaling-stroke" />
+            </svg>
+          </div>
+        </div>
+
+        {/* ── Abajo a la derecha: los diez que mejor van ── */}
+        <div className="hb-caja hb-top">
+          <div className="hb-caja-titulo">Los diez que mejor van</div>
+          <ol className="hb-top-lista">
+            {ranking.map((h, i) => (
+              <li key={h.id}>
+                <span className="hb-top-puesto">{i + 1}</span>
+                <span className="hb-top-nombre" title={h.nombre}>{h.nombre}</span>
+                <span className="hb-top-cuenta">{cuentas.porHabito.get(h.id) ?? 0}</span>
+              </li>
+            ))}
+          </ol>
         </div>
       </div>
     </div>

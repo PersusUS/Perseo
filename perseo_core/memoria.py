@@ -113,6 +113,15 @@ class FueraDelVault(Exception):
     """La ruta pedida no cae dentro del vault. Nunca es un caso normal."""
 
 
+class PluginCaido(RuntimeError):
+    """No se pudo hablar con el plugin de Obsidian: cerrado, apagado o sin red.
+
+    Se distingue de los demás errores del plugin —una clave rechazada, un 500—
+    porque este sí tiene remedio en el acto: las notas están en el disco y se
+    pueden leer sin Obsidian. Ver `VaultRest.respaldo`.
+    """
+
+
 class VaultFicheros:
     """El vault tal y como está hoy: ficheros Markdown en una carpeta."""
 
@@ -227,10 +236,23 @@ class VaultRest:
     mismo; ver `_verificar_certificado`.
     """
 
-    def __init__(self, base: str, clave: str, tope: float = TOPE_REST) -> None:
+    def __init__(
+        self,
+        base: str,
+        clave: str,
+        tope: float = TOPE_REST,
+        respaldo: VaultFicheros | None = None,
+    ) -> None:
         self.base = base.rstrip("/")
         self._clave = clave
         self._tope = tope
+        #: El vault en disco, para cuando Obsidian está cerrado. Las notas no
+        #: se van a ningún sitio porque el programa que las enseña no esté
+        #: abierto: buscar y leer siguen funcionando por el disco, y anotar
+        #: escribe el fichero que Obsidian recogerá cuando vuelva. Sin esto,
+        #: cerrar Obsidian dejaba a Perseo sin memoria entera (H-78).
+        self.respaldo = respaldo
+        self._avisado_caido = False
         self._http: aiohttp.ClientSession | None = None
         # Las anotaciones, una a la vez. El flujo "¿existe? → creo / añado" no
         # es atómico en el plugin: dos `anotar` entrelazados podían verse ambos
@@ -282,7 +304,7 @@ class VaultRest:
             ) as respuesta:
                 return respuesta.status, await respuesta.text()
         except aiohttp.ClientError as e:
-            raise RuntimeError(
+            raise PluginCaido(
                 f"No se pudo hablar con el plugin de Obsidian en {self.base}: {e}. "
                 "¿Está Obsidian abierto y el plugin Local REST API encendido?"
             ) from None
@@ -299,10 +321,27 @@ class VaultRest:
 
     # -- lectura ------------------------------------------------------------ #
 
+    def _al_disco(self, faena: str, caido: PluginCaido) -> VaultFicheros:
+        """El vault de disco cuando el plugin no está, o el error si no lo hay."""
+        if self.respaldo is None:
+            raise caido
+        if not self._avisado_caido:
+            # Una vez y no en cada búsqueda: el registro no se llena de lo
+            # mismo mientras Obsidian siga cerrado.
+            logger.warning("El plugin de Obsidian no contesta (%s); se sigue por disco.", faena)
+            self._avisado_caido = True
+        return self.respaldo
+
     async def buscar(self, consulta: str, limite: int = 10) -> list[Nota]:
         consulta = consulta.strip()
         if not consulta:
             return []
+        try:
+            return await self._buscar_por_el_plugin(consulta, limite)
+        except PluginCaido as caido:
+            return await self._al_disco("buscar", caido).buscar(consulta, limite)
+
+    async def _buscar_por_el_plugin(self, consulta: str, limite: int) -> list[Nota]:
         estado, cuerpo = await self._pedir(
             "POST",
             self._url("/search/simple/"),
@@ -317,9 +356,12 @@ class VaultRest:
 
     async def leer(self, ruta: str) -> str:
         relativa = _ruta_relativa(ruta)
-        estado, cuerpo = await self._pedir(
-            "GET", self._url("/vault/", relativa), cabeceras={"Accept": "text/markdown"}
-        )
+        try:
+            estado, cuerpo = await self._pedir(
+                "GET", self._url("/vault/", relativa), cabeceras={"Accept": "text/markdown"}
+            )
+        except PluginCaido as caido:
+            return await self._al_disco("leer", caido).leer(ruta)
         if estado == 404:
             raise FileNotFoundError(f"No hay ninguna nota en {ruta!r}")
         self._comprobar(estado, cuerpo)
@@ -328,6 +370,14 @@ class VaultRest:
     # -- escritura ---------------------------------------------------------- #
 
     async def anotar(self, titulo: str, texto: str, carpeta: str = CARPETA_MEMORIAS) -> str:
+        try:
+            return await self._anotar_por_el_plugin(titulo, texto, carpeta)
+        except PluginCaido as caido:
+            # El fichero se escribe igual y Obsidian lo recoge al abrirse. Lo
+            # que no puede pasar es perder lo que había que apuntar.
+            return await self._al_disco("anotar", caido).anotar(titulo, texto, carpeta)
+
+    async def _anotar_por_el_plugin(self, titulo: str, texto: str, carpeta: str) -> str:
         nombre = _nombre_seguro(titulo)
         if not nombre:
             raise ValueError("El título no deja ningún nombre de fichero utilizable.")
@@ -544,7 +594,15 @@ def _elegir_respaldo(cfg: almacen.Configuracion) -> Vault:
     if cfg.vault_respaldo == "rest":
         if cfg.vault_rest_clave:
             logger.info("Memoria por el plugin de Obsidian en %s", cfg.vault_rest_url)
-            return VaultRest(cfg.vault_rest_url, cfg.vault_rest_clave)
+            # Con el disco detrás: Obsidian cerrado no puede dejar sin memoria
+            # a quien tiene las notas delante, en su carpeta.
+            en_disco = ruta_vault(cfg)
+            en_disco.mkdir(parents=True, exist_ok=True)
+            return VaultRest(
+                cfg.vault_rest_url,
+                cfg.vault_rest_clave,
+                respaldo=VaultFicheros(en_disco),
+            )
         logger.warning(
             "PERSEO_VAULT=rest pero no hay clave del plugin (PERSEO_VAULT_CLAVE ni %s). "
             "Se sigue escribiendo en ficheros.",
@@ -618,7 +676,7 @@ def _prioridad(termino: str, nota: Nota) -> int:
 
 
 async def buscar_con_reintentos(
-    vault: "Vault", consulta: str, limite: int
+    vault: "Vault", consulta: str, limite: int, carpeta: str | None = None
 ) -> tuple[list[Nota], str]:
     """Busca en el vault preguntando como se habla, y ordena por lo que importa.
 
@@ -644,8 +702,9 @@ async def buscar_con_reintentos(
     - y **una nota cuyo nombre o ruta contiene lo buscado va primera**, que es
       lo que uno quiere decir cuando pregunta por "el proyecto MAGI".
 
+    Si se pasa `carpeta`, se filtran los resultados a esa ruta (prefijo).
     Devuelve las notas y **qué se buscó de verdad**, para poder decirlo en vez de
-    dar a entender que se encontró justo lo que se pidió.
+    dar a entender que encontró justo lo que se pidió.
     """
     # Se pide **mucho más de lo que se va a enseñar**, y este número es medio
     # arreglo. El plugin no acota: devuelve todo lo que encuentra y el corte lo
@@ -671,6 +730,8 @@ async def buscar_con_reintentos(
     mejores: dict[str, tuple[int, int, int, Nota]] = {}
     for rango, (termino, halladas) in enumerate(ordenadas):
         for llegada, nota in enumerate(halladas):
+            if carpeta and not nota.ruta.startswith(carpeta.rstrip("/") + "/"):
+                continue
             clave = (_prioridad(termino, nota), rango, llegada)
             anterior = mejores.get(nota.ruta)
             if anterior is None or clave < anterior[:3]:
@@ -719,7 +780,8 @@ async def _memoria(trabajo: dict[str, Any]) -> dict[str, Any]:
     if accion == "buscar":
         consulta = str(peticion.get("texto", "")).strip()
         limite = max(1, min(int(peticion.get("limite", 10)), 50))
-        notas, buscado = await buscar_con_reintentos(_vault, consulta, limite)
+        carpeta = str(peticion.get("carpeta", "")).strip() or None
+        notas, buscado = await buscar_con_reintentos(_vault, consulta, limite, carpeta)
         return {
             "accion": accion,
             "consulta": consulta,

@@ -94,6 +94,17 @@ def _pythonw() -> str:
 #: Escapar del *job* de quien nos lanzó. Python no lo expone con nombre.
 CREATE_BREAKAWAY_FROM_JOB = 0x01000000
 
+#: Que un proceso auxiliar NO abra ventana. Se le pone a todo lo que consulta
+#: algo del sistema —«¿está vivo el núcleo?», «¿qué IP tiene el tailnet?»— y a
+#: todo lo que mata procesos, porque nadie lee esa salida: va a `capture_output`.
+#:
+#: Sin esto, la tarea `PerseoRevivir` hacía parpadear **dos** consolas de
+#: PowerShell cada diez minutos encima de lo que estuvieras haciendo —una por
+#: `arrancar_nucleo` y otra por `arrancar_detector`, las dos preguntando lo
+#: mismo— y desde fuera parecía que algo iba mal (H-75). Un proceso de fondo que
+#: se ve trabajar es un proceso de fondo mal hecho.
+SIN_VENTANA = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+
 
 def _sin_consola(argumentos: list[str]) -> None:
     """Lanza algo y se desentiende: ni consola, ni esperar, ni morir con esta.
@@ -152,6 +163,7 @@ def _corriendo(fragmento: str) -> bool:
                 "| Select-Object -ExpandProperty CommandLine",
             ],
             capture_output=True,
+            creationflags=SIN_VENTANA,
             text=True,
             # PowerShell contesta en el código de página de la consola, no en
             # UTF-8: sin este colchón, una línea de comandos con tilde mata al
@@ -209,6 +221,7 @@ def _exe_vivo(nombre: str) -> bool:
         salida = subprocess.run(
             ["tasklist", "/FI", f"IMAGENAME eq {nombre}", "/NH"],
             capture_output=True,
+            creationflags=SIN_VENTANA,
             text=True,
             # tasklist escribe en el código de página OEM (cp850 en un Windows
             # español) y con `-X utf8` Python intenta leerlo como UTF-8: el
@@ -467,6 +480,7 @@ def _marca_de_construccion() -> str:
             ["git", "rev-parse", "--short", "HEAD"],
             cwd=str(RAIZ),
             capture_output=True,
+            creationflags=SIN_VENTANA,
             text=True,
             errors="replace",
             timeout=10,
@@ -565,6 +579,7 @@ def actualizar() -> None:
                 "Stop-Process -Name perseo -Force -ErrorAction SilentlyContinue",
             ],
             capture_output=True,
+            creationflags=SIN_VENTANA,
         )
         print("  [cerrada]    La app de voz, para poder sobrescribirla")
 
@@ -664,12 +679,14 @@ def parar(avisar_del_detector: bool = True) -> None:
                 "| ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
             ],
             capture_output=True,
+            creationflags=SIN_VENTANA,
         )
         print(f"  [parado]     {descripcion}")
 
     subprocess.run(
         ["powershell", "-NoProfile", "-Command", "Stop-Process -Name perseo -Force -ErrorAction SilentlyContinue"],
         capture_output=True,
+        creationflags=SIN_VENTANA,
     )
     print("  [parado]     La app de voz")
     if avisar_del_detector:
@@ -691,6 +708,7 @@ def parar_detector() -> None:
             "| ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
         ],
         capture_output=True,
+        creationflags=SIN_VENTANA,
     )
     print("  [parado]     El detector de aplausos")
 

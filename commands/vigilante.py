@@ -41,6 +41,13 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import unico  # noqa: E402
+
+#: Cómo se llama la cerradura de esta pieza. Ver `commands/unico.py`.
+CERROJO = "PerseoVigilante"
+
 #: Cuánto se espera antes del primer reintento, y hasta dónde puede crecer.
 ESPERA_INICIAL = 5.0
 ESPERA_MAXIMA = 60.0
@@ -108,6 +115,17 @@ def vigilar() -> int:
     datos = _directorio_datos()
     registro = datos / "vigilante.log"
     registro_nucleo = datos / "nucleo.log"
+
+    # Un vigilante y no dos. Dos vigilantes son dos núcleos peleándose por el
+    # 8787: el segundo muere con `OSError 10048`, el segundo vigilante lo toma
+    # por una muerte anormal y lo vuelve a arrancar, y así para siempre. La
+    # cerradura la suelta el sistema cuando el proceso muere, así que un
+    # vigilante colgado no deja a Perseo sin poder arrancar nunca más (H-76).
+    cerrojo = unico.tomar(CERROJO)
+    if cerrojo is None:
+        _apuntar(registro, "Ya hay otro vigilante en marcha; este se retira.")
+        return 0
+
     espera = ESPERA_INICIAL
     _apuntar(registro, f"Vigilante en marcha sobre {RAIZ}.")
 

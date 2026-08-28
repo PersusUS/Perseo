@@ -88,7 +88,7 @@ def test_arrancar_lista_las_herramientas() -> None:
     async def guion() -> None:
         servidor, _ = await _servidor_vivo()
         try:
-            assert [h["name"] for h in servidor.herramientas] == ["eco", "tarda"]
+            assert [h["name"] for h in servidor.herramientas] == ["eco", "tarda", "estricto"]
         finally:
             await servidor.detener()
 
@@ -137,6 +137,97 @@ def test_la_lista_de_permitidas_manda() -> None:
     asyncio.run(guion())
 
 
+def test_el_nombre_en_espanol_llega_traducido() -> None:
+    """`comando` contra un servidor que espera `command` era una llamada perdida.
+
+    Era el fallo #333: el modelo piensa en español y ese idioma se le colaba
+    hasta el nombre del parámetro.
+    """
+
+    async def guion() -> None:
+        servidor, _ = await _servidor_vivo()
+        try:
+            respuesta = await servidor.llamar(
+                "estricto", {"comando": "echo hola", "ruta": "C:/"}
+            )
+            assert '"command": "echo hola"' in respuesta
+            assert '"path": "C:/"' in respuesta
+            assert "comando" not in respuesta
+        finally:
+            await servidor.detener()
+
+    asyncio.run(guion())
+
+
+def test_lo_que_falta_se_dice_con_la_firma_y_sin_viajar() -> None:
+    """Un requerido que no viene se contesta aquí, con los nombres buenos."""
+
+    async def guion() -> None:
+        servidor, _ = await _servidor_vivo()
+        try:
+            with pytest.raises(mcp.ErrorMcp) as fallo:
+                await servidor.llamar("estricto", {"command": "echo"})
+        finally:
+            await servidor.detener()
+        mensaje = str(fallo.value)
+        assert "path" in mensaje
+        assert "requerido" in mensaje
+
+    asyncio.run(guion())
+
+
+def test_el_rechazo_del_servidor_trae_la_firma_pegada() -> None:
+    """El -32602 llega como error de JSON-RPC; la pista tiene que ir con él."""
+
+    async def guion() -> None:
+        servidor, _ = await _servidor_vivo()
+        # Se salta la comprobación de casa para llegar al rechazo del servidor.
+        servidor.herramientas = [{"name": "estricto", "description": "", "inputSchema": {}}]
+        try:
+            with pytest.raises(mcp.ErrorMcp) as fallo:
+                await servidor.llamar("estricto", {})
+        finally:
+            await servidor.detener()
+        assert "Input validation error" in str(fallo.value)
+
+    asyncio.run(guion())
+
+
+def test_el_fichero_pone_lo_que_el_modelo_no_sabe() -> None:
+    """La raíz del vault no la sabe ningún modelo: la escribe una persona."""
+
+    async def guion() -> None:
+        mcp.definiciones.clear()
+        mcp.definiciones["mentira"] = definicion(
+            argumentos_por_defecto={"estricto": {"path": "C:/Users/<usuario>/Documents/Persus"}}
+        )
+        servidor = mcp.ServidorMcp("mentira", mcp.definiciones["mentira"])
+        await servidor.arrancar()
+        try:
+            respuesta = await servidor.llamar("estricto", {"command": "buscar"})
+            assert "Persus" in respuesta
+        finally:
+            await servidor.detener()
+
+    asyncio.run(guion())
+
+
+def test_el_catalogo_ensena_los_parametros() -> None:
+    """Sin la firma, el modelo adivina los nombres — y adivina en español."""
+    firma = mcp._firma(
+        {
+            "name": "estricto",
+            "description": "Prueba.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"command": {"type": "string"}, "path": {"type": "string"}},
+                "required": ["command"],
+            },
+        }
+    )
+    assert firma.startswith("estricto(command, [path])")
+
+
 def test_un_servidor_que_no_contesta_muere_a_plazo(tmp_path: Path) -> None:
     """El plazo mata al proceso; la siguiente llamada lo resucita."""
 
@@ -176,6 +267,56 @@ def test_el_nivel_del_servidor_llega_a_la_politica(cfg) -> None:
         asyncio.run(mcp.detener())
 
 
+def test_una_herramienta_puede_tener_su_propio_nivel(cfg) -> None:
+    """Un servidor entero no es un nivel: mirar no cuesta lo que escribir."""
+    escribir_config(
+        cfg.directorio_datos,
+        {
+            "windows": definicion(
+                nivel="irreversible",
+                niveles_herramienta={"Snapshot": "libre", "Registry": "que sé yo"},
+            )
+        },
+    )
+    asyncio.run(mcp.iniciar(cfg))
+    try:
+        peticion = {"servidor": "windows", "herramienta": "Snapshot"}
+        assert politica.nivel("mcp", peticion) == politica.LIBRE
+        # Un nivel raro se descarta y esa herramienta vuelve a la del servidor.
+        raro = {"servidor": "windows", "herramienta": "Registry"}
+        assert politica.nivel("mcp", raro) == politica.IRREVERSIBLE
+    finally:
+        asyncio.run(mcp.detener())
+
+
+def test_el_powershell_que_solo_mira_no_para_a_pedir_un_si(cfg) -> None:
+    """Listar el escritorio no es irreversible; borrarlo sí."""
+    escribir_config(cfg.directorio_datos, {"windows": definicion(nivel="irreversible")})
+    asyncio.run(mcp.iniciar(cfg))
+
+    def nivel_de(comando: str) -> str:
+        return politica.nivel(
+            "mcp",
+            {
+                "servidor": "windows",
+                "herramienta": "PowerShell",
+                "argumentos": {"command": comando},
+            },
+        )
+
+    try:
+        assert nivel_de("Get-ChildItem -Directory C:/Users/<usuario>/Desktop") == politica.REVERSIBLE
+        assert nivel_de("dir | Select-Object Name") == politica.REVERSIBLE
+        # Lo que escribe, borra o se esconde detrás de una tubería, pregunta.
+        assert nivel_de("Get-ChildItem | Remove-Item") == politica.IRREVERSIBLE
+        assert nivel_de("Remove-Item C:/algo -Recurse") == politica.IRREVERSIBLE
+        assert nivel_de("Get-Content notas.txt > salida.txt") == politica.IRREVERSIBLE
+        assert nivel_de("Get-ChildItem; Remove-Item x") == politica.IRREVERSIBLE
+        assert nivel_de("") == politica.IRREVERSIBLE
+    finally:
+        asyncio.run(mcp.detener())
+
+
 # -- El agente ----------------------------------------------------------------
 
 
@@ -189,7 +330,17 @@ def test_listar_dice_nombres_y_niveles(cfg) -> None:
     resultado = asyncio.run(mcp._mcp({"peticion": {"accion": "servidores"}}))
     nombres = [s["nombre"] for s in resultado["servidores"]]
     assert nombres == ["mentira"]
-    assert {h["nombre"] for h in resultado["servidores"][0]["herramientas"]} == {"eco", "tarda"}
+    assert {h["nombre"] for h in resultado["servidores"][0]["herramientas"]} == {
+        "eco",
+        "tarda",
+        "estricto",
+    }
+    # Y con la firma: los parámetros viajan en el catálogo y en el texto.
+    estricto = next(
+        h for h in resultado["servidores"][0]["herramientas"] if h["nombre"] == "estricto"
+    )
+    assert [p["nombre"] for p in estricto["parametros"]] == ["command", "path"]
+    assert "estricto(command, path)" in resultado["texto"]
 
 
 def test_llamar_por_el_agente(cfg) -> None:
@@ -202,6 +353,24 @@ def test_llamar_por_el_agente(cfg) -> None:
                     "servidor": "mentira",
                     "herramienta": "eco",
                     "argumentos": {"dato": "42"},
+                }
+            }
+        )
+    )
+    assert "42" in resultado["texto"]
+
+
+def test_los_argumentos_en_texto_tambien_valen(cfg) -> None:
+    """Un modelo de voz manda a veces el objeto ya escrito como JSON."""
+    _agente_con_servidor(cfg)
+    resultado = asyncio.run(
+        mcp._mcp(
+            {
+                "peticion": {
+                    "accion": "llamar",
+                    "servidor": "mentira",
+                    "herramienta": "eco",
+                    "argumentos": '{"dato": "42"}',
                 }
             }
         )

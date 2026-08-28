@@ -1,3 +1,30 @@
+"""Dos aplausos y una palabra: la forma de llamar a Perseo sin tocar nada.
+
+Este script corre siempre, escuchando el micrófono a 44,1 kHz —la frecuencia
+más compatible en Windows, y a la que está calibrado `THRESHOLD`—. El camino
+completo es a propósito de dos pasos, porque cualquiera de los dos por separado
+da falsos positivos a diario:
+
+1. **Dos aplausos** separados entre `CLAP_MIN_DELAY` y `CLAP_MAX_DELAY`. El
+   mínimo existe para que el eco del primer aplauso no cuente como segundo.
+2. **La palabra clave**, decidida en local por `palabra_clave.py` (openWakeWord
+   sobre CPU, remuestreando a 16 kHz). No sale nada a la red.
+
+Si las dos cosas se cumplen, `trigger_action()` deja el marcador
+`.perseo-autollamada` en el directorio del proyecto y —si la app no estaba
+abierta— la levanta y muestra el splash. El marcador es todo lo que hay entre
+este proceso y la app: nadie más se hablan.
+
+Dos cosas que conviene saber antes de tocarlo:
+
+- **`THRESHOLD = 20.0` está fijo y sin calibrar por máquina.** Con otro
+  micrófono, o con la ganancia cambiada, esto deja de dispararse (o se dispara
+  con una puerta) y no hay ningún aviso que lo diga.
+- **Para probarlo no hace falta hablarle al micrófono**:
+  `python commands/verificar_palabra_clave.py` sintetiza la voz con SAPI y hace
+  recorrer el camino real a un WAV.
+"""
+
 import sounddevice as sd
 import numpy as np
 import time
@@ -8,6 +35,7 @@ import threading
 import pygame
 
 import presencia
+import unico
 from palabra_clave import crear_detector
 
 # Inicializamos el mixer de Pygame silenciosamente
@@ -153,7 +181,10 @@ def trigger_action():
     # Usamos pythonw para que la ventana de carga corra silenciosa por detras sin robar terminal
     pythonw_exe = sys.executable.replace("python.exe", "pythonw.exe")
     try:
-        subprocess.Popen([pythonw_exe, splash_path])
+        # `pythonw` ya es sin consola, pero la bandera lo garantiza aunque
+        # `sys.executable` no sea el que se espera (H-75).
+        banderas = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+        subprocess.Popen([pythonw_exe, splash_path], creationflags=banderas)
     except Exception as e:
         print(f"[x] Error al mostrar carga: {e}")
 
@@ -259,9 +290,24 @@ def process_voice_buffer():
     print("----------------------------------------")
     print("- Esperando doble aplauso de nuevo...")
 
+#: Cómo se llama la cerradura de esta pieza. Ver `commands/unico.py`.
+CERROJO = "PerseoDetectorAplausos"
+
+
 def start_listening():
     global awaiting_voice
-    
+
+    # UNO Y NADA MÁS. `perseo.arrancar_detector()` ya pregunta si hay otro, pero
+    # esa pregunta es una consulta WMI que a veces falla, y cuando falla dice
+    # «no está» y arranca otro — cada diez minutos, que es cada cuánto lo
+    # intenta `PerseoRevivir`. El 2026-08-26 había TRES sobre el mismo
+    # micrófono: tres procesos que oyen el mismo aplauso disparan tres veces
+    # (H-76). La cerradura del sistema no depende de que nadie acierte.
+    cerrojo = unico.tomar(CERROJO)
+    if cerrojo is None:
+        print("[i] Ya hay un detector de aplausos escuchando. Este se va.")
+        return
+
     print("========================================")
     print(" Perseo Clap-Listener Iniciado en BG")
     print("========================================")

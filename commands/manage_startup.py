@@ -43,6 +43,11 @@ LEGADO = ("PerseoClapDetector", "PerseoNucleo")
 TAREA = "PerseoRevivir"
 MINUTOS_ENTRE_REVISIONES = 10
 
+#: Que `schtasks` no abra ventana. Toda llamada de aquí lleva `capture_output`,
+#: así que esa consola no la lee nadie: solo parpadea encima de lo que esté
+#: haciendo el señor Persus (H-75).
+SIN_VENTANA = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+
 
 def _raiz_proyecto() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -114,6 +119,7 @@ def añadir_tarea() -> None:
                 "/MO", str(MINUTOS_ENTRE_REVISIONES),
             ],
             capture_output=True,
+            creationflags=SIN_VENTANA,
             text=True,
         )
     except (OSError, subprocess.SubprocessError) as e:
@@ -128,7 +134,10 @@ def añadir_tarea() -> None:
 def quitar_tarea() -> None:
     try:
         resultado = subprocess.run(
-            ["schtasks", "/Delete", "/F", "/TN", TAREA], capture_output=True, text=True
+            ["schtasks", "/Delete", "/F", "/TN", TAREA],
+            capture_output=True,
+            creationflags=SIN_VENTANA,
+            text=True,
         )
     except (OSError, subprocess.SubprocessError) as e:
         print(f"[-] No se pudo borrar la tarea '{TAREA}': {e}")
@@ -142,7 +151,10 @@ def quitar_tarea() -> None:
 def tarea_puesta() -> bool:
     try:
         resultado = subprocess.run(
-            ["schtasks", "/Query", "/TN", TAREA], capture_output=True, text=True
+            ["schtasks", "/Query", "/TN", TAREA],
+            capture_output=True,
+            creationflags=SIN_VENTANA,
+            text=True,
         )
     except (OSError, subprocess.SubprocessError):
         return False

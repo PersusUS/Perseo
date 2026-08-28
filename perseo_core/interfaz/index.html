@@ -390,7 +390,34 @@
     background: var(--superficie); color: var(--texto); padding: 11px 14px;
   }
   select:focus { outline: none; border-color: rgba(255,255,255,.35); }
+  .opciones-agente { display: flex; gap: 8px; }
+  .opciones-agente select { flex: 1; min-width: 0; }
   #encargos { display: flex; flex-direction: column; gap: 12px; }
+
+  /* La bitácora de un encargo. Es una pantalla de depuración metida en una
+     tarjeta: el paso a paso del agente principal y el de cada subagente, con
+     el detalle escondido hasta que se pide. Sin esto, un encargo de dieciséis
+     vueltas es una palabra («HECHO») y nada más (2026-08-26). */
+  .actividad { margin-top: 10px; border-top: 1px solid var(--borde); padding-top: 10px; }
+  .actividad .filtros { margin: 0 0 8px; flex-wrap: wrap; gap: 6px; }
+  .pasos { display: flex; flex-direction: column; gap: 4px; max-height: 340px; overflow-y: auto; }
+  .paso {
+    display: flex; gap: 8px; align-items: baseline;
+    font-size: 13px; line-height: 1.35; padding: 3px 0;
+    border-bottom: 1px solid rgba(255,255,255,.05);
+  }
+  .paso .hora { color: var(--apagado); font-variant-numeric: tabular-nums; font-size: 11px; flex: none; }
+  .paso .que { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .paso.mal .que { color: var(--malo); }
+  .paso .tipo {
+    flex: none; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--apagado);
+  }
+  .paso details summary { cursor: pointer; color: var(--apagado); font-size: 11px; }
+  .paso pre {
+    margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere;
+    font-size: 12px; color: var(--apagado); max-height: 220px; overflow-y: auto;
+  }
   #anotar-memoria button { align-self: flex-end; }
   #notas { display: flex; flex-direction: column; gap: 10px; }
   .nota-vault summary {
@@ -667,14 +694,18 @@
   <section id="agentes" hidden>
     <form id="lanzar-agente" class="tarjeta columna">
       <div class="cabeza">Lanzar un agente de código</div>
-      <select id="agente-proyecto">
-        <option value="">Raíz de Perseo</option>
-      </select>
+      <!-- Ya no se elige carpeta: el agente trabaja desde la carpeta del
+           usuario y se mueve entre proyectos, que están interconectados. Lo
+           único que se elige es CON QUÉ trabaja (2026-08-26). -->
+      <div class="opciones-agente">
+        <select id="agente-motor" title="Con qué sistema trabaja"></select>
+        <select id="agente-modelo" title="Con qué modelo"></select>
+      </div>
       <textarea id="agente-tarea" rows="5"
-        placeholder="Qué tiene que hacer. Completa y autocontenida: «arregla el fallo X haciendo Y»."
+        placeholder="Qué tiene que hacer. Completa y autocontenida: «arregla el fallo X haciendo Y». Di el proyecto en el texto: «en Armario…»."
         enterkeyhint="send"></textarea>
       <button type="submit" class="pildora aprobar">Lanzar agente</button>
-      <div class="motivo" id="agente-aviso"></div>
+      <div class="motivo" id="agente-aviso">Trabaja desde tu carpeta de usuario y puede entrar en cualquier proyecto.</div>
     </form>
     <div id="encargos"></div>
   </section>
@@ -1516,39 +1547,240 @@ $("buscar-memoria").addEventListener("submit", async (e) => {
 // Agentes
 // --------------------------------------------------------------------- //
 
+/** Con qué puede trabajar un encargo. Lo que se elige es el SISTEMA y el
+ *  MODELO —nunca la carpeta—: el agente sale de la carpeta del usuario y se
+ *  mueve entre proyectos, porque están interconectados (2026-08-26). */
+/** **opencode va primero y sale puesto**: es el que no gasta suscripción, y el
+ *  señor Persus lo dijo con todas las letras el 2026-08-26 —«usar Claude es
+ *  secundario, quiero la opción gratuita»—. */
+const SISTEMAS_AGENTE = [
+  ["opencode", "opencode · gratis"],
+  ["sdk", "Claude · SDK"],
+  ["claude", "Claude · consola"],
+  ["", "El configurado por defecto"],
+];
+
+/** Los modelos GRATIS de opencode Zen, de más contexto a menos.
+ *
+ *  Salen de `opencode models opencode --verbose` filtrando los que tienen
+ *  `cost.input` y `cost.output` a cero — no de lo que suene conocido. Los dos
+ *  que había aquí antes eran inventados a medias: `glm-5` existe pero SE PAGA,
+ *  y `qwen3-coder` no existe en este proveedor. Los seis saben usar
+ *  herramientas y razonar, que es lo que necesita un agente de código. */
+const MODELOS_OPENCODE = [
+  ["opencode/nemotron-3-ultra-free", "nemotron-3-ultra · 1M contexto"],
+  ["opencode/nemotron-3.5-lightning-free", "nemotron-3.5-lightning · rápido"],
+  ["opencode/hy3-free", "hy3 · 190k"],
+  ["opencode/big-pickle", "big-pickle · 200k"],
+  ["opencode/mimo-v2.5-free", "mimo-v2.5 · 200k"],
+  // Pide ser contribuidor de opencode: puede no estar disponible en esta
+  // cuenta, y por eso va el último pese a su contexto.
+  ["opencode/muse-spark-1.2-contributor-free", "muse-spark · 1M (contribuidores)"],
+  ["", "El que tenga configurado opencode"],
+];
+
+const MODELOS_CLAUDE = [
+  ["", "Modelo por defecto"],
+  ["opus", "opus"],
+  ["sonnet", "sonnet"],
+  ["haiku", "haiku"],
+];
+
+/** Los modelos que tiene sentido pedirle a cada sistema. */
+const MODELOS_AGENTE = {
+  opencode: MODELOS_OPENCODE,
+  sdk: MODELOS_CLAUDE,
+  claude: MODELOS_CLAUDE,
+  "": MODELOS_CLAUDE,
+};
+
+function rellenarSelector(selector, opciones, elegido) {
+  selector.replaceChildren();
+  for (const [valor, texto] of opciones) {
+    const opcion = crear("option", null, texto);
+    opcion.value = valor;
+    if (valor === elegido) opcion.selected = true;
+    selector.appendChild(opcion);
+  }
+}
+
+function prepararOpcionesAgente() {
+  const motor = $("agente-motor");
+  if (motor.options.length) return;
+  // Arranca en opencode y en su primer modelo gratis: lo que no cuesta
+  // suscripción es lo que sale puesto, no lo que hay que ir a buscar.
+  rellenarSelector(motor, SISTEMAS_AGENTE, SISTEMAS_AGENTE[0][0]);
+  rellenarSelector($("agente-modelo"), MODELOS_OPENCODE, MODELOS_OPENCODE[0][0]);
+  motor.addEventListener("change", () => {
+    // El PRIMERO del nuevo sistema, no vacío: con opencode, vacío significa «el
+    // que tenga configurado», que puede ser de pago.
+    const lista = MODELOS_AGENTE[motor.value] ?? MODELOS_CLAUDE;
+    rellenarSelector($("agente-modelo"), lista, lista[0][0]);
+  });
+}
+
+/** Qué encargos tienen la bitácora abierta. Se guarda fuera del render porque
+ *  la lista se repinta cada veinte segundos y cerrar lo que estás leyendo cada
+ *  vez que refresca sería inservible. */
+const bitacorasAbiertas = new Set();
+/** Dentro de qué agente se está mirando cada encargo: `todo` o su id. */
+const agenteMirado = new Map();
+/** Lo último que contestó `/actividad` por encargo, para repintar sin parpadeo. */
+const actividades = new Map();
+
+const NOMBRES_DE_PASO = {
+  herramienta: "hace", resultado: "sale", dice: "dice",
+  piensa: "piensa", subagente: "subagente", fin: "fin", error: "error",
+};
+
+function pintarPaso(paso) {
+  const fila = crear("div", "paso" + (paso.ok === false ? " mal" : ""));
+  const hora = (paso.momento || "").slice(11, 19);
+  fila.appendChild(crear("span", "hora", hora));
+  fila.appendChild(crear("span", "tipo", NOMBRES_DE_PASO[paso.tipo] ?? paso.tipo));
+
+  const que = crear("div", "que");
+  que.appendChild(crear("div", null, paso.titulo || "(sin título)"));
+  // El detalle —la orden entera, la salida del comando— va plegado: es lo que
+  // hace falta cuando algo no cuadra, y estorba cuando todo va bien.
+  if (paso.detalle && paso.detalle !== paso.titulo) {
+    const plegado = document.createElement("details");
+    plegado.appendChild(crear("summary", null, "detalle"));
+    const pre = document.createElement("pre");
+    pre.textContent = paso.detalle;
+    plegado.appendChild(pre);
+    que.appendChild(plegado);
+  }
+  fila.appendChild(que);
+  return fila;
+}
+
+/** La bitácora de un encargo: quién trabajó y qué hizo cada uno. */
+function pintarActividad(id, actividad) {
+  const caja = crear("div", "actividad");
+  const agentes = actividad.agentes ?? [];
+  const mirado = agenteMirado.get(id) ?? "todo";
+
+  if (agentes.length > 1) {
+    const filtros = crear("div", "filtros");
+    const botones = [["todo", `todo (${actividad.pasos.length})`]].concat(
+      agentes.map((a) => [a.id, `${a.titulo} (${a.pasos})${a.fallos ? " ⚠" : ""}`])
+    );
+    for (const [valor, texto] of botones) {
+      const boton = crear("button", "filtro", texto);
+      boton.type = "button";
+      boton.setAttribute("aria-pressed", String(valor === mirado));
+      boton.addEventListener("click", () => {
+        agenteMirado.set(id, valor);
+        repintarActividad(id);
+      });
+      filtros.appendChild(boton);
+    }
+    caja.appendChild(filtros);
+  }
+
+  const pasos = crear("div", "pasos");
+  const visibles = actividad.pasos.filter((p) => mirado === "todo" || p.agente === mirado);
+  if (!visibles.length) {
+    pasos.appendChild(crear("div", "motivo", "Sin pasos apuntados. Los motores de consola no cuentan nada hasta el final."));
+  }
+  for (const paso of visibles) pasos.appendChild(pintarPaso(paso));
+  caja.appendChild(pasos);
+  return caja;
+}
+
+function repintarActividad(id) {
+  const tarjeta = document.querySelector(`#encargos .tarjeta[data-id="${id}"]`);
+  if (!tarjeta) return;
+  const actividad = actividades.get(id);
+  if (!actividad) return;
+  const vieja = tarjeta.querySelector(".actividad");
+  // Repintar encima de lo que estás leyendo tira el scroll al principio cada
+  // cinco segundos, que es la forma de hacer inservible una lista que crece.
+  const donde = vieja?.querySelector(".pasos")?.scrollTop ?? 0;
+  const abajo = vieja
+    ? donde + vieja.querySelector(".pasos").clientHeight >= vieja.querySelector(".pasos").scrollHeight - 24
+    : true;
+  const nueva = pintarActividad(id, actividad);
+  if (vieja) vieja.replaceWith(nueva); else tarjeta.appendChild(nueva);
+  const lista = nueva.querySelector(".pasos");
+  if (lista) lista.scrollTop = abajo ? lista.scrollHeight : donde;
+}
+
+async function cargarActividad(id) {
+  try {
+    const r = await fetch(`/trabajos/${id}/actividad`);
+    if (!r.ok) return;
+    actividades.set(id, await r.json());
+    repintarActividad(id);
+  } catch {}
+}
+
 /** Los encargos de código lanzados desde aquí. La lista sale de la cola — es
  *  la misma fuente que la pestaña de Cola— filtrada por su agente. */
-function pintarEncargos(trabajos) {
+function pintarEncargos(dev) {
   const destino = $("encargos");
   destino.replaceChildren();
-  const dev = trabajos.filter((t) => t.agente === "dev");
   if (!dev.length) {
     destino.appendChild(crear("div", "nota", "Ningún encargo todavía."));
     return;
   }
   for (const t of dev) {
     const tarjeta = pintarTrabajo(t);
+
+    // Por dónde va, mientras va. El núcleo solo lo manda si el encargo sigue
+    // vivo y el motor sabe contarlo.
+    if (t.progreso) {
+      tarjeta.appendChild(crear("div", "motivo", "▸ " + t.progreso));
+    }
+
+    const acciones = crear("div", "acciones");
+    const ver = crear("button", "pildora", bitacorasAbiertas.has(t.id) ? "Ocultar actividad" : "Ver actividad");
+    ver.type = "button";
+    ver.addEventListener("click", () => {
+      if (bitacorasAbiertas.has(t.id)) {
+        bitacorasAbiertas.delete(t.id);
+        tarjeta.querySelector(".actividad")?.remove();
+        ver.textContent = "Ver actividad";
+      } else {
+        bitacorasAbiertas.add(t.id);
+        ver.textContent = "Ocultar actividad";
+        cargarActividad(t.id);
+      }
+    });
+    acciones.appendChild(ver);
+    tarjeta.appendChild(acciones);
+
     destino.appendChild(tarjeta);
+    if (bitacorasAbiertas.has(t.id)) cargarActividad(t.id);
   }
 }
 
-async function cargarAgentes() {
-  if (!proyectosConocidos) await cargarProyectos();
-  const selector = $("agente-proyecto");
-  if (selector.options.length <= 1 && proyectosConocidos.proyectos.length) {
-    for (const p of proyectosConocidos.proyectos) {
-      const opcion = crear("option", null, p.nombre);
-      opcion.value = p.destino ?? "";
-      opcion.title = p.descripcion || p.destino || "";
-      selector.appendChild(opcion);
-    }
-  }
+/** Lo que había la última vez, para no repintar la lista sin motivo. */
+let firmaEncargos = "";
 
+async function cargarAgentes() {
+  prepararOpcionesAgente();
+  let dev;
   try {
     const r = await fetch("/trabajos?limite=50");
     if (r.status === 401) { puerta.style.display = "flex"; return; }
-    pintarEncargos(((await r.json()).trabajos ?? []));
-  } catch {}
+    dev = ((await r.json()).trabajos ?? []).filter((t) => t.agente === "dev");
+  } catch { return; }
+
+  // La lista se repinta solo si cambió algo que se vea. Sin esto, el sondeo de
+  // cada cinco segundos te quita de delante el detalle que estabas leyendo.
+  const firma = dev.map((t) => `${t.id}:${t.estado}:${t.progreso ?? ""}`).join("|");
+  if (firma !== firmaEncargos) {
+    firmaEncargos = firma;
+    pintarEncargos(dev);
+  }
+
+  // Las bitácoras abiertas de encargos VIVOS sí se refrescan: es lo que se
+  // está mirando. Las de los terminados ya no cambian.
+  for (const t of dev) {
+    if (bitacorasAbiertas.has(t.id) && ESTADOS_ABIERTOS.has(t.estado)) cargarActividad(t.id);
+  }
 }
 
 $("lanzar-agente").addEventListener("submit", async (e) => {
@@ -1557,15 +1789,17 @@ $("lanzar-agente").addEventListener("submit", async (e) => {
   const aviso = $("agente-aviso");
   if (!texto) { aviso.textContent = "Escribe primero qué tiene que hacer."; return; }
   aviso.textContent = "Lanzando…";
+  // Sin `directorio`: el núcleo trabaja desde la carpeta del usuario. Mandar
+  // aquí el `destino` de un proyecto es lo que tumbaba el encargo cuando ese
+  // destino era una URL («'http://127.0.0.1:8000' no es un directorio»).
+  const peticion = { texto };
+  if ($("agente-motor").value) peticion.motor = $("agente-motor").value;
+  if ($("agente-modelo").value) peticion.modelo = $("agente-modelo").value;
   try {
     const r = await fetch("/trabajos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agente: "dev",
-        origen: "texto",
-        peticion: { texto, directorio: $("agente-proyecto").value },
-      }),
+      body: JSON.stringify({ agente: "dev", origen: "texto", peticion }),
     });
     if (r.status === 401) { puerta.style.display = "flex"; return; }
     if (!r.ok) throw new Error((await r.json()).error ?? r.status);
@@ -2001,6 +2235,13 @@ function empezar() {
   cargarCola();
   cargarEstado();
   conectarEventos();
+  // Un encargo de código no cambia de ESTADO mientras trabaja —sigue «en
+  // curso» durante seis minutos—, así que los eventos de la cola no bastan:
+  // lo que se mueve es el paso a paso, y eso hay que ir a buscarlo. Solo
+  // mientras se está mirando esa pestaña y con la pantalla encendida.
+  setInterval(() => {
+    if (pestana === "agentes" && document.visibilityState === "visible") cargarAgentes();
+  }, 5000);
   $("entrada").focus();
   // La marca de construcción junto al título del chat: si no está, la página
   // que tienes delante es anterior a esta función.

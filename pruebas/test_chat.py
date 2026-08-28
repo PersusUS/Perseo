@@ -26,7 +26,8 @@ def test_las_herramientas_estan_completas_y_con_forma() -> None:
     nombres = {d["name"] for d in chat._declaraciones()}
     esperadas = {
         "situacion_actual", "consultar_correo", "detalle_correo",
-        "consultar_agenda", "buscar_en_memoria", "leer_nota", "guardar_recuerdo",
+        "consultar_agenda", "consultar_habitos",
+        "buscar_en_memoria", "leer_nota", "guardar_recuerdo",
         "buscar_en_web", "leer_pagina", "controlar_pc", "encargar_codigo",
         "consultar_trabajo",
         "listar_mcp", "usar_mcp", "responder_confirmacion",
@@ -341,6 +342,73 @@ def _turno(sesion, monkeypatch) -> list[dict]:
         return [e async for e in chat._llamar_modelo(sesion, "clave", [])]
 
     return asyncio.run(correr())
+
+
+# ── La firma del pensamiento (2026-08-25) ─────────────────────────────────── #
+
+
+class _SesionConHerramienta:
+    """Contesta con una llamada a herramienta firmada, como Gemini 2.5."""
+
+    def __init__(self, firma: str = "FIRMA-123") -> None:
+        self.firma = firma
+
+    def post(self, url, params=None, json=None):
+        import json as _json
+
+        parte = {"functionCall": {"name": "consultar_trabajo", "args": {"id": 7}}}
+        if self.firma:
+            parte["thoughtSignature"] = self.firma
+        cuerpo = {"candidates": [{"content": {"parts": [parte]}}]}
+        return _RespuestaFalsa(200, [b"data: " + _json.dumps(cuerpo).encode()])
+
+
+def test_la_firma_de_la_llamada_se_recoge(monkeypatch) -> None:
+    """Sin recogerla no hay forma de devolverla, y Gemini contesta 400."""
+    eventos = _turno(_SesionConHerramienta(), monkeypatch)
+    assert eventos[-1]["llamadas"][0]["firma"] == "FIRMA-123"
+
+
+def test_la_firma_vuelve_pegada_a_la_llamada() -> None:
+    """«Function call is missing a thought_signature in functionCall parts»."""
+    parte = chat._parte_de_llamada(
+        {"nombre": "consultar_trabajo", "argumentos": {"id": 7}, "firma": "FIRMA-123"}
+    )
+    assert parte["thoughtSignature"] == "FIRMA-123"
+    assert parte["functionCall"] == {"name": "consultar_trabajo", "args": {"id": 7}}
+
+
+def test_sin_firma_la_parte_va_limpia() -> None:
+    """Los modelos que no firman no pueden recibir una firma vacía."""
+    parte = chat._parte_de_llamada({"nombre": "x", "argumentos": {}, "firma": ""})
+    assert "thoughtSignature" not in parte
+
+
+def test_aplanar_convierte_las_herramientas_en_prosa() -> None:
+    """El plan B: un turno degradado es mejor que un turno perdido."""
+    aplanado = chat._aplanar_herramientas([
+        {"role": "user", "parts": [{"text": "hola"}]},
+        {"role": "model", "parts": [{"functionCall": {"name": "ver", "args": {"a": 1}}}]},
+        {"role": "user", "parts": [{"functionResponse": {"name": "ver", "response": {"result": "ok"}}}]},
+    ])
+    assert all("functionCall" not in p and "functionResponse" not in p
+               for turno in aplanado for p in turno["parts"])
+    assert "ver" in aplanado[1]["parts"][0]["text"]
+    assert "ok" in aplanado[2]["parts"][0]["text"]
+    assert aplanado[0]["parts"][0] == {"text": "hola"}
+
+
+def test_sin_cuota_y_peticion_rechazada_no_se_cuentan_igual() -> None:
+    """Esperar arregla lo primero y no arregla lo segundo (H-73)."""
+    sin_cuota = chat._por_que_no_hubo_modelo(
+        chat.ErrorGemini("Ningún modelo del chat tiene cuota ahora mismo: a, b")
+    )
+    rechazo = chat._por_que_no_hubo_modelo(
+        chat.ErrorGemini("Gemini respondió 400: Function call is missing a thought_signature")
+    )
+    assert "cuota" in sin_cuota
+    assert "esperar no lo arregla" in rechazo
+    assert "thought_signature" in rechazo
 
 
 def test_por_defecto_hay_dos_modelos_y_los_dos_dan_500_al_dia() -> None:

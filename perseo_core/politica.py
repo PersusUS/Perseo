@@ -43,7 +43,16 @@ LIBRE = "libre"
 REVERSIBLE = "reversible"
 IRREVERSIBLE = "irreversible"
 
-NIVELES = (LIBRE, REVERSIBLE, IRREVERSIBLE)
+#: Como irreversible, pero **el modo confianza no lo tapa**. Es para lo que no
+#: se puede deshacer con nada: borrar ficheros, tocar el registro, matar
+#: procesos. Nació el 2026-08-27 de un caso concreto: la llamada de voz enciende
+#: la confianza al conectar (N-3), así que durante una llamada NADA preguntaba;
+#: Perseo dijo de su cosecha «¿confirma que ejecuto el comando?», nadie
+#: contestó, y el comando salió igual porque el sistema nunca llegó a
+#: preguntarlo. Tener delante a alguien hablando no es su sí a esta orden.
+CRITICO = "critico"
+
+NIVELES = (LIBRE, REVERSIBLE, IRREVERSIBLE, CRITICO)
 
 #: Qué nivel tiene cada cosa. La clave es el agente, o `agente.accion` cuando el
 #: agente hace cosas de niveles distintos. Lo que no esté aquí es irreversible.
@@ -208,7 +217,12 @@ def hay_confianza() -> bool:
 
 def pide_confirmacion(agente: str, peticion: dict[str, Any] | None = None) -> bool:
     """Si esta petición hay que parar y preguntar."""
-    if nivel(agente, peticion) != IRREVERSIBLE:
+    en_juego = nivel(agente, peticion)
+    if en_juego == CRITICO:
+        # Lo crítico pregunta siempre, con confianza o sin ella. Es la única
+        # puerta que no se queda abierta durante una llamada.
+        return True
+    if en_juego != IRREVERSIBLE:
         return False
     # El modo confianza baja lo irreversible a reversible mientras dura.
     return not hay_confianza()
@@ -219,4 +233,6 @@ def resumir(agente: str, peticion: dict[str, Any] | None = None) -> str:
     peticion = peticion or {}
     accion = str(peticion.get("accion", "")).strip()
     que = f"{agente} · {accion}" if accion else agente
+    if nivel(agente, peticion) == CRITICO:
+        return f"¿Confirmas algo que no se puede deshacer? ({que})"
     return f"¿Confirmas una acción irreversible? ({que})"

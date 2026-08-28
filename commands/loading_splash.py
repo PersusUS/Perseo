@@ -1,3 +1,19 @@
+"""La pantalla de «ya va» mientras la app arranca.
+
+Un overlay de tkinter que el detector de aplausos lanza cuando tiene que
+levantar la app desde cero: sin él, entre el aplauso y la ventana hay unos
+segundos de nada en los que parece que no ha pasado nada y se aplaude otra vez.
+
+Dos decisiones pequeñas y deliberadas:
+
+- **Pregunta por la marca de presencia, no por el nombre del proceso**
+  (`presencia.app_viva()`). Buscar por nombre de ejecutable ataba esto al
+  nombre del binario de Tauri, que ya rompió el arranque una vez al cambiarlo.
+- **Se rinde a los 30 segundos** (30 ciclos de 1000 ms). Si la app no ha
+  abierto para entonces, algo ha fallado y un overlay eterno encima de todo lo
+  demás es peor que no tener overlay.
+"""
+
 import tkinter as tk
 
 import presencia

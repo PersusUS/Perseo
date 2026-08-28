@@ -124,17 +124,45 @@ const CORREOS = {
   ],
 };
 
+/** La bitácora de un encargo, con un subagente dentro: es lo que hay que poder
+ *  mirar para depurar, y lo que se ve raro si la densidad no está bien. */
+const ACTIVIDAD = {
+  id: 271,
+  vivo: true,
+  pasos: [
+    { tipo: 'herramienta', titulo: 'Leyendo Panel.tsx', detalle: 'C:\\Users\\<usuario>\\armario\\src\\Panel.tsx', agente: 'principal', ok: true, momento: hace(6) },
+    { tipo: 'resultado', titulo: '1248 líneas leídas', detalle: '', agente: 'principal', ok: true, momento: hace(6) },
+    { tipo: 'dice', titulo: 'Voy a repartir la búsqueda entre dos subagentes.', detalle: 'Voy a repartir la búsqueda entre dos subagentes.', agente: 'principal', ok: true, momento: hace(5) },
+    { tipo: 'subagente', titulo: 'explorador: dónde se pinta la pestaña', detalle: '', agente: 'tu_01', ok: true, momento: hace(5) },
+    { tipo: 'herramienta', titulo: 'Buscando pestaña informes', detalle: 'grep -rn "informes" src/', agente: 'tu_01', ok: true, momento: hace(5) },
+    { tipo: 'resultado', titulo: 'Error: no such file or directory', detalle: "rg: src/: IO error for operation on src/: The system cannot find the path specified. (os error 3)", agente: 'tu_01', ok: false, momento: hace(4) },
+    { tipo: 'herramienta', titulo: 'Editando Panel.tsx', detalle: 'const Informes = () => { … }', agente: 'principal', ok: true, momento: hace(2) },
+    { tipo: 'herramienta', titulo: 'Ejecutando npx tsc --noEmit', detalle: 'npx tsc --noEmit', agente: 'principal', ok: true, momento: hace(1) },
+  ],
+  agentes: [
+    { id: 'principal', titulo: 'Agente principal', pasos: 5, fallos: 0 },
+    { id: 'tu_01', titulo: 'explorador: dónde se pinta la pestaña', pasos: 3, fallos: 1 },
+  ],
+};
+
 export async function invoke(comando: string, argumentos?: any): Promise<any> {
   await new Promise(r => setTimeout(r, 120));
   switch (comando) {
     case 'panel_estado': return ESTADO;
     case 'panel_trabajos': return { trabajos: TRABAJOS };
+    case 'panel_actividad': return { ...ACTIVIDAD, id: argumentos?.id ?? ACTIVIDAD.id };
     case 'panel_trabajo': return TRABAJOS.find(t => t.id === argumentos?.id) ?? TRABAJOS[0];
     case 'panel_encolar': return { ...TRABAJOS[0], id: 999, estado: 'hecho' };
     case 'panel_correos': return CORREOS;
     case 'chat_sesiones': return { sesiones: SESIONES };
     case 'chat_sesion': return { ...SESIONES[0], mensajes: MENSAJES };
     case 'chat_crear': return { id: 5, titulo: 'Nueva', turno: 'libre', actualizado_en: hace(0) };
+    // Aquí no hay núcleo que reciba la copia de los hábitos, pero sí hay algo
+    // que mirar: el texto que Perseo leerá en voz alta. Sacarlo por la consola
+    // es la única forma de leerlo sin llamar por teléfono a un modelo.
+    case 'habitos_espejo':
+      console.log(`[maqueta] copia de hábitos al núcleo:\n${argumentos?.texto}`);
+      return { sellado: new Date().toISOString() };
     default: return {};
   }
 }

@@ -136,3 +136,66 @@ export function bloqueCenso(
     lineas.join('\n')
   );
 }
+
+/** La marca con la que viaja todo aviso de identidad. */
+const MARCA = '[IDENTIDAD]';
+
+/**
+ * Ecos cortos: lo que el modelo dice cuando resume el aviso en vez de leerlo.
+ *
+ * Van anclados al principio porque solo se aplican a lo que viene JUSTO
+ * después de la marca; ahí, por construcción, no hay palabras de Perseo.
+ */
+const ECOS: RegExp[] = [
+  /^Quien habla ahora[^.\n]*\.?\s*/i,
+  /^Delante de la cámara:[^.\n]*\.?\s*/i,
+  /^Ahora habla[^.\n]*\.?\s*/i,
+  // El eco recortado: la marca, un nombre pelado y la frase de verdad pegada
+  // detrás sin puntuación —«[IDENTIDAD] Persus Buenos días, señor Persus»—.
+  /^(Desconocido \d+|[A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÜÑáéíóúüñ]*)\s+(?=[«¡¿A-ZÁÉÍÓÚÑ])/,
+];
+
+function limpiarEco(resto: string): string {
+  for (const eco of ECOS) {
+    const limpio = resto.replace(eco, '');
+    if (limpio !== resto) return limpio;
+  }
+  return resto;
+}
+
+/**
+ * Quita de una transcripción el aviso de identidad que el modelo haya leído.
+ *
+ * Las instrucciones ya le dicen que esas líneas no se leen en voz alta, y aun
+ * así el 2026-08-26 abrió una llamada con «[IDENTIDAD] Persus Buenos días,
+ * señor Persus». Que se cuele en el audio es cosa del modelo; que se quede
+ * escrito en la pantalla y en la bitácora del vault, no: eso sí está en
+ * nuestra mano.
+ *
+ * `avisos` son los que la aplicación mandó hace poco. Cuando el modelo los lee
+ * literales, esa comparación los borra enteros —es la única forma de saber
+ * dónde acaba el aviso y empieza lo que Perseo dice—; cuando los resume, queda
+ * la marca y de ella tira `ECOS`.
+ *
+ * Solo toca el texto donde encuentra la marca o un aviso conocido, así que
+ * pasar dos veces la misma cadena —la transcripción llega troceada y se
+ * relimpia entera a cada trozo— no come nada de lo que Perseo sí dijo.
+ */
+export function sinAvisoDeIdentidad(texto: string, avisos: string[] = []): string {
+  let salida = texto;
+  for (const aviso of avisos) {
+    if (!aviso) continue;
+    // Con marca y sin ella: el modelo suele soltar la etiqueta y leer el resto.
+    for (const forma of [aviso, aviso.replace(MARCA, '').trim()]) {
+      if (forma && salida.includes(forma)) salida = salida.split(forma).join('');
+    }
+  }
+  let corte = salida.indexOf(MARCA);
+  while (corte !== -1) {
+    const antes = salida.slice(0, corte);
+    const resto = salida.slice(corte + MARCA.length).replace(/^[ \t]*/, '');
+    salida = antes + limpiarEco(resto);
+    corte = salida.indexOf(MARCA);
+  }
+  return salida.replace(/^\s+/, '');
+}

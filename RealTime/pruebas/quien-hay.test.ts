@@ -18,6 +18,7 @@ import {
   esProvisional,
   etiquetaPersona,
   PERFIL_PERSUS_POR_DEFECTO,
+  sinAvisoDeIdentidad,
 } from '../src/lib/quien-hay';
 
 const SENOR = PERFIL_PERSUS_POR_DEFECTO;
@@ -123,5 +124,47 @@ describe('bloqueCenso', () => {
     expect(censo).toContain('Persus — ES EL SEÑOR PERSUS (voz y cara)');
     expect(censo).toContain('Antonio — NO es el señor Persus (cara)');
     expect(censo).toContain('Desconocido 4 — alguien a quien reconoces');
+  });
+});
+
+describe('sinAvisoDeIdentidad', () => {
+  it('quita el eco recortado sin comerse el saludo', () => {
+    // La llamada del 2026-08-26, tal cual salió en pantalla.
+    expect(sinAvisoDeIdentidad('[IDENTIDAD] Persus Buenos días, señor Persus.')).toBe(
+      'Buenos días, señor Persus.',
+    );
+  });
+
+  it('quita el aviso leído entero cuando se le pasa el que se mandó', () => {
+    const aviso = avisoHablante('Persus', SENOR);
+    expect(sinAvisoDeIdentidad(`${aviso} Buenos días.`, [aviso])).toBe('Buenos días.');
+  });
+
+  it('quita también el aviso leído sin su marca', () => {
+    const aviso = avisoHablante('Antonio', SENOR);
+    const leido = `${aviso.replace('[IDENTIDAD] ', '')} Buenas tardes, Antonio.`;
+    expect(sinAvisoDeIdentidad(leido, [aviso])).toBe('Buenas tardes, Antonio.');
+  });
+
+  it('quita el aviso de caras', () => {
+    const leido = '[IDENTIDAD] Delante de la cámara: el señor Persus. Aquí estoy.';
+    expect(sinAvisoDeIdentidad(leido)).toBe('Aquí estoy.');
+  });
+
+  it('no toca una frase sin marca, ni la relimpia dos veces', () => {
+    const dicho = 'Persus Buenos días, señor Persus.';
+    expect(sinAvisoDeIdentidad(dicho)).toBe(dicho);
+    expect(sinAvisoDeIdentidad(sinAvisoDeIdentidad('[IDENTIDAD] Persus Buenos días.'))).toBe(
+      'Buenos días.',
+    );
+  });
+
+  it('aguanta la marca partida entre fragmentos, limpiando el texto entero', () => {
+    // Lo que hace App.tsx: acumular y volver a limpiar.
+    let texto = '';
+    for (const trozo of ['[IDENTI', 'DAD] Quien habla ahora es el señor Persus. ', 'Dígame.']) {
+      texto = sinAvisoDeIdentidad(texto + trozo);
+    }
+    expect(texto).toBe('Dígame.');
   });
 });

@@ -4,6 +4,21 @@
    hojas. */
 
 :root {
+  /* LO PRIMERO, y no es decorativo: le dice al navegador que los controles que
+     pinta ÉL —el desplegable de un `<select>`, las barras de desplazamiento, el
+     cursor de un `<input>`, los menús de contexto— van en oscuro.
+
+     Sin esto, el CSS de la caja del `<select>` se aplica y **la lista que se
+     abre al pulsarla no**: la dibuja el sistema con su tema, y sale una tarjeta
+     blanca con letra negra en mitad de una pantalla negra. Es un fallo que se
+     repite porque el elemento se ve bien hasta que alguien lo despliega, así
+     que no salta revisando el CSS: solo pulsándolo.
+
+     La interfaz del móvil (`perseo_core/interfaz/index.html`) lo tenía desde el
+     principio y esta hoja no, que es exactamente por qué solo se veía mal en el
+     panel de la app. */
+  color-scheme: dark;
+
   --bg: #000000;
   --fg: #ffffff;
   --fg-muted: #999999;

@@ -1,3 +1,20 @@
+//! El armado de la aplicación: qué módulos hay y qué comandos ve el frontend.
+//!
+//! Este fichero no tiene lógica propia a propósito. Es el índice: declara los
+//! módulos, construye la ventana y registra en `invoke_handler` todo lo que el
+//! JavaScript puede llamar. Si un comando existe en `commands.rs`, `panel.rs` o
+//! `nucleo.rs` pero no está en esa lista, el frontend recibe un error de
+//! comando desconocido y el fallo parece del lado de JavaScript.
+//!
+//! Dónde vive cada cosa:
+//!
+//! - `nucleo.rs`   — el cliente del núcleo: traduce herramientas en trabajos.
+//! - `panel.rs`    — los comandos `panel_*` y `chat_*` del panel y del chat.
+//! - `commands.rs` — pantalla, ajustes cifrados y biometría.
+//! - `bandeja.rs`  — el icono de la bandeja; cerrar la ventana la esconde.
+//! - `autollamada.rs` y `presencia.rs` — los dos marcadores en disco que
+//!   comunican esta app con los scripts de Python de `commands/`.
+
 mod autollamada;
 mod bandeja;
 mod commands;
@@ -71,9 +88,11 @@ pub fn run() {
             panel::panel_estado,
             panel::panel_trabajos,
             panel::panel_trabajo,
+            panel::panel_actividad,
             panel::panel_responder,
             panel::panel_encolar,
             panel::panel_confianza,
+            panel::habitos_espejo,
             panel::panel_correos,
             panel::panel_marcar_correo,
             panel::panel_proyectos,

@@ -80,28 +80,55 @@ MARCA_AUTOLLAMADA = RAIZ / ".perseo-autollamada"
 # --------------------------------------------------------------------------- #
 
 
-def _motor() -> str:
-    """Qué CLI hay disponible. El entorno manda; luego, el que esté.
+#: Los modelos GRATIS de opencode Zen, de más contexto a menos. Salen de
+#: `opencode models opencode --verbose` filtrando los que tienen `cost.input` y
+#: `cost.output` a cero — no de lo que suene conocido. Los seis saben usar
+#: herramientas y razonar, que es lo que necesita un agente de código.
+#:
+#: Es la MISMA lista que ofrece la pestaña de encargos del panel
+#: (`RealTime/src/components/Panel.tsx`); si cambia una, cambia la otra.
+MODELOS_GRATIS = (
+    "opencode/nemotron-3-ultra-free",
+    "opencode/nemotron-3.5-lightning-free",
+    "opencode/hy3-free",
+    "opencode/big-pickle",
+    "opencode/mimo-v2.5-free",
+    # Pide ser contribuidor de opencode: puede no estar disponible en esta
+    # cuenta, y por eso va el último pese a su millón de contexto.
+    "opencode/muse-spark-1.2-contributor-free",
+)
 
-    Por defecto manda **claude**: el 2026-08-24 se comprobó encargo a encargo
-    que el modelo gratuito de opencode devuelve «Endpoint is unavailable» a
-    ratos y termina con código 0 sin haber hecho nada, así que un encargo de
-    cada tantos se daba por bueno sin serlo. opencode sigue disponible con
-    `PERSEO_SUBAGENTE_MOTOR=opencode`, y como respaldo si claude no está.
+#: Con qué modelo trabaja opencode si nadie dice otra cosa. Explícito y
+#: gratuito a propósito: sin `-m`, opencode usa el que tenga configurado, que
+#: puede ser de pago — y el señor Persus pidió el 2026-08-26 la opción que no
+#: gasta suscripción, no la que se la gasta por defecto.
+MODELO_POR_DEFECTO = MODELOS_GRATIS[0]
+
+
+def _motor(pedido: str = "") -> str:
+    """Qué CLI trabaja. Manda lo que pida el encargo; luego el entorno; luego
+    el que esté instalado.
+
+    Por defecto manda **opencode**, que es el que no gasta suscripción: el
+    señor Persus lo pidió con todas las letras el 2026-08-26 —«usar Claude es
+    secundario, quiero la opción gratuita»—. La razón por la que antes mandaba
+    Claude (el endpoint gratuito se cae a ratos y sale con código 0 sin haber
+    hecho nada) ya no exige cambiar de motor: `_fracaso_encubierto` lo detecta
+    y `_ejecutar` reintenta. Claude sigue a un `motor='claude'` de distancia.
     """
-    pedido = os.environ.get("PERSEO_SUBAGENTE_MOTOR", "").strip().lower()
-    if not pedido:
+    pedido = (pedido or os.environ.get("PERSEO_SUBAGENTE_MOTOR", "")).strip().lower()
+    if pedido == "claude":
         orden = ("claude", "opencode")
-    elif pedido == "claude":
-        orden = ("claude", "opencode")
+    elif pedido:
+        orden = (pedido, "opencode", "claude")
     else:
-        orden = (pedido, "claude")
+        orden = ("opencode", "claude")
     for nombre in orden:
         if shutil.which(nombre):
             return nombre
     raise RuntimeError(
-        "No hay ningún motor de subagentes instalado. Instala Claude Code, o "
-        "opencode (npm i -g opencode-ai) y pon PERSEO_SUBAGENTE_MOTOR=opencode."
+        "No hay ningún motor de subagentes instalado. Instala opencode "
+        "(npm i -g opencode-ai) o Claude Code."
     )
 
 
@@ -119,19 +146,40 @@ DENEGADAS = (
 )
 
 
-def _comando(motor: str, tarea: str) -> list[str]:
+def _modelo_de(motor: str, pedido: str = "") -> str:
+    """Con qué modelo trabaja este encargo. Vacío para Claude, que usa el suyo.
+
+    Para opencode NUNCA se devuelve vacío: sin `-m` trabaja con el modelo que
+    tenga configurado, y ese puede ser de pago.
+    """
+    if motor != "opencode":
+        return (pedido or os.environ.get("PERSEO_SUBAGENTE_MODELO", "")).strip()
+    elegido = (pedido or os.environ.get("PERSEO_SUBAGENTE_MODELO", "")).strip()
+    if not elegido:
+        return MODELO_POR_DEFECTO
+    # Un nombre corto («hy3-free») se completa con el proveedor: es lo que
+    # escribe un modelo de voz cuando le dictan el nombre a medias.
+    return elegido if "/" in elegido else f"opencode/{elegido}"
+
+
+def _comando(motor: str, tarea: str, directorio: Path | None = None, modelo: str = "") -> list[str]:
     """La línea completa del encargo, como lista de argumentos y sin shell."""
     if motor == "opencode":
-        modelo = os.environ.get("PERSEO_SUBAGENTE_MODELO", "").strip()
         # `--auto` es obligatorio aquí: sin él, `opencode run` PIDE permiso para
         # escribir fuera del proyecto, nadie contesta —esto no es interactivo— y
         # el propio programa se lo deniega («auto-rejecting») y sale con código
         # 0. El encargo se daba por hecho con el disco intacto.
         comando = [shutil.which("opencode") or "opencode", "run", "--auto"]
-        if modelo:
-            comando += ["-m", modelo]
+        # `--dir` NO es redundante con el `cwd` del proceso, y en el agente
+        # `dev` costó un fichero escrito dos carpetas más arriba para verlo
+        # (2026-08-26): `opencode run` levanta su propio servidor y resuelve el
+        # proyecto por su cuenta, así que hereda el `cwd` y luego lo ignora.
+        # La raíz hay que decírsela, no dársela por supuesta.
+        if directorio is not None:
+            comando += ["--dir", str(directorio)]
+        comando += ["-m", _modelo_de(motor, modelo)]
         return [*comando, tarea]
-    return [
+    linea = [
         shutil.which("claude") or "claude",
         "-p",
         tarea,
@@ -153,6 +201,14 @@ def _comando(motor: str, tarea: str) -> list[str]:
         "--max-turns",
         "40",
     ]
+    # Claude sí sabe salir de su carpeta de arranque, pero decírsela es gratis
+    # y quita ambigüedad cuando el encargo nombra rutas relativas.
+    if directorio is not None:
+        linea += ["--add-dir", str(directorio)]
+    elegido = _modelo_de("claude", modelo)
+    if elegido:
+        linea += ["--model", elegido]
+    return linea
 
 
 # --------------------------------------------------------------------------- #
@@ -169,7 +225,7 @@ _contador = 0
 #: reinicio — y una espiral de errores para Perseo.
 RUTA_ESTADO = DATOS / "subagentes_estado.json"
 
-_CLAVES_PERSISTIDAS = ("estado", "salida", "error", "motor", "entregado")
+_CLAVES_PERSISTIDAS = ("estado", "salida", "error", "motor", "modelo", "entregado")
 
 
 def _persistir() -> None:
@@ -208,6 +264,7 @@ def _cargar() -> None:
                 "salida": str(entrada.get("salida") or ""),
                 "error": str(entrada.get("error") or ""),
                 "motor": str(entrada.get("motor") or "?"),
+                "modelo": str(entrada.get("modelo") or ""),
                 # Lo cargado del disco NUNCA avisa: su ventana de gracia murió
                 # con el servidor anterior, y un aviso por algo de hace horas
                 # es ruido, no información (H-62).
@@ -237,6 +294,16 @@ def _primera_linea(texto: str, tope: int = 160) -> str:
     return linea[:tope]
 
 
+def _quien(tarea: dict) -> str:
+    """Con qué trabajó un encargo: el motor y, si lo hubo, el modelo.
+
+    Perseo lo cuenta de viva voz, y «opencode» a secas no distingue el modelo
+    gratuito del de pago — que es justo lo que el señor Persus quiere saber.
+    """
+    modelo = str(tarea.get("modelo") or "").split("/")[-1]
+    return f"{tarea.get('motor', '?')} · {modelo}" if modelo else str(tarea.get("motor", "?"))
+
+
 def _validar_directorio(directorio: str) -> Path:
     """El encargo trabaja aquí dentro, o no trabaja.
 
@@ -244,7 +311,11 @@ def _validar_directorio(directorio: str) -> Path:
     que el modelo pasó como directorio la CARPETA A CREAR (que por definición
     aún no existe), el mensaje genérico «no existe» no le enseñó la salida.
     """
-    destino = Path(directorio or str(RAIZ)).expanduser().resolve()
+    # Sin directorio, la carpeta del usuario y no la de Perseo: los proyectos
+    # del señor Persus cuelgan de ahí y se llaman unos a otros, así que un
+    # subagente arrancado dentro de este repositorio nacía mirando a la pared
+    # (es la misma decisión que tomó `dev.py` el 2026-08-26).
+    destino = Path(directorio or str(Path.home())).expanduser().resolve()
     if destino.exists() and not destino.is_dir():
         raise ValueError(f"{destino} es un fichero, no un directorio.")
     if not destino.is_dir():
@@ -253,7 +324,8 @@ def _validar_directorio(directorio: str) -> Path:
             "el subagente y tiene que existir ya; la carpeta nueva la crea él "
             "dentro de la tarea. Usa una carpeta real —por ejemplo "
             f"{Path.home() / 'Desktop'} para cosas del escritorio— o no pases "
-            "directorio."
+            f"directorio y arrancará en {Path.home()}, desde donde ve todos "
+            "los proyectos."
         )
     if not any(destino == raiz or raiz in destino.parents for raiz in RAICES_PERMITIDAS):
         fuera = ", ".join(str(r) for r in RAICES_PERMITIDAS)
@@ -305,7 +377,7 @@ def _avisar_si_nadie_pregunto(id_tarea: str) -> None:
         resumen = tarea.get("error") or tarea.get("salida") or ""
         legible = _ESTADOS_LEGIBLES.get(tarea["estado"], tarea["estado"])
         motivo = (
-            f"El subagente ({tarea['motor']}) {legible} en la tarea "
+            f"El subagente ({_quien(tarea)}) {legible} en la tarea "
             f"{id_tarea}: {_primera_linea(resumen)}"
         )
         tarea["entregado"] = True
@@ -375,10 +447,13 @@ def _una_vez(comando: list[str], directorio: Path):
     )
 
 
-def _ejecutar(id_tarea: str, motor: str, directorio: Path, tarea: str) -> None:
+def _ejecutar(id_tarea: str, motor: str, directorio: Path, tarea: str, modelo: str = "") -> None:
+    def linea() -> list[str]:
+        return _comando(motor, tarea, directorio, modelo)
+
     try:
         comienzo = time.time()
-        hecho = _una_vez(_comando(motor, tarea), directorio)
+        hecho = _una_vez(linea(), directorio)
         # Hasta dos reintentos contra los picos de red del proveedor, siempre
         # que el fallo llegue rápido: una tarea que llevaba minutos trabajando
         # de verdad no se reejecuta — repetirla sería tirar lo hecho.
@@ -399,10 +474,10 @@ def _ejecutar(id_tarea: str, motor: str, directorio: Path, tarea: str) -> None:
             # gratuito: responde solo con controles ANSI o se calla. Un reintento
             # rápido cuesta poco y suele traer el resultado de verdad.
             vueltas += 1
-            hecho = _una_vez(_comando(motor, tarea), directorio)
+            hecho = _una_vez(linea(), directorio)
         while hecho.returncode != 0 and time.time() - comienzo < REINTENTO_SI_MENOS_DE and vueltas < 2:
             vueltas += 1
-            hecho = _una_vez(_comando(motor, tarea), directorio)
+            hecho = _una_vez(linea(), directorio)
         salida = _recortar(hecho.stdout or "")
         if not salida and (hecho.stderr or "").strip():
             salida = _recortar(hecho.stderr)
@@ -435,14 +510,21 @@ def _ejecutar(id_tarea: str, motor: str, directorio: Path, tarea: str) -> None:
     threading.Timer(GRACIA_SEGUNDOS, _avisar_si_nadie_pregunto, args=(id_tarea,)).start()
 
 
-def encargar_tarea(tarea: str, directorio: str = "") -> str:
+def encargar_tarea(tarea: str, directorio: str = "", motor: str = "", modelo: str = "") -> str:
+    """Lanza un subagente y devuelve su identificador al momento.
+
+    `motor` y `modelo` los puede elegir Perseo en voz alta —«mándalo con
+    Claude», «usa el nemotron»— y, si no dice nada, sale opencode con un
+    modelo gratuito: es lo que pidió el señor Persus el 2026-08-26.
+    """
     global _contador
     tarea = (tarea or "").strip()
     if not tarea:
         raise ValueError("Falta la descripción de la tarea.")
 
     destino = _validar_directorio(directorio)
-    motor = _motor()
+    motor = _motor(motor)
+    modelo = _modelo_de(motor, modelo)
 
     with _cerrojo:
         _contador += 1
@@ -452,6 +534,7 @@ def encargar_tarea(tarea: str, directorio: str = "") -> str:
             "salida": "",
             "error": "",
             "motor": motor,
+            "modelo": modelo,
             "entregado": False,
             "inicio": time.time(),
         }
@@ -459,12 +542,11 @@ def encargar_tarea(tarea: str, directorio: str = "") -> str:
 
     threading.Thread(
         target=_ejecutar,
-        args=(id_tarea, motor, destino, tarea),
+        args=(id_tarea, motor, destino, tarea, modelo),
         daemon=True,
         name=f"subagente-{id_tarea}",
     ).start()
 
-    modelo = os.environ.get("PERSEO_SUBAGENTE_MODELO", "").strip()
     detalle = f" ({modelo})" if modelo else ""
     return (
         f"Encargo {id_tarea} en marcha con {motor}{detalle} en {destino}. "
@@ -510,11 +592,12 @@ def consultar_tarea(id_tarea) -> str:
             "reinicio y su seguimiento se perdió. Lo que sí hay ahora mismo lo "
             "dice listar_tareas."
         )
+    quien = _quien(datos)
     if datos["estado"] == "en_curso":
-        return f"Tarea {id_tarea}: sigue en marcha ({datos['motor']})."
+        return f"Tarea {id_tarea}: sigue en marcha ({quien})."
     cuerpo = datos["salida"] or datos["error"]
     legible = _ESTADOS_LEGIBLES.get(datos["estado"], datos["estado"])
-    return f"Tarea {id_tarea} ({datos['motor']}) {legible}:\n{cuerpo}"
+    return f"Tarea {id_tarea} ({quien}) {legible}:\n{cuerpo}"
 
 
 def listar_tareas() -> str:
@@ -526,7 +609,7 @@ def listar_tareas() -> str:
             "encargar_tarea."
         )
     lineas = [
-        f"- {i}: {t['estado']} ({t['motor']}) — {_primera_linea(t['salida'] or t['error']) or 'sin salida aún'}"
+        f"- {i}: {t['estado']} ({_quien(t)}) — {_primera_linea(t['salida'] or t['error']) or 'sin salida aún'}"
         for i, t in registros
     ]
     return "Encargos de subagentes:\n" + "\n".join(lineas)
@@ -540,7 +623,8 @@ HERRAMIENTAS = [
     {
         "name": "encargar_tarea",
         "description": (
-            "Lanza un subagente de programación (opencode o Claude Code) que trabaja "
+            "Lanza un subagente de programación —opencode GRATIS de serie, Claude "
+            "si se pide— que trabaja "
             "SOLo en una tarea sobre un directorio local: arreglar fallos, añadir "
             "funciones, refactorizar, escribir scripts. Devuelve un identificador al "
             "momento; el trabajo sigue aunque hables de otra cosa o cuelgues. Lanza "
@@ -560,7 +644,28 @@ HERRAMIENTAS = [
                         "del proyecto, o el escritorio del señor Persus para tareas "
                         "suyas (C:\\Users\\<usuario>\\Desktop). NO es la carpeta a "
                         "crear — eso lo hace el subagente dentro de la tarea. Si no "
-                        "se pasa, arranca en la raíz de Perseo."
+                        "se pasa, arranca en la carpeta del usuario "
+                        "(C:\\Users\\<usuario>), desde donde ve todos los "
+                        "proyectos y puede crear carpetas nuevas."
+                    ),
+                },
+                "motor": {
+                    "type": "string",
+                    "enum": ["opencode", "claude"],
+                    "description": (
+                        "Con qué CLI trabaja. Por defecto 'opencode', que es "
+                        "GRATIS y es lo que el señor Persus quiere de serie. "
+                        "Usa 'claude' solo si él lo pide o si el encargo es "
+                        "grande y delicado."
+                    ),
+                },
+                "modelo": {
+                    "type": "string",
+                    "enum": list(MODELOS_GRATIS),
+                    "description": (
+                        "Modelo de opencode, todos gratuitos. Por defecto "
+                        f"{MODELO_POR_DEFECTO} (1M de contexto). Pásalo solo "
+                        "si el señor Persus nombra uno."
                     ),
                 },
             },
@@ -598,7 +703,10 @@ HERRAMIENTAS = [
 
 _ACCIONES = {
     "encargar_tarea": lambda a: encargar_tarea(
-        str(a.get("tarea", "")), str(a.get("directorio", "") or "")
+        str(a.get("tarea", "")),
+        str(a.get("directorio", "") or ""),
+        str(a.get("motor", "") or ""),
+        str(a.get("modelo", "") or ""),
     ),
     # Se acepta el 'id' viejo por compatibilidad con sesiones ya arrancadas.
     "consultar_tarea": lambda a: consultar_tarea(

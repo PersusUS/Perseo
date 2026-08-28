@@ -289,7 +289,45 @@ def test_con_rest_y_clave_se_usa_el_plugin(cfg, tmp_path: Path, monkeypatch) -> 
         replace(cfg, vault=str(tmp_path / "v"), vault_respaldo="rest", vault_rest_clave="k")
     )
     assert isinstance(elegido, memoria.VaultRest)
+    # Y con el disco detrás: Obsidian cerrado no deja a Perseo sin memoria.
+    assert isinstance(elegido.respaldo, memoria.VaultFicheros)
     asyncio.run(memoria.detener())
+
+
+def test_con_obsidian_cerrado_se_busca_por_disco(tmp_path: Path) -> None:
+    """El plugin apagado no puede llevarse las notas: están en la carpeta."""
+    raiz = tmp_path / "vault"
+    (raiz / "10_PERSEO").mkdir(parents=True)
+    (raiz / "10_PERSEO" / "Cita.md").write_text(
+        "El señor Persus prefiere el té con limón.", encoding="utf-8"
+    )
+    # Un puerto donde no hay nadie escuchando: el plugin, apagado.
+    vault = memoria.VaultRest(
+        "http://127.0.0.1:1", "clave", respaldo=memoria.VaultFicheros(raiz)
+    )
+    async def guion() -> None:
+        try:
+            notas = await vault.buscar("limón")
+            assert [n.titulo for n in notas] == ["Cita"]
+            assert "limón" in await vault.leer("10_PERSEO/Cita.md")
+        finally:
+            await vault.cerrar()
+
+    asyncio.run(guion())
+
+
+def test_sin_respaldo_el_plugin_caido_sigue_siendo_un_error() -> None:
+    """Quien no tenga disco detrás merece el error de siempre, no un silencio."""
+    vault = memoria.VaultRest("http://127.0.0.1:1", "clave")
+
+    async def guion() -> None:
+        try:
+            with pytest.raises(memoria.PluginCaido):
+                await vault.buscar("lo que sea")
+        finally:
+            await vault.cerrar()
+
+    asyncio.run(guion())
 
 
 def test_rest_sin_clave_no_deja_al_nucleo_sin_memoria(cfg, tmp_path: Path, monkeypatch) -> None:

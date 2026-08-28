@@ -1,3 +1,17 @@
+/**
+ * La pantalla, vista por el modelo: una captura cada dos segundos.
+ *
+ * La captura no la hace el navegador sino Rust (`capture_screen_base64`, con
+ * `xcap`), porque el WebView embebido no puede grabar el escritorio que lo
+ * contiene. Aquí solo está el reloj: pedir el JPEG, mandarlo a la sesión de
+ * Gemini y pararse cuando toca.
+ *
+ * Las dos banderas (`isCapturing`, `isRunning`) no son adorno: sin la primera,
+ * una captura lenta se solapa con la siguiente y se envían fotogramas fuera de
+ * orden; sin la segunda, la captura que estaba en vuelo cuando se llamó a
+ * `stop()` llega después y reabre el envío con la sesión ya cerrada.
+ */
+
 import { invoke } from '@tauri-apps/api/core';
 import { geminiClient } from './gemini-live';
 import { defaultConfig } from './config';

@@ -25,7 +25,7 @@ Por qué esto entra en Perseo y cómo convive con lo que ya había:
    ejecutarse lo escribió una persona en el fichero del disco, como en
    `proyectos.json`.
 
-Ver bitacora/06_HANDOFF.md §13.
+Ver bitacora/11_HISTORIA.md §13.
 """
 
 from __future__ import annotations
@@ -171,7 +171,39 @@ def cargar_servidores(directorio_datos: Path) -> dict[str, dict[str, Any]]:
         cabeceras = entrada.get("cabeceras") or {}
         if not isinstance(cabeceras, dict):
             cabeceras = {}
+        # Lo que el modelo no puede saber y el servidor exige: la raíz del vault
+        # en `search_files`, y lo que venga. Por herramienta, y solo rellena
+        # hueco vacío — lo que el modelo diga, manda.
+        por_defecto = entrada.get("argumentos_por_defecto") or {}
+        if not isinstance(por_defecto, dict) or not all(
+            isinstance(v, dict) for v in por_defecto.values()
+        ):
+            logger.warning(
+                "Servidor %r: 'argumentos_por_defecto' debe ser herramienta -> objeto; se ignora.",
+                nombre,
+            )
+            por_defecto = {}
+        # El nivel fino: una herramienta que solo mira no tiene por qué heredar
+        # el nivel del servidor que además toca el sistema. Lo raro se descarta
+        # y esa herramienta vuelve al nivel del servidor, que es el prudente.
+        niveles_herramienta = entrada.get("niveles_herramienta") or {}
+        if not isinstance(niveles_herramienta, dict):
+            niveles_herramienta = {}
+        finos: dict[str, str] = {}
+        for clave, valor in niveles_herramienta.items():
+            fino = str(valor or "").strip().lower()
+            if fino in politica.NIVELES:
+                finos[str(clave)] = fino
+            else:
+                logger.warning(
+                    "Servidor %r: nivel %r raro para %r; se queda con el del servidor.",
+                    nombre,
+                    valor,
+                    clave,
+                )
         validos[str(nombre)] = {
+            "niveles_herramienta": finos,
+            "argumentos_por_defecto": {str(k): dict(v) for k, v in por_defecto.items()},
             "comando": [str(p) for p in comando],
             "url": url,
             "cabeceras": {str(k): str(v) for k, v in cabeceras.items()},
@@ -293,6 +325,20 @@ class ServidorMcpRemoto:
                 f"'{herramienta}' no está en la lista de '{self.nombre}' en {NOMBRE_FICHERO}."
             )
 
+        esquema = _esquema_de(self.herramientas, herramienta)
+        argumentos = _acomodar(argumentos, esquema, self._por_defecto(herramienta))
+        # Seguridad: si el modelo llama a search_files del vault con lenguaje natural
+        # en vez de glob pattern, lo convertimos para que no falle (error 32602).
+        if self.nombre == "vault" and herramienta == "search_files":
+            argumentos = _normalizar_search_files(argumentos)
+        faltan = _faltan_requeridos(argumentos, esquema)
+        if faltan:
+            raise ErrorMcp(
+                f"A '{self.nombre}.{herramienta}' le faltan argumentos: "
+                + ", ".join(faltan)
+                + _pista_esquema(esquema, herramienta)
+            )
+
         try:
             async with asyncio.timeout(self.tope):
                 async with self._sesion() as sesion:
@@ -302,8 +348,15 @@ class ServidorMcpRemoto:
 
         textos = [str(getattr(b, "text", "")) for b in (resultado.content or []) if getattr(b, "text", "")]
         if resultado.is_error:
-            raise ErrorMcp(recortar(" ".join(textos)) or "el servidor devolvió un error")
+            error_msg = recortar(" ".join(textos)) or "el servidor devolvió un error"
+            if _es_error_de_argumentos(error_msg):
+                error_msg += _pista_esquema(esquema, herramienta)
+            raise ErrorMcp(error_msg)
         return "\n".join(textos).strip()
+
+    def _por_defecto(self, herramienta: str) -> dict[str, Any]:
+        valores = (self.definicion.get("argumentos_por_defecto") or {}).get(herramienta)
+        return valores if isinstance(valores, dict) else {}
 
 
 def abrir_servidor(nombre: str, definicion: dict[str, Any]):
@@ -449,9 +502,31 @@ class ServidorMcp:
                     f"'{herramienta}' no está en la lista de '{self.nombre}' en {NOMBRE_FICHERO}."
                 )
 
-            resultado = await self._pedir(
-                "tools/call", {"name": herramienta, "arguments": argumentos}
-            )
+            esquema = _esquema_de(self.herramientas, herramienta)
+            argumentos = _acomodar(argumentos, esquema, self._por_defecto(herramienta))
+            if self.nombre == "vault" and herramienta == "search_files":
+                argumentos = _normalizar_search_files(argumentos)
+            faltan = _faltan_requeridos(argumentos, esquema)
+            if faltan:
+                # El viaje se ahorra: el servidor iba a contestar -32602 y el
+                # modelo se iba a quedar sin saber cómo se llaman los campos.
+                raise ErrorMcp(
+                    f"A '{self.nombre}.{herramienta}' le faltan argumentos: "
+                    + ", ".join(faltan)
+                    + _pista_esquema(esquema, herramienta)
+                )
+
+            try:
+                resultado = await self._pedir(
+                    "tools/call", {"name": herramienta, "arguments": argumentos}
+                )
+            except ErrorMcp as e:
+                # Un rechazo por argumentos llega como error de JSON-RPC, no
+                # dentro del resultado: sin esto, la pista del esquema no se
+                # añadía nunca justo cuando más falta hace.
+                if not _es_error_de_argumentos(str(e)):
+                    raise
+                raise ErrorMcp(str(e) + _pista_esquema(esquema, herramienta)) from None
         contenido = (resultado or {}).get("content") or []
         textos = [
             str(bloque.get("text", ""))
@@ -459,8 +534,17 @@ class ServidorMcp:
             if isinstance(bloque, dict) and bloque.get("type") == "text"
         ]
         if (resultado or {}).get("isError"):
-            raise ErrorMcp(recortar(" ".join(t for t in textos if t)) or "el servidor devolvió un error")
+            error_msg = recortar(" ".join(t for t in textos if t)) or "el servidor devolvió un error"
+            if _es_error_de_argumentos(error_msg):
+                error_msg += _pista_esquema(_esquema_de(self.herramientas, herramienta), herramienta)
+            raise ErrorMcp(error_msg)
         return "\n".join(t for t in textos if t).strip()
+
+    def _por_defecto(self, herramienta: str) -> dict[str, Any]:
+        """Lo que el fichero ponga por esa herramienta cuando el modelo calle."""
+        definicion = definiciones.get(self.nombre) or {}
+        valores = (definicion.get("argumentos_por_defecto") or {}).get(herramienta)
+        return valores if isinstance(valores, dict) else {}
 
     # -- JSON-RPC ------------------------------------------------------------ #
 
@@ -518,6 +602,190 @@ class ServidorMcp:
     def _permitidas(self) -> set[str]:
         definicion = definiciones.get(self.nombre) or {}
         return set(definicion.get("herramientas") or [])
+
+
+# -- Los argumentos, antes de salir ------------------------------------------ #
+
+#: Lo que el modelo escribe cuando no ha mirado el esquema. Un servidor MCP
+#: nombra sus parámetros en inglés; Perseo piensa en español y ese idioma se le
+#: cuela hasta la llamada — de ahí un `{"comando": ...}` contra un `PowerShell`
+#: que espera `command`, y una llamada perdida por una palabra. La traducción
+#: solo entra si el esquema tiene el nombre bueno y la llamada no lo traía ya:
+#: nunca inventa un campo ni pisa lo que el modelo escribió bien.
+_ALIAS_ARGUMENTOS: dict[str, tuple[str, ...]] = {
+    "comando": ("command",),
+    "orden": ("command",),
+    "ruta": ("path",),
+    "archivo": ("path",),
+    "fichero": ("path",),
+    "carpeta": ("path",),
+    "directorio": ("path",),
+    "destino": ("destination",),
+    "patron": ("pattern",),
+    "patrón": ("pattern",),
+    "busqueda": ("pattern", "query"),
+    "búsqueda": ("pattern", "query"),
+    "consulta": ("query", "pattern"),
+    "texto": ("text",),
+    "contenido": ("content", "text"),
+    "titulo": ("title",),
+    "título": ("title",),
+    "mensaje": ("message",),
+    "modo": ("mode",),
+    "atajo": ("shortcut",),
+    "duracion": ("duration",),
+    "duración": ("duration",),
+    "zona_horaria": ("timezone",),
+    "nombre": ("name",),
+    "condicion": ("condition",),
+    "condición": ("condition",),
+}
+
+
+def _es_error_de_argumentos(mensaje: str) -> bool:
+    """¿El servidor rechazó la llamada por los parámetros, y no por otra cosa?"""
+    bajo = mensaje.lower()
+    return (
+        "32602" in bajo
+        or "invalid arguments" in bajo
+        or "input validation" in bajo
+        or "validation error" in bajo
+        or "missing required argument" in bajo
+    )
+
+
+def _esquema_de(herramientas: list[dict[str, Any]], nombre: str) -> dict[str, Any]:
+    """El `inputSchema` que el servidor publicó para esa herramienta."""
+    for h in herramientas:
+        if str(h.get("name")) == nombre:
+            esquema = h.get("inputSchema")
+            return esquema if isinstance(esquema, dict) else {}
+    return {}
+
+
+def _propiedades(esquema: dict[str, Any]) -> dict[str, Any]:
+    props = (esquema or {}).get("properties")
+    return props if isinstance(props, dict) else {}
+
+
+def _requeridos(esquema: dict[str, Any]) -> list[str]:
+    req = (esquema or {}).get("required")
+    return [str(k) for k in req] if isinstance(req, list) else []
+
+
+def _pista_esquema(esquema: dict[str, Any], herramienta: str) -> str:
+    """Los parámetros de una herramienta, en prosa corta, para el modelo.
+
+    Va pegada a cualquier error de argumentos: quien se equivocó de nombre lee
+    ahí mismo cómo se llaman de verdad y reintenta bien, en vez de repetir el
+    mismo fallo hasta que alguien se rinde.
+    """
+    props = _propiedades(esquema)
+    if not props:
+        return ""
+    requeridos = _requeridos(esquema)
+    lineas = []
+    for clave, valor in props.items():
+        detalle = valor if isinstance(valor, dict) else {}
+        tipo = detalle.get("type") or "?"
+        marca = "requerido" if clave in requeridos else "opcional"
+        descripcion = recortar(str(detalle.get("description") or ""), 80)
+        lineas.append(f"  - {clave}: {tipo} ({marca}){' — ' + descripcion if descripcion else ''}")
+    return f"\n\nParámetros de '{herramienta}':\n" + "\n".join(lineas)
+
+
+def _acomodar(
+    argumentos: dict[str, Any],
+    esquema: dict[str, Any],
+    por_defecto: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Los argumentos del modelo, puestos en los nombres que el servidor espera.
+
+    Dos arreglos y ninguno más: traducir el nombre español al del esquema, y
+    poner lo que el fichero declare por defecto para esa herramienta (la ruta
+    del vault, por ejemplo, que el modelo nunca sabe y el servidor exige).
+    """
+    salida = dict(argumentos)
+    props = _propiedades(esquema)
+    if props:
+        for clave in list(salida):
+            if clave in props:
+                continue
+            for candidato in _ALIAS_ARGUMENTOS.get(str(clave).lower(), ()):
+                if candidato in props and candidato not in salida:
+                    salida[candidato] = salida.pop(clave)
+                    break
+    for clave, valor in (por_defecto or {}).items():
+        if salida.get(clave) in (None, ""):
+            salida[clave] = valor
+    return salida
+
+
+def _faltan_requeridos(argumentos: dict[str, Any], esquema: dict[str, Any]) -> list[str]:
+    """Los requeridos que no vienen. Mejor decirlo aquí que gastar un viaje."""
+    if not _propiedades(esquema):
+        return []
+    return [k for k in _requeridos(esquema) if argumentos.get(k) in (None, "")]
+
+
+def _normalizar_search_files(args: dict[str, Any]) -> dict[str, Any]:
+    """
+    Convierte lenguaje natural en glob pattern para search_files del vault.
+    El servidor MCP server-filesystem espera glob patterns (ej: *música*.md),
+    no texto libre. Si el modelo manda palabras sueltas, las envolvemos.
+    """
+    args = dict(args)  # copia
+    pattern = args.get("pattern")
+    if not isinstance(pattern, str) or not pattern.strip():
+        return args
+
+    # Ya parece un glob (contiene *, ?, [, ], {, })
+    if any(c in pattern for c in "*?[]{"):
+        return args
+
+    # Lenguaje natural: envolvemos en *...* y añadimos .md si no tiene extensión
+    palabras = pattern.strip().split()
+    if len(palabras) == 1:
+        base = palabras[0]
+    else:
+        # Múltiples palabras: probamos la más larga (más específica)
+        base = max(palabras, key=len)
+
+    # Sin añadir extensión: un `*musica.md*` solo casa con quien lleve
+    # «musica.md» dentro del nombre, que no es ningún fichero. `*musica*` casa
+    # con «Musica.md» y con «lista de musica.txt», que es lo que se buscaba.
+    args["pattern"] = f"*{base}*"
+    return args
+
+
+def _parametros(herramienta: dict[str, Any]) -> list[dict[str, Any]]:
+    """Los parámetros de una herramienta, tal como el catálogo los enseña."""
+    esquema = herramienta.get("inputSchema")
+    esquema = esquema if isinstance(esquema, dict) else {}
+    requeridos = _requeridos(esquema)
+    salida = []
+    for clave, valor in _propiedades(esquema).items():
+        detalle = valor if isinstance(valor, dict) else {}
+        salida.append(
+            {
+                "nombre": str(clave),
+                "tipo": str(detalle.get("type") or "?"),
+                "requerido": clave in requeridos,
+                "descripcion": recortar(str(detalle.get("description") or ""), 120),
+            }
+        )
+    return salida
+
+
+def _firma(herramienta: dict[str, Any]) -> str:
+    """`nombre(requerido, [opcional])`, que es lo que el modelo necesita leer."""
+    partes = [
+        p["nombre"] if p["requerido"] else f"[{p['nombre']}]" for p in _parametros(herramienta)
+    ]
+    nombre = str(herramienta.get("name"))
+    descripcion = recortar(str(herramienta.get("description") or ""), 100)
+    firma = f"{nombre}({', '.join(partes)})"
+    return f"{firma} — {descripcion}" if descripcion else firma
 
 
 def recortar(texto: str, tope: int = 300) -> str:
@@ -587,7 +855,79 @@ def nivel_de(agente: str, peticion: dict[str, Any] | None) -> str | None:
     definicion = definiciones.get(nombre)
     if definicion is None:
         return None  # servidor desconocido: cae en el irreversible por defecto
+
+    herramienta = str((peticion or {}).get("herramienta") or "").strip()
+    # Un servidor entero no es un nivel: `windows` tiene un `Snapshot` que solo
+    # mira y un `Registry` que toca el sistema, y ponerle un único nivel a los
+    # dos obliga a elegir entre preguntar por mirar o no preguntar por escribir.
+    por_herramienta = definicion.get("niveles_herramienta") or {}
+    if herramienta in por_herramienta:
+        return str(por_herramienta[herramienta])
+
+    if nombre == "windows" and herramienta == "PowerShell":
+        argumentos = (peticion or {}).get("argumentos")
+        comando = (argumentos or {}).get("command") if isinstance(argumentos, dict) else ""
+        if _powershell_solo_lee(str(comando or "")):
+            # Listar el escritorio no es una acción irreversible, y pararla para
+            # pedir un sí a quien acaba de pedirla de viva voz sobra. Escribir,
+            # borrar o instalar sigue costando su sí.
+            return politica.REVERSIBLE
+
     return str(definicion["nivel"])
+
+
+#: Lo que en PowerShell solo mira. La convención del lenguaje ayuda —`Get-*` lee,
+#: `Remove-*` no— pero no basta: aquí están además los alias de toda la vida y
+#: los verbos que solo dan forma a lo que ya salió (`Select-Object`, `Format-*`).
+_POWERSHELL_LECTURA = frozenset(
+    {
+        "dir", "ls", "gci", "cat", "gc", "type", "pwd", "gl", "echo", "cd",
+        "test-path", "resolve-path", "split-path", "join-path", "convert-path",
+        "select-object", "select", "sort-object", "sort", "where-object", "where",
+        "measure-object", "measure", "format-table", "ft", "format-list", "fl",
+        "out-string", "convertto-json", "convertfrom-json", "group-object", "group",
+        "select-string", "compare-object", "write-output", "write-host", "foreach-object",
+    }
+)
+
+#: Lo que parte un comando en dos: una tubería, un `;`, una subexpresión, una
+#: redirección. Cada trozo se juzga por separado, porque `Get-ChildItem |
+#: Remove-Item` empieza leyendo y acaba borrando.
+_SEPARADORES = ("|", ";", "&&", "||", "\n", "\r")
+
+
+def _powershell_solo_lee(comando: str) -> bool:
+    """¿Este comando solo mira? Ante la duda, no.
+
+    No es un analizador de PowerShell y no pretende serlo: es una lista de lo
+    que se reconoce como lectura, y todo lo demás cae del lado que pregunta. Un
+    falso negativo cuesta un «sí»; un falso positivo dejaría borrar sin avisar.
+    """
+    texto = comando.strip()
+    if not texto:
+        return False
+    # Una redirección escribe un fichero, y una subexpresión o un acento grave
+    # esconden otro comando dentro. Nada de eso pasa por aquí.
+    if any(c in texto for c in ">`$"):
+        return False
+
+    trozos = [texto]
+    for separador in _SEPARADORES:
+        trozos = [parte for trozo in trozos for parte in trozo.split(separador)]
+
+    for trozo in trozos:
+        palabras = trozo.strip().split()
+        if not palabras:
+            continue
+        verbo = palabras[0].strip("(").lower()
+        if verbo in _POWERSHELL_LECTURA:
+            continue
+        # `Get-`, `Show-`, `Find-` y `Test-` son los verbos de lectura de
+        # PowerShell; `Get-Credential` es la excepción y se queda fuera.
+        if verbo.startswith(("get-", "show-", "find-", "test-")) and verbo != "get-credential":
+            continue
+        return False
+    return True
 
 
 # -- El agente --------------------------------------------------------------- #
@@ -635,7 +975,16 @@ async def _listar() -> dict[str, Any]:
         # `write_file` detrás de una lista que lo veta es invitarle a probar.
         permitidas = servidor._permitidas()
         visibles = [h for h in servidor.herramientas if not permitidas or str(h.get("name")) in permitidas]
-        lineas.append(f"- {nombre}: {', '.join(str(h.get('name')) for h in visibles) or 'sin herramientas'}")
+        if visibles:
+            # Con la firma, y no solo el nombre. Sin esto el modelo tiene que
+            # adivinar cómo se llaman los parámetros —y adivina en español,
+            # que es como se pierde una llamada por escribir `comando` donde
+            # ponía `command`.
+            lineas.append(f"- {nombre}:")
+            for h in visibles:
+                lineas.append(f"    {_firma(h)}")
+        else:
+            lineas.append(f"- {nombre}: sin herramientas")
         resumen.append(
             {
                 "nombre": nombre,
@@ -644,6 +993,7 @@ async def _listar() -> dict[str, Any]:
                     {
                         "nombre": str(h.get("name")),
                         "descripcion": recortar(str(h.get("description") or ""), 200),
+                        "parametros": _parametros(h),
                     }
                     for h in visibles
                 ],
@@ -662,6 +1012,15 @@ async def _llamar(peticion: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Para llamar a una herramienta hacen falta 'servidor' y 'herramienta'.")
     if argumentos is None:
         argumentos = {}
+    if isinstance(argumentos, str):
+        # Un modelo de voz manda a veces el objeto ya escrito como texto. Es
+        # JSON válido: leerlo cuesta una línea y salva la llamada entera.
+        try:
+            argumentos = json.loads(argumentos or "{}")
+        except json.JSONDecodeError:
+            raise ValueError(
+                "'argumentos' vino como texto y no es JSON: manda un objeto con los parámetros."
+            ) from None
     if not isinstance(argumentos, dict):
         raise ValueError("'argumentos' debe ser un objeto con los parámetros de la herramienta.")
 

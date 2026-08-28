@@ -48,7 +48,7 @@ from typing import Any, AsyncGenerator
 
 import aiohttp
 
-from . import almacen, correo_lectura, identidad
+from . import almacen, correo_lectura, habitos, identidad, politica
 from .agentes import registrar
 
 logger = logging.getLogger(__name__)
@@ -152,9 +152,16 @@ el buzón por cajones y la batería. Para «¿qué hay?».
 asunto y clase real. detalle_correo(id) trae el extracto de uno. NUNCA \
 hables del buzón sin pasar por aquí.
 - consultar_agenda(horas?): el calendario próximo.
-- buscar_en_memoria(texto) / leer_nota(ruta) / guardar_recuerdo(entidad, \
-contexto?, descripcion_visual?): la memoria, que es el vault de Obsidian. \
-Guardar añade, nunca sobrescribe.
+- consultar_habitos: cómo va su seguimiento de hábitos este mes —casillas, rachas, lo que hoy le falta—. NUNCA supongas cómo va sin pasar por aquí.
+- buscar_en_memoria(texto, carpeta?) / leer_nota(ruta) / guardar_recuerdo(entidad, \
+contexto?, descripcion_visual?): la memoria a largo plazo, que son las notas \
+del vault de Obsidian **del señor Persus**. El vault tiene dos zonas:
+  * Carpetas `01_` a `09_` = cosas del señor Persus (sus proyectos, gustos, salud, dinero, agenda).
+  * Carpeta `10_PERSEO/` = tus memorias (tus gustos, tu casa, tus mascotas, conversaciones).
+Si te pregunta por SUS cosas: usa `buscar_en_memoria(texto, carpeta="")` para buscar solo en 01_-09_.
+Si te pregunta por TUS cosas: usa `buscar_en_memoria(texto, carpeta="10_PERSEO")`.
+Si no especifica o es ambiguo: busca sin carpeta (todo el vault) y filtra mentalmente.
+Si no está, dile que no lo tienes apuntado. Guardar añade, nunca sobrescribe.
 - buscar_en_web(consulta) / leer_pagina(url): internet.
 - controlar_pc(accion, parametro): abrir apps de lista blanca, teclear, \
 clics, volumen, YouTube. Solo lo que él pida.
@@ -171,10 +178,20 @@ los últimos encargos. Es la ÚNICA forma válida de decir cómo va algo: si no 
 la llamas, no sabes si terminó, y contestar «sigue en curso» de memoria es \
 mentir — ya pasó el 2026-08-24 con un encargo que llevaba terminado minutos.
 - listar_mcp / usar_mcp(servidor, herramienta, argumentos): el resto del \
-equipo (vault por MCP, navegador Playwright, subagentes MCP, Windows, tiempo).
+equipo (vault por MCP, navegador Playwright, subagentes MCP, Windows, tiempo). \
+Los argumentos van con el nombre LITERAL que diga listar_mcp —casi siempre en \
+inglés: 'command', 'path', 'pattern'—, nunca traducidos al español.
+- PARA SABER QUÉ DICE EL VAULT, `buscar_en_memoria`. El servidor MCP 'vault' \
+es para manejar FICHEROS, y su `search_files` solo mira NOMBRES de fichero: no \
+sirve para responder una pregunta. Quien busca lo que hay escrito DENTRO de \
+las notas usa `buscar_en_memoria` y luego `leer_nota` con la ruta que salga.
 - responder_confirmacion(id, decision): cuando algo quede «pendiente de \
 confirmación», pregúntaselo por escrito y, con su respuesta literal, llama \
-aquí con aprobar o rechazar.
+aquí con aprobar o rechazar. NUNCA anuncies una confirmación que el sistema \
+no haya pedido: si una herramienta falla, cuenta el fallo, no lo llames \
+«solicitud de confirmación». Y NUNCA apruebes en su nombre — sin un sí suyo \
+el trabajo se queda esperando. Lo que no se puede deshacer solo lo confirma \
+él en la tarjeta del panel; díselo tal cual.
 
 CONFIRMACIONES Y DISCIPLINA:
 - Las herramientas de lectura se ejecutan directamente, sin pedir permiso.
@@ -238,17 +255,30 @@ def _declaraciones() -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "consultar_habitos",
+            "description": (
+                "El seguimiento de hábitos del señor Persus: casillas del mes y su "
+                "porcentaje, lo que hoy le falta, las rachas vivas y las medias de "
+                "ánimo y motivación. Es de solo lectura: marcar es cosa suya, en la "
+                "pantalla de hábitos de la app."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+        {
             "name": "buscar_en_memoria",
-            "description": "Busca en el vault de Obsidian (su memoria a largo plazo). Devuelve títulos, rutas y extractos.",
+            "description": "Busca en el vault de Obsidian del señor Persus (su memoria a largo plazo). Devuelve títulos, rutas y extractos. Úsalo cuando te pregunte por SUS cosas (gustos, equipo, agenda, salud, dinero, notas). Para buscar solo en sus carpetas (01_ a 09_), usa carpeta=''. Para buscar en tus propias memorias (10_PERSEO/), usa carpeta='10_PERSEO'.",
             "parameters": {
                 "type": "object",
-                "properties": {"texto": {"type": "string", "description": "Las palabras que él usaría."}},
+                "properties": {
+                    "texto": {"type": "string", "description": "Las palabras que él usaría."},
+                    "carpeta": {"type": "string", "description": "Prefijo de ruta para filtrar (ej. '' para usuario, '10_PERSEO' para Perseo). Vacío = todo el vault."}
+                },
                 "required": ["texto"],
             },
         },
         {
             "name": "leer_nota",
-            "description": "Abre una nota del vault entera. La ruta sale de buscar_en_memoria.",
+            "description": "Abre una nota del vault del señor Persus entera. La ruta sale de buscar_en_memoria.",
             "parameters": {
                 "type": "object",
                 "properties": {"ruta": {"type": "string"}},
@@ -257,7 +287,7 @@ def _declaraciones() -> list[dict[str, Any]]:
         },
         {
             "name": "guardar_recuerdo",
-            "description": "Escribe un recuerdo en el vault. Añade; nunca sobrescribe.",
+            "description": "Escribe un recuerdo en el vault del señor Persus. Añade; nunca sobrescribe.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -354,7 +384,9 @@ def _declaraciones() -> list[dict[str, Any]]:
             "name": "usar_mcp",
             "description": (
                 "Llama a una herramienta de un servidor MCP concreto. Los nombres "
-                "deben encajar exactamente con lo dicho por listar_mcp."
+                "deben encajar exactamente con lo dicho por listar_mcp, y los "
+                "parámetros van con el nombre literal de su firma —casi siempre "
+                "en inglés: 'command', 'path', 'pattern'—, nunca traducidos."
             ),
             "parameters": {
                 "type": "object",
@@ -650,6 +682,11 @@ async def _ejecutar_herramienta(nombre: str, argumentos: dict[str, Any]) -> str:
     if nombre == "detalle_correo":
         return correo_lectura.detalle_correo(cfg.ruta_db, str(argumentos.get("id_mensaje", "")))
 
+    if nombre == "consultar_habitos":
+        # Se lee del espejo en disco y no se encola: es un fichero de dos
+        # kilobytes que ya está redactado. Ver `habitos.py`.
+        return await asyncio.to_thread(habitos.resumen, cfg.directorio_datos)
+
     if nombre == "consultar_agenda":
         peticion: dict[str, Any] = {"accion": "proximos"}
         horas = argumentos.get("horas")
@@ -658,7 +695,11 @@ async def _ejecutar_herramienta(nombre: str, argumentos: dict[str, Any]) -> str:
         return await _encolar_y_esperar("agenda", peticion, 20)
 
     if nombre == "buscar_en_memoria":
-        return await _encolar_y_esperar("memoria", {"accion": "buscar", "texto": str(argumentos.get("texto", "") or "")})
+        peticion_mem: dict[str, Any] = {"accion": "buscar", "texto": str(argumentos.get("texto", "") or "")}
+        carpeta = str(argumentos.get("carpeta", "") or "").strip()
+        if carpeta:
+            peticion_mem["carpeta"] = carpeta
+        return await _encolar_y_esperar("memoria", peticion_mem)
     if nombre == "leer_nota":
         return await _encolar_y_esperar("memoria", {"accion": "leer", "ruta": str(argumentos.get("ruta", "") or "")})
     if nombre == "guardar_recuerdo":
@@ -708,7 +749,7 @@ async def _ejecutar_herramienta(nombre: str, argumentos: dict[str, Any]) -> str:
         return _consultar_trabajo(argumentos.get("id"))
 
     if nombre == "listar_mcp":
-        return await _encolar_y_esperar("mcp", {"accion": "servidores"}, 90)
+        return await _encolar_y_esperar("mcp", {"accion": "servidores"}, 240)
     if nombre == "usar_mcp":
         servidor = str(argumentos.get("servidor", "") or "").strip()
         herramienta = str(argumentos.get("herramienta", "") or "").strip()
@@ -743,6 +784,21 @@ async def _resolver_confirmacion(argumentos: dict[str, Any]) -> str:
         raise ErrorHerramienta(f"Decisión desconocida: {decision!r}")
 
     aprobado = decision == "aprobar"
+    if aprobado:
+        # Lo crítico no lo aprueba el modelo. Esta herramienta es el «sí» que
+        # Perseo dice haber oído, y un modelo puede creer que lo oyó: el
+        # 2026-08-27 anunció una confirmación que nadie le había pedido y dio
+        # el comando por autorizado. Para lo que no se deshace, el sí lo pone
+        # una persona en la tarjeta del panel.
+        pendiente = await asyncio.to_thread(almacen.obtener, id_trabajo)
+        if pendiente is not None and politica.nivel(
+            str(pendiente.get("agente") or ""), pendiente.get("peticion")
+        ) == politica.CRITICO:
+            return (
+                f"El trabajo #{id_trabajo} no se puede aprobar hablando: no se "
+                "puede deshacer. Dile que lo confirme él mismo en la tarjeta del "
+                "panel, y no lo des por hecho hasta verlo."
+            )
     resuelto = await asyncio.to_thread(almacen.resolver_confirmacion, id_trabajo, aprobado)
     if resuelto is None:
         actual = await asyncio.to_thread(almacen.obtener, id_trabajo)
@@ -846,6 +902,14 @@ async def _llamar_modelo(
                                     {
                                         "nombre": str(llamada.get("name", "")),
                                         "argumentos": dict(llamada.get("args") or {}),
+                                        # La firma del pensamiento viaja PEGADA a la
+                                        # llamada y hay que devolverla tal cual en la
+                                        # ronda siguiente. Ver `_parte_de_llamada`.
+                                        "firma": str(
+                                            parte.get("thoughtSignature")
+                                            or llamada.get("thoughtSignature")
+                                            or ""
+                                        ),
                                     }
                                 )
                 break  # este modelo contestó: no hace falta probar el resto
@@ -874,6 +938,59 @@ async def _llamar_modelo(
 # --------------------------------------------------------------------------- #
 # El turno completo
 # --------------------------------------------------------------------------- #
+
+
+def _parte_de_llamada(llamada: dict[str, Any]) -> dict[str, Any]:
+    """La llamada a herramienta, devuelta al modelo COMO VINO: con su firma.
+
+    Gemini 2.5 firma cada `functionCall` con un `thoughtSignature` —el resumen
+    cifrado de lo que estaba pensando al pedir la herramienta— y **exige verlo
+    otra vez** en el historial de la ronda siguiente. Reconstruir la parte con
+    solo `name` y `args`, que es lo que se hacía, tira la firma; a partir de la
+    segunda herramienta del turno la API contesta 400 («Function call is
+    missing a thought_signature in functionCall parts»), el turno se cae al
+    router local y lo que llega a la pantalla es «el modelo grande no
+    contesta» (visto el 2026-08-25 a las 22:40, con el señor Persus fuera de
+    casa y sin poder mirar el registro).
+
+    Cuando no hay firma —modelos viejos, o partes que no la traen— se manda la
+    parte sin ella, que es exactamente lo que esos modelos esperan.
+    """
+    parte: dict[str, Any] = {
+        "functionCall": {"name": llamada["nombre"], "args": llamada["argumentos"]}
+    }
+    firma = str(llamada.get("firma") or "")
+    if firma:
+        parte["thoughtSignature"] = firma
+    return parte
+
+
+def _aplanar_herramientas(contents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """El mismo historial, con las herramientas contadas en texto plano.
+
+    Es el plan B de `_parte_de_llamada`: si la API vuelve a rechazar el
+    historial de llamadas —le falte una firma o le sobre—, el turno no se
+    pierde. Se le cuenta al modelo lo que ya se hizo y con qué resultado, en
+    prosa, que es algo que ningún cambio de esquema puede rechazar. Se pierde
+    la cadena de pensamiento; no se pierde la conversación.
+    """
+    aplanado: list[dict[str, Any]] = []
+    for turno in contents:
+        partes: list[dict[str, Any]] = []
+        for parte in turno.get("parts") or []:
+            if "functionCall" in parte:
+                llamada = parte["functionCall"]
+                partes.append(
+                    {"text": f"(usé {llamada.get('name', '?')} con {llamada.get('args', {})})"}
+                )
+            elif "functionResponse" in parte:
+                respuesta = parte["functionResponse"]
+                dicho = (respuesta.get("response") or {}).get("result", "")
+                partes.append({"text": f"(resultado de {respuesta.get('name', '?')}: {dicho})"})
+            else:
+                partes.append(parte)
+        aplanado.append({**turno, "parts": partes})
+    return aplanado
 
 
 def _historial(id_sesion: int) -> list[dict[str, Any]]:
@@ -928,13 +1045,34 @@ async def _conversar(id_sesion: int, id_mensaje: int, texto_usuario: str) -> Non
 
             ultimo_texto = ""
             llamadas: list[dict[str, Any]] = []
-            async for evento in _llamar_modelo(_sesion_http, clave, contents):
-                if evento["tipo"] == "texto":
-                    escritos += evento["delta"]
-                    ultimo_texto += evento["delta"]
-                    await dejar_texto()
-                else:
-                    llamadas = evento["llamadas"]
+            antes_de_la_ronda = escritos
+
+            async def una_ronda() -> None:
+                """Una vuelta contra el modelo, volcando lo que va diciendo."""
+                nonlocal escritos, ultimo_texto, llamadas
+                async for evento in _llamar_modelo(_sesion_http, clave, contents):
+                    if evento["tipo"] == "texto":
+                        escritos += evento["delta"]
+                        ultimo_texto += evento["delta"]
+                        await dejar_texto()
+                    else:
+                        llamadas = evento["llamadas"]
+
+            try:
+                await una_ronda()
+            except ErrorGemini as e:
+                # La red de seguridad de las firmas. El arreglo de verdad está
+                # en `_parte_de_llamada`; esto es para el día que la API cambie
+                # de idea otra vez: en vez de perder el turno entero, se le
+                # cuenta al modelo en TEXTO lo que ya se hizo y se sigue. Un
+                # turno degradado es infinitamente mejor que «no puedo
+                # responder con cabeza» (2026-08-25).
+                if "thought_signature" not in str(e) and "thoughtSignature" not in str(e):
+                    raise
+                logger.warning("Gemini rechazó el historial de herramientas (%s); se aplana.", e)
+                contents = _aplanar_herramientas(contents)
+                escritos, ultimo_texto, llamadas = antes_de_la_ronda, "", []
+                await una_ronda()
 
             if not llamadas:
                 break
@@ -945,8 +1083,9 @@ async def _conversar(id_sesion: int, id_mensaje: int, texto_usuario: str) -> Non
             await asyncio.to_thread(
                 almacen.actualizar_mensaje_chat, id_mensaje, herramientas=usadas
             )
-            contents.append({"role": "model", "parts": [{"functionCall": {
-                "name": ll["nombre"], "args": ll["argumentos"]}} for ll in llamadas]})
+            contents.append(
+                {"role": "model", "parts": [_parte_de_llamada(ll) for ll in llamadas]}
+            )
             respuestas = []
             for ll in llamadas:
                 logger.info("Chat usa %s %s", ll["nombre"], ll["argumentos"])
@@ -979,6 +1118,24 @@ async def _conversar(id_sesion: int, id_mensaje: int, texto_usuario: str) -> Non
         )
 
 
+def _por_que_no_hubo_modelo(e: Exception) -> str:
+    """Por qué se cayó el escalón de Gemini, dicho para quien mira el móvil.
+
+    «No contesta» tapaba tres cosas muy distintas —sin cuota, petición
+    rechazada y sin red—, y desde fuera de casa la diferencia lo es todo: la
+    primera se arregla esperando, la segunda no se arregla sola y la tercera es
+    del túnel. El 2026-08-25 el señor Persus leyó «el modelo grande no
+    contesta» y esperó un rato para nada: era un 400 que iba a repetirse igual
+    (H-73).
+    """
+    texto = str(e)
+    if "429" in texto or "cuota" in texto.lower():
+        return f"los modelos de Gemini se han quedado sin cuota ({', '.join(_modelos())})"
+    if isinstance(e, ErrorGemini):
+        return f"Gemini rechazó la petición, y esperar no lo arregla: {texto[:300]}"
+    return f"no llego a Gemini: {texto[:300]}"
+
+
 async def _conversar_con_respaldo(id_sesion: int, id_mensaje: int, texto_usuario: str) -> str:
     """Lo que debe quedar escrito pase lo que pase. Si Gemini falla —red, cuota,
     clave— se intenta el router local, que es gratis; si tampoco, se admite el
@@ -989,6 +1146,9 @@ async def _conversar_con_respaldo(id_sesion: int, id_mensaje: int, texto_usuario
         return ""
     except Exception as e:  # noqa: BLE001 — el turno no puede morir callado
         logger.exception("El turno de chat falló (%s); se intenta el router local.", e)
+        # Por qué falló CADA escalón, no solo el primero: el local puede estar
+        # sin encender (Ollama caído), que no es lo mismo que no saber contestar.
+        porque_local = "el modelo local no supo contestar"
         try:
             ruta = await _router.decidir(texto_usuario)
             if ruta.destino == "responder" and ruta.respuesta.strip():
@@ -996,11 +1156,11 @@ async def _conversar_con_respaldo(id_sesion: int, id_mensaje: int, texto_usuario
                     f"{ruta.respuesta}\n\n(Contesto desde el modelo local: ahora mismo no llego "
                     "al modelo grande, que es quien lleva las herramientas.)"
                 )
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as fallo_local:  # noqa: BLE001
+            porque_local = f"el modelo local tampoco está: {str(fallo_local)[:200]}"
         return (
-            "Ahora mismo no puedo responder con cabeza: el modelo grande no contesta "
-            f"({e}) y el local no da para más. Reinténtalo en un rato."
+            "Ahora mismo no puedo responder con cabeza. "
+            f"{_por_que_no_hubo_modelo(e)}. Y {porque_local}."
         )
 
 

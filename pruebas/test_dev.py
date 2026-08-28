@@ -121,7 +121,7 @@ def test_sin_motor_el_encargo_falla_con_un_error_util(dev_falso, monkeypatch) ->
 
 def test_un_resultado_fallido_del_motor_falla_el_trabajo(dev_falso, monkeypatch) -> None:
     class MotorQueFalla:
-        async def ejecutar(self, instruccion, raiz, tope, sesion="", avisar=None):
+        async def ejecutar(self, encargo, avisar=None):
             return dev.Resultado(texto="no pude", ok=False)
 
     monkeypatch.setattr(dev, "_motor", MotorQueFalla())
@@ -136,8 +136,8 @@ def test_la_eleccion_por_encargo_manda(dev_falso, monkeypatch) -> None:
     lanzados = []
 
     class MotorQueAnota:
-        async def ejecutar(self, instruccion, raiz, tope, sesion="", avisar=None):
-            lanzados.append(self)
+        async def ejecutar(self, encargo, avisar=None):
+            lanzados.append(encargo)
             return dev.Resultado(texto="hecho", vueltas=1)
 
     monkeypatch.setattr(dev, "_motor_de", lambda nombre: MotorQueAnota())
@@ -203,8 +203,15 @@ def test_el_perfil_del_usuario_esta_dentro_del_cerco(dev_falso) -> None:
     assert Path.home().resolve() in dev._raices
 
 
-def test_un_encargo_nominando_proyecto_llega_a_su_sitio(dev_falso: Path, tmp_path: Path, monkeypatch) -> None:
-    """«En X…»: el texto manda, la vista no rellena campos."""
+def test_un_encargo_nominando_proyecto_no_encierra_al_agente(
+    dev_falso: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """«En X…» se le CUENTA al agente, no se le usa de jaula (2026-08-26).
+
+    Los proyectos del señor Persus se llaman unos a otros; un agente encerrado
+    en la carpeta de Armario no puede leer Perseo. Se trabaja desde la raíz y
+    la ruta del proyecto va en el contexto.
+    """
     carpeta = tmp_path / "proyecto_real"
     carpeta.mkdir()
     (tmp_path / "proyectos.json").write_text(
@@ -215,7 +222,146 @@ def test_un_encargo_nominando_proyecto_llega_a_su_sitio(dev_falso: Path, tmp_pat
     )
     monkeypatch.setattr(dev, "_datos", tmp_path)
     resultado = asyncio.run(dev._dev({"peticion": {"texto": "En Armario, arregla el bug"}}))
-    assert resultado["directorio"] == str(carpeta.resolve())
+    assert resultado["directorio"] == str(dev_falso.resolve())
+    assert str(carpeta) in dev._contexto_del_encargo("En Armario, arregla el bug", dev_falso)
+
+
+# ── Lo que se rompió el 2026-08-25, fuera de casa ─────────────────────────── #
+
+
+def test_una_url_como_directorio_no_tumba_el_encargo(dev_falso: Path) -> None:
+    """La lista del móvil mandaba `destino`, que en modo servicio es una URL.
+
+    El encargo moría con «'http://127.0.0.1:8000' no es un directorio» antes de
+    arrancar nada. Ahora se ignora y se trabaja desde la raíz.
+    """
+    resultado = asyncio.run(
+        dev._dev({"peticion": {"texto": "algo", "directorio": "http://127.0.0.1:8000"}})
+    )
+    assert resultado["directorio"] == str(dev_falso.resolve())
+
+
+def test_un_proyecto_que_solo_tiene_url_no_da_carpeta(tmp_path: Path) -> None:
+    (tmp_path / "proyectos.json").write_text(
+        json.dumps([
+            {"id": "web", "nombre": "Web", "modo": "carpeta", "destino": "https://persus.netlify.app"}
+        ], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    assert dev._proyecto_del_texto("mira la Web", tmp_path) == ""
+
+
+def test_lo_que_pide_el_señor_persus_lleva_las_manos_anchas(dev_falso, monkeypatch) -> None:
+    """«Abre la app de armario» necesita poder arrancar un proceso."""
+    vistos = []
+
+    class MotorQueAnota:
+        async def ejecutar(self, encargo, avisar=None):
+            vistos.append(encargo)
+            return dev.Resultado(texto="hecho", vueltas=1)
+
+    monkeypatch.setattr(dev, "_motor", MotorQueAnota())
+    asyncio.run(dev._dev({"origen": "texto", "peticion": {"texto": "abre la app"}}))
+    assert "Bash" in vistos[0].permitidas
+    assert "Task" in vistos[0].permitidas
+
+
+def test_lo_que_nace_de_un_correo_sigue_con_las_manos_cortas(dev_falso, monkeypatch) -> None:
+    """Un disparador no es el señor Persus: la lista corta es la de siempre."""
+    vistos = []
+
+    class MotorQueAnota:
+        async def ejecutar(self, encargo, avisar=None):
+            vistos.append(encargo)
+            return dev.Resultado(texto="hecho", vueltas=1)
+
+    monkeypatch.setattr(dev, "_motor", MotorQueAnota())
+    asyncio.run(dev._dev({"origen": "disparador", "peticion": {"texto": "haz algo"}}))
+    assert vistos[0].permitidas == dev.HERRAMIENTAS_PERMITIDAS
+    assert "Bash" not in vistos[0].permitidas
+
+
+def test_el_modelo_del_encargo_llega_al_motor(dev_falso, monkeypatch) -> None:
+    vistos = []
+
+    class MotorQueAnota:
+        async def ejecutar(self, encargo, avisar=None):
+            vistos.append(encargo)
+            return dev.Resultado(texto="hecho", vueltas=1)
+
+    monkeypatch.setattr(dev, "_motor", MotorQueAnota())
+    asyncio.run(dev._dev({"peticion": {"texto": "algo", "modelo": "opus"}}))
+    assert vistos[0].modelo == "opus"
+
+
+def test_el_agente_ve_las_demas_carpetas_del_perfil(dev_falso, monkeypatch) -> None:
+    """Trabaja desde una, pero puede leer las otras: están interconectadas."""
+    vistos = []
+
+    class MotorQueAnota:
+        async def ejecutar(self, encargo, avisar=None):
+            vistos.append(encargo)
+            return dev.Resultado(texto="hecho", vueltas=1)
+
+    monkeypatch.setattr(dev, "_motor", MotorQueAnota())
+    asyncio.run(dev._dev({"peticion": {"texto": "algo"}}))
+    assert Path.home().resolve() in vistos[0].carpetas_extra
+
+
+def test_el_contexto_le_prohibe_dar_por_hecho_lo_que_no_hizo(dev_falso: Path) -> None:
+    """El fallo de fondo del 2026-08-25: HECHO sin haber hecho nada."""
+    contexto = dev._contexto_del_encargo("abre la app", dev_falso)
+    assert "No lo des por hecho" in contexto
+    assert str(dev_falso) in contexto
+
+
+# ── La bitácora: qué hizo, paso a paso ────────────────────────────────────── #
+
+
+def test_la_bitacora_guarda_el_paso_a_paso(dev_falso, monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(dev, "_datos", tmp_path)
+
+    class MotorQueCuenta:
+        async def ejecutar(self, encargo, avisar=None):
+            avisar(dev.Paso(tipo="herramienta", titulo="Leyendo api.py"))
+            avisar(dev.Paso(tipo="subagente", titulo="explorador: mira esto", agente="tu_1"))
+            avisar(dev.Paso(tipo="herramienta", titulo="Buscando def", agente="tu_1"))
+            avisar(dev.Paso(tipo="resultado", titulo="Error", agente="tu_1", ok=False))
+            return dev.Resultado(texto="hecho", vueltas=3)
+
+    monkeypatch.setattr(dev, "_motor", MotorQueCuenta())
+    asyncio.run(dev._dev({"id": 41, "peticion": {"texto": "algo"}}))
+
+    actividad = dev.actividad_de(41)
+    assert [p["titulo"] for p in actividad["pasos"]][:2] == ["Leyendo api.py", "explorador: mira esto"]
+    porNombre = {a["id"]: a for a in actividad["agentes"]}
+    assert porNombre["principal"]["pasos"] == 1
+    assert porNombre["tu_1"]["titulo"] == "explorador: mira esto"
+    assert porNombre["tu_1"]["fallos"] == 1
+    # Y sobrevive al encargo: la pregunta «¿qué hizo?» se hace después.
+    assert not actividad["vivo"]
+
+
+def test_la_bitacora_se_relee_del_disco(dev_falso, monkeypatch, tmp_path: Path) -> None:
+    """El núcleo se reinicia; la pregunta de la mañana siguiente sigue en pie."""
+    monkeypatch.setattr(dev, "_datos", tmp_path)
+    dev._anotar(77, dev.Paso(tipo="herramienta", titulo="Editando api.py"))
+    dev._bitacoras.pop(77, None)
+    assert [p["titulo"] for p in dev.actividad_de(77)["pasos"]] == ["Editando api.py"]
+
+
+def test_un_fallo_del_motor_queda_apuntado(dev_falso, monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(dev, "_datos", tmp_path)
+
+    class MotorQueRevienta:
+        async def ejecutar(self, encargo, avisar=None):
+            raise RuntimeError("se cayó el proveedor")
+
+    monkeypatch.setattr(dev, "_motor", MotorQueRevienta())
+    with pytest.raises(RuntimeError):
+        asyncio.run(dev._dev({"id": 42, "peticion": {"texto": "algo"}}))
+    pasos = dev.actividad_de(42)["pasos"]
+    assert pasos[-1]["tipo"] == "error" and not pasos[-1]["ok"]
 
 
 # --------------------------------------------------------------------------- #
@@ -223,25 +369,59 @@ def test_un_encargo_nominando_proyecto_llega_a_su_sitio(dev_falso: Path, tmp_pat
 # --------------------------------------------------------------------------- #
 
 
+def _proceso_falso(lineas: list[bytes], codigo: int = 0, error: bytes = b""):
+    """Un `opencode run --format json` de mentira, con la forma que lee el motor.
+
+    Desde que MotorOpencode lee los eventos SEGÚN SALEN (para poder contar por
+    dónde va el encargo), lo que hace falta simular no es un `communicate()`
+    sino un `stdout` que se recorre línea a línea y un `stderr` que se vacía en
+    paralelo. Los dobles viejos se quedaron sin `stdout` y reventaban todos a la
+    vez, que es lo que pasa cuando un doble copia una firma en vez de un
+    comportamiento.
+    """
+
+    class SalidaFalsa:
+        def __aiter__(self):
+            async def generar():
+                for linea in lineas:
+                    yield linea
+
+            return generar()
+
+    class ErrorFalso:
+        async def read(self):
+            return error
+
+    class ProcesoFalso:
+        returncode = codigo
+        stdout = SalidaFalsa()
+        stderr = ErrorFalso()
+
+        async def wait(self):
+            return codigo
+
+    return ProcesoFalso()
+
+
+def _evento_de_texto(texto: str) -> bytes:
+    """Un evento `text` de opencode, que es como el agente dice las cosas."""
+    return (json.dumps({"type": "text", "part": {"text": texto}}) + "\n").encode("utf-8")
+
+
 def _argumentos_de_opencode(monkeypatch, **entorno) -> list[str]:
     """Lo que MotorOpencode le pide de verdad al sistema operativo."""
     vistos: dict[str, list[str]] = {}
 
-    class ProcesoFalso:
-        returncode = 0
-
-        async def communicate(self):
-            return b"listo", b""
-
     async def falso_exec(*argumentos, **kwargs):
         vistos["argumentos"] = list(argumentos)
-        return ProcesoFalso()
+        return _proceso_falso([_evento_de_texto("listo")])
 
+    monkeypatch.delenv("PERSEO_DEV_MODELO", raising=False)
     for clave, valor in entorno.items():
         monkeypatch.setenv(clave, valor)
     monkeypatch.setattr(asyncio, "create_subprocess_exec", falso_exec)
     motor = dev.MotorOpencode("opencode")
-    asyncio.run(motor.ejecutar("haz algo", Path.cwd(), 30.0))
+    asyncio.run(motor.ejecutar(dev.Encargo("haz algo", Path.cwd(), 30.0)))
     return vistos["argumentos"]
 
 
@@ -250,9 +430,29 @@ def test_opencode_va_con_auto(monkeypatch) -> None:
     assert "--auto" in _argumentos_de_opencode(monkeypatch)
 
 
+def test_opencode_lleva_la_carpeta_escrita(monkeypatch) -> None:
+    """`opencode run` hereda el `cwd` y luego lo IGNORA: hay que decirle la raíz."""
+    argumentos = _argumentos_de_opencode(monkeypatch)
+    assert argumentos[argumentos.index("--dir") + 1] == str(Path.cwd())
+
+
 def test_opencode_lleva_el_modelo_pedido(monkeypatch) -> None:
     argumentos = _argumentos_de_opencode(monkeypatch, PERSEO_DEV_MODELO="opencode/glm-5")
     assert argumentos[argumentos.index("-m") + 1] == "opencode/glm-5"
+
+
+def test_opencode_nunca_sale_sin_modelo(monkeypatch) -> None:
+    """Sin `-m`, opencode usa el que tenga configurado — y ese puede ser DE PAGO."""
+    argumentos = _argumentos_de_opencode(monkeypatch)
+    elegido = argumentos[argumentos.index("-m") + 1]
+    assert elegido == dev.MODELO_OPENCODE_POR_DEFECTO
+    assert elegido in dev.MODELOS_GRATIS_OPENCODE
+
+
+def test_el_modelo_dictado_a_medias_se_completa(monkeypatch) -> None:
+    """Perseo oye «el hy3» y lo manda sin proveedor: la barra se le pone aquí."""
+    monkeypatch.delenv("PERSEO_DEV_MODELO", raising=False)
+    assert dev.modelo_opencode("hy3-free") == "opencode/hy3-free"
 
 
 @pytest.mark.parametrize(
@@ -265,35 +465,49 @@ def test_opencode_lleva_el_modelo_pedido(monkeypatch) -> None:
 def test_un_exito_que_no_hizo_nada_cuenta_como_fallo(monkeypatch, salida: str) -> None:
     """Código 0 no basta: lo que dijo el CLI también cuenta (2026-08-24)."""
 
-    class ProcesoFalso:
-        returncode = 0
-
-        async def communicate(self):
-            return salida.encode("utf-8"), b""
-
     async def falso_exec(*argumentos, **kwargs):
-        return ProcesoFalso()
+        return _proceso_falso([_evento_de_texto(salida)])
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", falso_exec)
-    resultado = asyncio.run(dev.MotorOpencode("opencode").ejecutar("x", Path.cwd(), 30.0))
+    resultado = asyncio.run(dev.MotorOpencode("opencode").ejecutar(dev.Encargo("x", Path.cwd(), 30.0)))
     assert not resultado.ok
 
 
 def test_una_salida_normal_sigue_siendo_exito(monkeypatch) -> None:
     """El detector no puede volverse un muro: lo bueno pasa."""
 
-    class ProcesoFalso:
-        returncode = 0
-
-        async def communicate(self):
-            return b"Fichero creado con el texto ok.", b""
-
     async def falso_exec(*argumentos, **kwargs):
-        return ProcesoFalso()
+        return _proceso_falso([_evento_de_texto("Fichero creado con el texto ok.")])
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", falso_exec)
-    resultado = asyncio.run(dev.MotorOpencode("opencode").ejecutar("x", Path.cwd(), 30.0))
+    resultado = asyncio.run(dev.MotorOpencode("opencode").ejecutar(dev.Encargo("x", Path.cwd(), 30.0)))
     assert resultado.ok
+
+
+def test_opencode_apunta_en_la_bitacora_lo_que_va_haciendo(monkeypatch) -> None:
+    """El motivo de `--format json`: con la salida bonita no se sabía nada
+    hasta el final, y la pestaña de actividad se quedaba en blanco justo con el
+    motor que el señor Persus quiere usar a diario."""
+    evento = json.dumps(
+        {
+            "type": "tool_use",
+            "part": {"tool": "write", "state": {"input": {"filePath": "hola.txt"}}},
+        }
+    )
+    lineas = [(evento + "\n").encode("utf-8"), _evento_de_texto("HECHO")]
+
+    async def falso_exec(*argumentos, **kwargs):
+        return _proceso_falso(lineas)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", falso_exec)
+    pasos: list[dev.Paso] = []
+    asyncio.run(
+        dev.MotorOpencode("opencode").ejecutar(
+            dev.Encargo("x", Path.cwd(), 30.0), avisar=pasos.append
+        )
+    )
+    assert any(p.tipo == "herramienta" for p in pasos)
+    assert any(p.tipo == "dice" for p in pasos)
 
 
 # --------------------------------------------------------------------------- #
@@ -301,23 +515,40 @@ def test_una_salida_normal_sigue_siendo_exito(monkeypatch) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_el_sdk_manda_cuando_esta_instalado(cfg, monkeypatch) -> None:
-    """Es el único que sabe contar por dónde va: sin motor pedido, gana él."""
+def test_opencode_manda_sin_motor_pedido(cfg, monkeypatch) -> None:
+    """Decidido el 2026-08-26: sin `PERSEO_DEV_MOTOR` gana opencode, aunque el
+    SDK esté instalado. No gasta suscripción y sabe contar por dónde va igual."""
+    monkeypatch.setattr(dev, "hay_sdk", lambda: True)
+    monkeypatch.setattr(
+        dev.shutil, "which", lambda nombre: "/bin/opencode" if nombre == "opencode" else None
+    )
+    assert isinstance(dev.abrir_motor(replace(cfg, dev_motor="")), dev.MotorOpencode)
+
+
+def test_sin_opencode_manda_el_sdk(cfg, monkeypatch) -> None:
+    """El segundo de la fila: cuenta el progreso, que es lo que la consola no
+    sabe hacer."""
     monkeypatch.setattr(dev, "hay_sdk", lambda: True)
     monkeypatch.setattr(dev, "MotorSdk", lambda: "el-sdk")
+    monkeypatch.setattr(dev.shutil, "which", lambda nombre: None)
     assert dev.abrir_motor(replace(cfg, dev_motor="")) == "el-sdk"
 
 
-def test_sin_sdk_se_sigue_por_consola(cfg, monkeypatch) -> None:
-    """El paquete es opcional de verdad: sin él, `dev` no se queda sin motor."""
+def test_sin_opencode_ni_sdk_se_sigue_por_consola(cfg, monkeypatch) -> None:
+    """Los dos paquetes son opcionales de verdad: sin ellos, `dev` no se queda
+    sin motor."""
     monkeypatch.setattr(dev, "hay_sdk", lambda: False)
-    monkeypatch.setattr(dev.shutil, "which", lambda nombre: "/bin/claude")
+    monkeypatch.setattr(
+        dev.shutil, "which", lambda nombre: None if nombre == "opencode" else "/bin/claude"
+    )
     assert isinstance(dev.abrir_motor(replace(cfg, dev_motor="")), dev.MotorClaude)
 
 
 def test_pedir_el_sdk_sin_tenerlo_no_deja_sin_motor(cfg, monkeypatch) -> None:
     monkeypatch.setattr(dev, "hay_sdk", lambda: False)
-    monkeypatch.setattr(dev.shutil, "which", lambda nombre: "/bin/claude")
+    monkeypatch.setattr(
+        dev.shutil, "which", lambda nombre: None if nombre == "opencode" else "/bin/claude"
+    )
     assert isinstance(dev.abrir_motor(replace(cfg, dev_motor="sdk")), dev.MotorClaude)
 
 

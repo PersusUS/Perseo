@@ -38,6 +38,9 @@ from perseo_core.chat import MODELO_POR_DEFECTO  # noqa: E402
 
 TEXTO_FINAL = "Mañana tienes la revisión del proyecto a las 10:00. Nada más en 24 horas."
 TITULO_EVENTO = "Revisión del proyecto"
+#: La firma del pensamiento que Gemini 2.5 pega a cada llamada a herramienta.
+#: El valor da igual; lo que importa es que vuelva IDÉNTICA (H-73).
+FIRMA = "FIRMA-DE-PENSAMIENTO-DE-MENTIRA"
 
 
 class FalsoGemini:
@@ -78,7 +81,12 @@ class FalsoGemini:
                 if trae_respuesta:
                     partes = [{"text": TEXTO_FINAL}]
                 else:
-                    partes = [{"functionCall": {"name": "consultar_agenda", "args": {"horas": 24}}}]
+                    # Con FIRMA, como Gemini 2.5: el nucleo tiene que devolverla
+                    # tal cual en la ronda siguiente o la API contesta 400 (H-73).
+                    partes = [{
+                        "functionCall": {"name": "consultar_agenda", "args": {"horas": 24}},
+                        "thoughtSignature": FIRMA,
+                    }]
                 trozo = json.dumps({"candidates": [{"content": {"parts": partes}}]}, ensure_ascii=False)
                 datos = f"data: {trozo}\n\n".encode("utf-8")
                 self.send_response(200)
@@ -169,6 +177,22 @@ def main() -> None:
         comprobar(
             "La herramienta devolvió al modelo los datos de la agenda",
             any(TITULO_EVENTO in json.dumps(r, ensure_ascii=False) for r in respuestas_de_funcion),
+        )
+
+        # La firma del pensamiento vuelve pegada a la llamada. Sin esto, Gemini
+        # 2.5 contesta 400 a partir de la segunda herramienta del turno y el
+        # turno entero se cae al router local (H-73).
+        llamadas_devueltas = [
+            parte
+            for contenido in falso.peticiones
+            for parte in [pp for c in contenido.get("contents", []) for pp in c.get("parts", [])]
+            if parte.get("functionCall")
+        ]
+        comprobar(
+            "La firma del pensamiento vuelve con la llamada",
+            bool(llamadas_devueltas)
+            and all(p.get("thoughtSignature") == FIRMA for p in llamadas_devueltas),
+            f"{len(llamadas_devueltas)} llamada(s) en el historial",
         )
 
         # La conversación se nombra sola con el primer mensaje.
