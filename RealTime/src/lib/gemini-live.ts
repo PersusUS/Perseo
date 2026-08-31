@@ -24,9 +24,11 @@
 
 import {
   Behavior,
+  EndSensitivity,
   FunctionResponseScheduling,
   GoogleGenAI,
   Modality,
+  StartSensitivity,
   ThinkingLevel,
   Type,
 } from '@google/genai';
@@ -430,6 +432,21 @@ ${censo}`;
           // "transcripción en tiempo real". Ver H-05.
           inputAudioTranscription: {},
           outputAudioTranscription: {},
+          // Cuándo se da por terminada una frase. Sin esto manda el ajuste de
+          // fábrica, que es LOW en las dos puntas: el servidor tarda en dar por
+          // empezada la voz y mucho más en darla por acabada, y esa espera es
+          // la que se vivía como «Perseo tarda diez segundos en enterarse».
+          // Con las dos sensibilidades altas y 600 ms de silencio la frase se
+          // cierra cuando de verdad se acabó. El riesgo de cortar una pausa
+          // larga lo cubre la proactividad: el modelo puede decidir callarse.
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
+              endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
+              prefixPaddingMs: 100,
+              silenceDurationMs: 600,
+            },
+          },
           tools: [{
             functionDeclarations: [
               {
