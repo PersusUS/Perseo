@@ -165,6 +165,10 @@ export class GeminiLiveClient {
   private cierreAvisoPendiente = false;
   /** Texto que hay que entregar por tiempo real al abrir la sesión. */
   private entregarAlAbrir: string = '';
+  /** Si el socket de esta sesión está abierto. Hace falta aparte de `session`
+   *  porque `onopen` y la asignación de `session` no llegan en orden fijo:
+   *  ver `entregarContextoEnVivo()`. */
+  private socketAbierto = false;
   /**
    * Intentos seguidos **sin una sesión estable**. No se reinicia al abrir el
    * socket —eso era el bucle de H-49— sino cuando una llamada aguanta
@@ -325,6 +329,7 @@ export class GeminiLiveClient {
     }
 
     this.isConnecting = true;
+    this.socketAbierto = false;
     this.onConnectionStateChange('connecting');
 
     // Un `live.connect()` que ni resuelve ni falla deja `isConnecting` puesto
@@ -398,7 +403,18 @@ ${censo}`;
       const enVivo = entregaEnVivo(contexto, pendientes);
       if (enVivo) this.entregarAlAbrir = enVivo;
 
-      this.session = await this.cliente().live.connect({
+      // Colgar antes de llegar aquí cuenta. Entre la pulsación de «llamar» y
+      // esta línea hay esperas (el censo de personas, entre otras), y en esa
+      // ventana `disconnect()` no encuentra socket que cerrar: si no se mira
+      // el testigo, la llamada colgada se abre igual unos segundos después.
+      if (this.isManualDisconnect) {
+        this.isConnecting = false;
+        this.limpiarTopeDeConexion();
+        this.onConnectionStateChange('disconnected');
+        return;
+      }
+
+      const sesion = await this.cliente().live.connect({
         model: MODELO,
         config: {
           responseModalities: [Modality.AUDIO],
@@ -666,6 +682,14 @@ ${censo}`;
           onopen: () => {
             console.log('[Gemini] WebSocket connection established');
             this.isConnecting = false;
+            // Si ya se colgó mientras esto se abría, abrir no significa
+            // «en llamada»: el socket que llega tarde lo cierra el guardián
+            // de abajo, y aquí no se anuncia nada.
+            if (this.isManualDisconnect) {
+              this.limpiarTopeDeConexion();
+              this.onConnectionStateChange('disconnected');
+              return;
+            }
             this.limpiarTopeDeConexion();
             // Abrir no es sobrevivir. El contador de intentos se perdona solo
             // cuando la llamada aguanta de verdad; si el servidor la echa antes,
@@ -673,31 +697,31 @@ ${censo}`;
             this.armarSesionEstable();
             // El contexto pendiente, por texto en vivo: es el único canal que
             // llega también a una sesión restaurada por testigo.
-            if (this.entregarAlAbrir) {
-              const texto = this.entregarAlAbrir;
-              this.entregarAlAbrir = '';
-              try {
-                if (typeof (this.session as any)?.sendRealtimeInput === 'function') {
-                  (this.session as any).sendRealtimeInput({ text: texto });
-                }
-              } catch (e) {
-                console.warn('[Gemini] No se pudo entregar el contexto en vivo:', e);
-              }
-            }
+            this.socketAbierto = true;
+            this.entregarContextoEnVivo();
             this.onConnectionStateChange('connected');
           },
           onmessage: (message: any) => this.handleMessage(message),
           onerror: (error: any) => {
             console.error('[Gemini] WebSocket Error:', error);
             this.isConnecting = false;
+            this.socketAbierto = false;
             this.limpiarTopeDeConexion();
             this.limpiarSesionEstable();
+            // Un socket que revienta porque acabamos de colgar no es un error
+            // que enseñar: colgado ya está, y pintar «Error de enlace» encima
+            // solo confunde.
+            if (this.isManualDisconnect) {
+              this.onConnectionStateChange('disconnected');
+              return;
+            }
             this.onError(`Se perdió la conexión con el servidor: ${error.message || 'Error desconocido'}`);
             this.onConnectionStateChange('error');
           },
           onclose: (event: any) => {
             console.log('[Gemini] WebSocket Closed:', event);
             this.isConnecting = false;
+            this.socketAbierto = false;
             this.limpiarTopeDeConexion();
             this.limpiarSesionEstable();
 
@@ -744,12 +768,61 @@ ${censo}`;
           }
         }
       });
+
+      // Y colgar mientras el socket se abría también cuenta: la sesión llega
+      // ya huérfana, así que se cierra en vez de guardarla. Guardarla era la
+      // llamada que volvía sola después de colgar.
+      if (this.isManualDisconnect) {
+        try {
+          if (typeof sesion?.close === 'function') sesion.close();
+        } catch (e) {}
+        this.isConnecting = false;
+        this.limpiarTopeDeConexion();
+        this.limpiarSesionEstable();
+        this.onConnectionStateChange('disconnected');
+        return;
+      }
+
+      this.session = sesion;
+      // Y el contexto en vivo, ahora que hay por dónde mandarlo. `onopen`
+      // suele llegar ANTES que esta asignación, y allí `this.session` todavía
+      // era null: el motivo de la llamada se descartaba en silencio. El que
+      // llegue segundo es el que lo manda.
+      this.entregarContextoEnVivo();
     } catch (e: any) {
       console.error('[Gemini] Connection failed:', e);
       this.isConnecting = false;
       this.limpiarTopeDeConexion();
       this.onError(`Error al conectar con Gemini: ${e.message || 'Fallo de red'}`);
+      if (this.isManualDisconnect) {
+        this.onConnectionStateChange('disconnected');
+        return;
+      }
       this.handleReconnect({ motivo: String(e?.message ?? e) });
+    }
+  }
+
+  /**
+   * Manda el contexto pendiente por texto en tiempo real, si ya hay sesión y
+   * socket abierto.
+   *
+   * Se llama desde los dos sitios que pueden completar esa pareja —`onopen` y
+   * la asignación de `this.session`— porque el SDK no garantiza cuál va
+   * primero. Es idempotente: quien llega segundo encuentra el texto y lo
+   * manda; quien llega primero, no. Si el envío falla, el texto se queda
+   * puesto para el siguiente intento en vez de perderse.
+   */
+  private entregarContextoEnVivo() {
+    if (!this.entregarAlAbrir || !this.socketAbierto) return;
+    const canal = this.session as any;
+    if (typeof canal?.sendRealtimeInput !== 'function') return;
+    const texto = this.entregarAlAbrir;
+    this.entregarAlAbrir = '';
+    try {
+      canal.sendRealtimeInput({ text: texto });
+    } catch (e) {
+      console.warn('[Gemini] No se pudo entregar el contexto en vivo:', e);
+      this.entregarAlAbrir = texto;
     }
   }
 
@@ -1121,6 +1194,7 @@ ${censo}`;
 
   disconnect() {
     this.isManualDisconnect = true;
+    this.socketAbierto = false;
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
@@ -1155,9 +1229,16 @@ ${censo}`;
           console.error('[Gemini] Error cerrando la sesión gracefully:', e);
        }
        this.session = null;
-       this.isConnecting = false;
-       this.onConnectionStateChange('disconnected');
     }
+
+    // Colgar cuelga SIEMPRE, haya socket o no. Antes esto vivía dentro del
+    // `if (this.session)`, y colgar mientras la conexión se estaba abriendo
+    // —o durante la espera de una reconexión automática, donde la sesión ya
+    // es null— no cambiaba el estado: la interfaz se quedaba en «Conectando…»
+    // y el intento en vuelo terminaba de abrirse encima. Ver el guardián de
+    // `isManualDisconnect` en `connect()`.
+    this.isConnecting = false;
+    this.onConnectionStateChange('disconnected');
   }
 }
 
