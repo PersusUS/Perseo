@@ -65,16 +65,6 @@ const IconArmario = () => (
   </svg>
 );
 
-/** Maletín con mira: CVScraper busca ofertas y concursos. */
-const IconCvscraper = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square">
-    <rect x="3" y="8" width="18" height="13" />
-    <path d="M9 8V6a3 3 0 0 1 6 0v2" />
-    <path d="M3 13h18" />
-    <path d="m10 16.5 1.6 1.6 2.9-3" />
-  </svg>
-);
-
 /** Tres nodos en triángulo: MELCHIOR, BALTHASAR y CASPER deliberando. */
 const IconMagi = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square">
@@ -128,7 +118,6 @@ const IconGrafo = () => (
 /** Un icono POR PROYECTO, no por modo: de un vistazo se sabe qué es qué. */
 const ICONOS_PROPIOS: Record<string, () => React.ReactElement> = {
   'armario-app': IconArmario,
-  'cvscraper-app': IconCvscraper,
   'kotoba-app': IconKotoba,
   'magi-app': IconMagi,
   'nightshift-app': IconNightshift,
