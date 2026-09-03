@@ -92,6 +92,19 @@ const IconNightshift = () => (
   </svg>
 );
 
+/** Torii: la puerta de un santuario — Kotoba enseña japonés. Dintel, travesaño,
+ *  el poste corto del centro y las dos columnas: nada más, que a 24 píxeles un
+ *  torii con detalles es una mancha. */
+const IconKotoba = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square">
+    <path d="M2 4.5h20" />
+    <path d="M4.5 8.5h15" />
+    <path d="M12 4.5v4" />
+    <path d="M6.5 4.5v16" />
+    <path d="M17.5 4.5v16" />
+  </svg>
+);
+
 /** Globo: el comodín de toda app que aún no tenga icono propio. */
 const IconComodin = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -116,6 +129,7 @@ const IconGrafo = () => (
 const ICONOS_PROPIOS: Record<string, () => React.ReactElement> = {
   'armario-app': IconArmario,
   'cvscraper-app': IconCvscraper,
+  'kotoba-app': IconKotoba,
   'magi-app': IconMagi,
   'nightshift-app': IconNightshift,
 };
