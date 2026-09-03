@@ -95,6 +95,18 @@ const IconKotoba = () => (
   </svg>
 );
 
+/** Micrófono de sobremesa: ClassTranscriber escucha la clase entera. Cápsula,
+ *  el arco del soporte y el pie — a 24 píxeles, un micro con rejilla es una
+ *  mancha gris. */
+const IconClassTranscriber = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square">
+    <rect x="9" y="2.5" width="6" height="11" />
+    <path d="M5 11.5a7 7 0 0 0 14 0" />
+    <path d="M12 18.5v3" />
+    <path d="M8 21.5h8" />
+  </svg>
+);
+
 /** Globo: el comodín de toda app que aún no tenga icono propio. */
 const IconComodin = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -118,6 +130,7 @@ const IconGrafo = () => (
 /** Un icono POR PROYECTO, no por modo: de un vistazo se sabe qué es qué. */
 const ICONOS_PROPIOS: Record<string, () => React.ReactElement> = {
   'armario-app': IconArmario,
+  'classtranscriber-app': IconClassTranscriber,
   'kotoba-app': IconKotoba,
   'magi-app': IconMagi,
   'nightshift-app': IconNightshift,
