@@ -366,6 +366,19 @@ pub async fn tareas_espejo(app: AppHandle, texto: String, foto: Value) -> Result
     mandar(&app, "/tareas", json!({ "texto": texto, "foto": foto })).await
 }
 
+/// Recoge lo que Perseo pidio hacer con el tablero desde fuera de esta ventana.
+///
+/// El chat escrito y los agentes son Python y no pueden escribir en el
+/// `localStorage` del corcho, asi que dejan la orden en el nucleo y la ventana
+/// —que sigue siendo el unico escritor del tablero— la recoge aqui.
+///
+/// Va por POST porque vacia la cola al entregarla: no es una lectura, aunque lo
+/// parezca por lo que devuelve.
+#[tauri::command]
+pub async fn tareas_recoger(app: AppHandle) -> Result<Value, String> {
+    mandar(&app, "/tareas/recoger", json!({})).await
+}
+
 /// Enciende o apaga el modo confianza.
 #[tauri::command]
 pub async fn panel_confianza(app: AppHandle, minutos: Option<f64>) -> Result<Value, String> {

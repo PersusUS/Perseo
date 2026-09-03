@@ -17,6 +17,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from perseo_core import tareas
 
 
@@ -99,3 +101,84 @@ def test_el_espejo_de_tareas_no_pisa_al_de_habitos(tmp_path: Path) -> None:
 
     assert habitos.cargar(tmp_path)["texto"] == "hábitos"
     assert tareas.cargar(tmp_path)["texto"] == "tareas"
+
+
+# --------------------------------------------------------------------------- #
+# Lo que se le pide a la ventana
+#
+# El núcleo no escribe el tablero: encola. Lo que se prueba aquí es el portero
+# —qué órdenes pasan y cuáles no— y que recoger vacía, porque una orden que se
+# aplicara dos veces clavaría la nota dos veces.
+# --------------------------------------------------------------------------- #
+
+
+def test_una_orden_bien_puesta_espera_a_la_ventana(tmp_path: Path) -> None:
+    orden = tareas.encolar(tmp_path, "crear", "  Llamar al fontanero  ", detalle="el del bajo")
+
+    assert orden["accion"] == "crear"
+    assert orden["titulo"] == "Llamar al fontanero"
+    assert orden["detalle"] == "el del bajo"
+    assert orden["pedida"]
+    assert tareas.ordenes(tmp_path) == [orden]
+
+
+def test_recoger_entrega_y_vacia(tmp_path: Path) -> None:
+    """Si no vaciara, la ventana clavaría la misma nota en cada vuelta."""
+    tareas.encolar(tmp_path, "crear", "Comprar pan")
+    tareas.encolar(tmp_path, "mover", "Comprar pan", columna="completadas")
+
+    recogidas = tareas.recoger(tmp_path)
+    assert [o["titulo"] for o in recogidas] == ["Comprar pan", "Comprar pan"]
+    assert tareas.recoger(tmp_path) == []
+
+
+def test_el_orden_se_respeta(tmp_path: Path) -> None:
+    """Crear y mover la misma nota en la misma vuelta solo funciona en orden."""
+    tareas.encolar(tmp_path, "crear", "Comprar pan")
+    tareas.encolar(tmp_path, "mover", "Comprar pan", columna="en_proceso")
+
+    assert [o["accion"] for o in tareas.recoger(tmp_path)] == ["crear", "mover"]
+
+
+def test_lo_que_no_se_entiende_se_rechaza_aqui(tmp_path: Path) -> None:
+    """Rechazar en el núcleo se le puede contar al modelo en el acto; una orden
+    que viaja y muere al otro lado se pierde en silencio."""
+    for accion, titulo, extra in [
+        ("borrar", "Comprar pan", {}),          # acción que no existe
+        ("crear", "   ", {}),                    # nota sin título
+        ("mover", "Comprar pan", {}),            # mover sin destino
+        ("mover", "Comprar pan", {"columna": "inventada"}),
+    ]:
+        with pytest.raises(ValueError):
+            tareas.encolar(tmp_path, accion, titulo, **extra)
+
+    assert tareas.ordenes(tmp_path) == []
+
+
+def test_la_cola_no_crece_sin_tope(tmp_path: Path) -> None:
+    """Con la app cerrada una semana, lo que sobra son las viejas."""
+    for i in range(tareas.TOPE_ORDENES + 10):
+        tareas.encolar(tmp_path, "crear", f"nota {i}")
+
+    cola = tareas.ordenes(tmp_path)
+    assert len(cola) == tareas.TOPE_ORDENES
+    # Se queda la última, no la primera: lo que acaba de pedir importa más.
+    assert cola[-1]["titulo"] == f"nota {tareas.TOPE_ORDENES + 9}"
+
+
+def test_una_cola_rota_no_bloquea_lo_siguiente(tmp_path: Path) -> None:
+    tareas.ruta_ordenes(tmp_path).write_text("[esto no es json", encoding="utf-8")
+    assert tareas.ordenes(tmp_path) == []
+
+    tareas.encolar(tmp_path, "crear", "Comprar pan")
+    assert [o["titulo"] for o in tareas.ordenes(tmp_path)] == ["Comprar pan"]
+
+
+def test_las_ordenes_no_pisan_el_espejo(tmp_path: Path) -> None:
+    """Uno es lo que hay y el otro lo que se ha pedido: ficheros distintos."""
+    tareas.guardar(tmp_path, "Tablero: 1 sin hacer.")
+    tareas.encolar(tmp_path, "crear", "Comprar pan")
+
+    assert tareas.cargar(tmp_path)["texto"] == "Tablero: 1 sin hacer."
+    tareas.recoger(tmp_path)
+    assert tareas.cargar(tmp_path)["texto"] == "Tablero: 1 sin hacer."

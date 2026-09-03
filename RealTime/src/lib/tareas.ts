@@ -9,10 +9,18 @@
  * Dónde está guardado: en el `localStorage` de la ventana, bajo `ALMACEN`.
  * Es la misma excepción consciente a «las caras no piensan» que los hábitos:
  * el núcleo no tiene agente de tareas y esto no encola trabajo, así que no hay
- * ninguna decisión aquí — solo notas que el señor Persus mueve con el ratón.
- * Si algún día Perseo tiene que leerlas en voz alta, el camino ya está abierto:
- * `resumen()` devuelve prosa, como el de hábitos, y el espejo se añade encima
- * sin tocar la pantalla.
+ * ninguna decisión aquí — solo notas.
+ *
+ * Este fichero tiene tres partes, y la frontera entre ellas importa:
+ *
+ *  1. **Las reglas del tablero** (`mover`, `tirar`, `restaurar`…), puras: toman
+ *     un tablero y devuelven otro. Ni leen ni guardan.
+ *  2. **Lo que Perseo lee** (`foto`, `resumen`): las mismas reglas contadas en
+ *     castellano, porque a un modelo se le pide que hable, no que lea campos.
+ *  3. **Lo que Perseo escribe** (`aplicarDeFuera` y las suyas): la única puerta
+ *     por la que algo que no es la pantalla toca el almacén. Escribe y **avisa**
+ *     —ver `EVENTO_CAMBIO`—, porque una pantalla abierta que no se entera
+ *     guardaría su tablero viejo encima al primer arrastre.
  *
  * La papelera **no borra**: mueve. Borrar de verdad solo pasa cuando se vacía
  * o cuando se tira una nota que ya estaba en la papelera, y las dos cosas se
@@ -444,4 +452,150 @@ export function resumen(datos: Datos, ahora: Date = new Date()): string {
  *  herramienta de la llamada, que no tiene el estado de React a mano. */
 export function resumenGuardado(ahora: Date = new Date()): string {
   return resumen(leer(), ahora);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lo que Perseo escribe
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * El aviso de que el tablero cambió desde fuera de la pantalla.
+ *
+ * Hasta aquí el único que escribía era el corcho, y le bastaba su propio estado
+ * de React. Desde que Perseo puede clavar y mover notas hay un segundo escritor
+ * **dentro de la misma ventana**, y una pantalla abierta que no se entera de
+ * ello es peor que no haber escrito: sigue enseñando el tablero de antes y, al
+ * primer arrastre, lo guarda encima y se lleva por delante lo que Perseo puso.
+ *
+ * El evento `storage` del navegador no sirve: no se dispara en la ventana que
+ * escribe, que es justo esta. Así que el aviso es propio.
+ */
+export const EVENTO_CAMBIO = 'perseo:tareas';
+
+/** Avisa de que el tablero acaba de cambiar. Lo llaman los tres escritores —la
+ *  pantalla, la herramienta de la llamada y las órdenes que vienen del núcleo—
+ *  para que la copia del núcleo salga de un solo sitio (ver `App.tsx`) en vez
+ *  de que cada uno se acuerde de mandarla por su cuenta. */
+export function avisar(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(EVENTO_CAMBIO));
+  } catch {
+    // Sin ventana —una prueba, por ejemplo— no hay a quién avisar, y el dato ya
+    // está guardado, que es lo que importa.
+  }
+}
+
+/**
+ * Escribe en el almacén desde fuera de la pantalla y avisa a quien la tenga
+ * abierta.
+ *
+ * Es la ÚNICA puerta de escritura de Perseo. Todo pasa por aquí para que no
+ * haya ninguna forma de dejar el disco cambiado y la pantalla sin enterarse.
+ */
+export function aplicarDeFuera(cambio: (d: Datos) => Datos): Datos {
+  const siguientes = cambio(leer());
+  guardar(siguientes);
+  avisar();
+  return siguientes;
+}
+
+/** Sin tildes, sin mayúsculas y sin dobles espacios. Perseo oye «el panel» y en
+ *  el corcho pone «El Panel»; que eso no encuentre la nota sería absurdo. */
+function llano(texto: string): string {
+  return texto
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * La nota que el señor Persus quiso decir, buscada por su título.
+ *
+ * Perseo habla de las notas por su nombre —nunca por un identificador— y lo
+ * dice como lo recuerda, no como está escrito. Se busca en tres pasadas, de la
+ * más segura a la más generosa: igual, empieza por, y contiene.
+ *
+ * La papelera queda fuera: mover algo que él tiró, porque el título se parece,
+ * sería resucitar trabajo muerto sin que nadie lo pida.
+ *
+ * Si dos notas encajan igual de bien no se elige ninguna. Mover la nota
+ * equivocada es peor que decir «tienes dos que se llaman parecido, ¿cuál?».
+ */
+export function porTitulo(datos: Datos, texto: string): Tarea | null | 'ambigua' {
+  const busca = llano(texto);
+  if (!busca) return null;
+  const vivas = datos.tareas.filter(t => t.columna !== 'papelera');
+
+  for (const encaja of [
+    (t: Tarea) => llano(t.titulo) === busca,
+    (t: Tarea) => llano(t.titulo).startsWith(busca),
+    (t: Tarea) => llano(t.titulo).includes(busca),
+  ]) {
+    const encontradas = vivas.filter(encaja);
+    if (encontradas.length === 1) return encontradas[0];
+    if (encontradas.length > 1) return 'ambigua';
+  }
+  return null;
+}
+
+/**
+ * Clava una nota nueva. Devuelve la frase que Perseo dirá, no un objeto: es lo
+ * mismo que hace `resumen()`, y por lo mismo.
+ */
+export function crearDeFuera(
+  campos: { titulo: string; detalle?: string; columna?: Columna },
+): string {
+  const titulo = (campos.titulo || '').trim();
+  if (!titulo) return 'No se ha clavado nada: una nota sin título no es una nota.';
+  // La papelera no es un destino donde clavar: nacer en la basura no es nacer.
+  const columna: Columna =
+    campos.columna && campos.columna !== 'papelera' ? campos.columna : 'sin_hacer';
+
+  aplicarDeFuera(d => anadir(d, crear({ titulo, detalle: campos.detalle, columna })));
+  return `Clavada la nota «${titulo}» en ${NOMBRES_COLUMNA[columna].toLowerCase()}.`;
+}
+
+/** Mueve una nota de columna, buscándola por su título. */
+export function moverDeFuera(titulo: string, columna: Columna): string {
+  const datos = leer();
+  const encontrada = porTitulo(datos, titulo);
+  if (encontrada === 'ambigua') {
+    return (
+      `Hay más de una nota que encaja con «${titulo}» y no se ha movido ninguna. ` +
+      'Pregúntale al señor Persus por cuál de ellas, con el título entero.'
+    );
+  }
+  if (!encontrada) {
+    return `No hay ninguna nota que se llame «${titulo}» en el tablero. No se ha movido nada.`;
+  }
+  if (encontrada.columna === columna) {
+    return `«${encontrada.titulo}» ya estaba en ${NOMBRES_COLUMNA[columna].toLowerCase()}.`;
+  }
+
+  aplicarDeFuera(d => mover(d, encontrada.id, columna));
+  return columna === 'papelera'
+    ? `«${encontrada.titulo}» va a la papelera. De ahí se recupera; no se ha borrado.`
+    : `«${encontrada.titulo}» pasa a ${NOMBRES_COLUMNA[columna].toLowerCase()}.`;
+}
+
+/**
+ * Aplica una orden que llegaba de fuera de esta ventana —del chat escrito, del
+ * móvil, de un agente— y devuelve la frase de lo que pasó.
+ *
+ * Lo que llega es un objeto suelto venido por HTTP, así que aquí no se da nada
+ * por bueno: la acción se comprueba y la columna se comprueba. Una orden que no
+ * se entiende se cuenta y no se aplica.
+ */
+export function aplicarOrden(orden: any): string {
+  const accion = String(orden?.accion ?? '');
+  const titulo = String(orden?.titulo ?? '');
+  const columna = esColumna(orden?.columna) ? orden.columna : undefined;
+
+  if (accion === 'crear') {
+    return crearDeFuera({ titulo, detalle: String(orden?.detalle ?? ''), columna });
+  }
+  if (accion === 'mover') {
+    if (!columna) return `Orden de mover «${titulo}» sin columna válida; no se ha tocado nada.`;
+    return moverDeFuera(titulo, columna);
+  }
+  return `Orden desconocida («${accion}»); no se ha tocado nada.`;
 }

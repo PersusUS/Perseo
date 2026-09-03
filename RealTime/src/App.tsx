@@ -28,6 +28,13 @@ import { Settings } from './components/Settings';
 import { Panel } from './components/Panel';
 import { Habitos } from './components/Habitos';
 import { Tareas } from './components/Tareas';
+import {
+  EVENTO_CAMBIO as TAREAS_CAMBIO,
+  aplicarOrden as aplicarOrdenTarea,
+  foto as fotoTareas,
+  leer as leerTareas,
+  resumen as resumenTareas,
+} from './lib/tareas';
 import { Proyectos } from './components/Proyectos';
 import { Escenografia, comoReloj, type Fase } from './components/Escenografia';
 import { Marco } from './components/Marco';
@@ -65,6 +72,22 @@ const ahoraCorta = () =>
   new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
 
 const MAX_MENSAJES = 400;   // tope de memoria de una sesión
+
+/** Cada cuánto se le pregunta al núcleo si hay algo pendiente que hacer con el
+ *  tablero de tareas.
+ *
+ *  El corcho vive en el `localStorage` de esta ventana, así que el chat escrito
+ *  y los agentes —que son Python— no pueden clavar una nota: dejan la orden en
+ *  el núcleo y esto la recoge. Ocho segundos porque la conversación escrita
+ *  suele pasar con la app delante y esperar medio minuto a ver aparecer la nota
+ *  que acabas de pedir se siente roto; y es una petición a localhost, no a
+ *  internet. Ver `perseo_core/tareas.py`. */
+const ESPERA_ORDENES_TAREAS = 8000;
+
+/** Cuánto se espera, sin que nadie toque nada, antes de mandarle al núcleo la
+ *  copia del tablero. Arrastrar una nota cambia el estado varias veces seguidas
+ *  y cada cambio sería un POST; con la espera, un arrastre entero manda uno. */
+const ESPERA_ESPEJO_TAREAS = 2000;
 const MENSAJES_VISIBLES = 40;
 
 /** Un aviso que nadie atendió: qué dijo y cuándo se apuntó. */
@@ -479,6 +502,61 @@ function App() {
       setSesion(desde ? Math.floor((Date.now() - desde) / 1000) : 0);
     }, 1000);
     return () => clearInterval(t);
+  }, []);
+
+  // Lo que Perseo pidió hacer con el tablero desde fuera de esta ventana.
+  //
+  // Va en App y no dentro de la pantalla de tareas a propósito: una nota que se
+  // pide por el chat escrito tiene que clavarse aunque el corcho esté cerrado.
+  // Si está abierto se entera solo, porque `aplicarOrden` avisa (ver
+  // EVENTO_CAMBIO en lib/tareas.ts).
+  //
+  // Un fallo aquí no se enseña: el núcleo apagado es un estado normal de esta
+  // app, y las órdenes esperan en su cola hasta la próxima vuelta.
+  useEffect(() => {
+    const recoger = async () => {
+      try {
+        const recogido = await invoke<{ ordenes?: unknown[] }>('tareas_recoger');
+        for (const orden of recogido?.ordenes ?? []) aplicarOrdenTarea(orden);
+      } catch {
+        // Núcleo apagado o sin token todavía: se reintenta a la vuelta siguiente.
+      }
+    };
+    recoger();
+    const t = setInterval(recoger, ESPERA_ORDENES_TAREAS);
+    return () => clearInterval(t);
+  }, []);
+
+  // Y la copia del tablero para el núcleo, que sale de aquí y de ningún otro
+  // sitio.
+  //
+  // Estuvo dentro de la pantalla de tareas hasta el 2026-09-03. Dejó de valer
+  // en cuanto Perseo pudo escribir: con el corcho cerrado esa pantalla no
+  // existe, así que una nota clavada por voz o por el chat se guardaba en el
+  // almacén y el núcleo seguía sirviendo el tablero de antes — Perseo no veía
+  // la nota que él mismo acababa de poner. Aquí se oye a los tres escritores
+  // por igual, porque los tres avisan (ver `avisar()` en lib/tareas.ts).
+  //
+  // Se manda también al arrancar: si la última vez se cerró la app antes de que
+  // saliera la copia, esta es la ocasión de ponerla al día.
+  //
+  // Si falla, se calla: el núcleo apagado es un estado normal de esta app.
+  useEffect(() => {
+    let espera: ReturnType<typeof setTimeout>;
+    const espejar = () => {
+      clearTimeout(espera);
+      espera = setTimeout(() => {
+        const datos = leerTareas();
+        invoke('tareas_espejo', { texto: resumenTareas(datos), foto: fotoTareas(datos) })
+          .catch(e => console.debug('[Tareas] El núcleo no recogió la copia:', e));
+      }, ESPERA_ESPEJO_TAREAS);
+    };
+    espejar();
+    window.addEventListener(TAREAS_CAMBIO, espejar);
+    return () => {
+      clearTimeout(espera);
+      window.removeEventListener(TAREAS_CAMBIO, espejar);
+    };
   }, []);
 
   useEffect(() => {

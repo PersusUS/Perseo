@@ -94,6 +94,7 @@ pub fn run() {
             panel::panel_confianza,
             panel::habitos_espejo,
             panel::tareas_espejo,
+            panel::tareas_recoger,
             panel::panel_correos,
             panel::panel_marcar_correo,
             panel::panel_proyectos,

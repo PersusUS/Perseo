@@ -29,12 +29,11 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 
 import {
-  COLORES, NOMBRES_COLUMNA,
-  anadir, borrar, crear, deColumna, editar, foto, guardar, haceCuanto, leer,
-  mover, restaurar, resumen, tirar, vaciarPapelera,
+  COLORES, EVENTO_CAMBIO, NOMBRES_COLUMNA,
+  anadir, avisar, borrar, crear, deColumna, editar, guardar, haceCuanto, leer,
+  mover, restaurar, tirar, vaciarPapelera,
   type Color, type Columna, type Datos, type Tarea,
 } from '../lib/tareas';
 import '../styles/tareas.css';
@@ -53,12 +52,6 @@ const UMBRAL = 5;
  *  llenar por abajo — no hay forma de llegar con la nota en la mano. */
 const BORDE_SCROLL = 48;
 const PASO_SCROLL = 12;
-
-/** Cuánto se espera, sin que nadie toque nada, antes de mandarle la copia al
- *  núcleo. Igual que en los hábitos: arrastrar una nota cambia el estado
- *  decenas de veces en un segundo y cada cambio sería un POST; con la espera,
- *  un arrastre entero manda uno. */
-const ESPERA_ESPEJO = 2000;
 
 /** El gesto en curso. `activo` distingue el clic del arrastre; hasta que no se
  *  supera el umbral, la nota no se ha despegado del corcho. */
@@ -215,30 +208,34 @@ export const Tareas: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
   const datosRef = useRef(datos);
   useEffect(() => { datosRef.current = datos; }, [datos]);
 
-  /** Y una copia al núcleo, para que Perseo lo sepa también fuera de la llamada.
+  /** Perseo también clava y mueve notas, y esta pantalla tiene que enterarse.
    *
-   *  El tablero vive en el `localStorage` de esta ventana, que es lo correcto
-   *  —mover una nota no puede depender de que el núcleo esté encendido— y a la
-   *  vez deja fuera a media casa: el Perseo de la llamada corre AQUÍ y lo lee
-   *  sin más, pero el chat escrito y los agentes son Python y no ven dentro de
-   *  un navegador. Esto es el puente, y va en una sola dirección: nadie mueve
-   *  notas desde el núcleo (ver `perseo_core/tareas.py`).
-   *
-   *  Si falla, se calla: el núcleo apagado es un estado normal de esta app, y
-   *  un aviso rojo por no haber podido mandar una copia que nadie ha pedido
-   *  sería alarmar por nada. El cambio siguiente la manda otra vez. */
+   *  Sin esto, una nota clavada de viva voz con el corcho delante no aparecería
+   *  hasta cerrar y volver a abrir —y, peor, el primer arrastre guardaría el
+   *  tablero de React encima y se la llevaría por delante—. El aviso lo lanza
+   *  `aplicarDeFuera` en `lib/tareas.ts`; aquí solo se vuelve a leer. */
   useEffect(() => {
-    const t = setTimeout(() => {
-      invoke('tareas_espejo', { texto: resumen(datos), foto: foto(datos) })
-        .catch(e => console.debug('[Tareas] El núcleo no recogió la copia:', e));
-    }, ESPERA_ESPEJO);
-    return () => clearTimeout(t);
-  }, [datos]);
+    const alCambiar = () => setDatos(leer());
+    window.addEventListener(EVENTO_CAMBIO, alCambiar);
+    return () => window.removeEventListener(EVENTO_CAMBIO, alCambiar);
+  }, []);
+
+  // La copia para el núcleo no se manda desde aquí, sino desde `App.tsx`, al
+  // oír el aviso de `avisar()`. Estuvo aquí hasta el 2026-09-03 y se movió al
+  // añadir la escritura: con el corcho cerrado esta pantalla no existe, así que
+  // una nota clavada por el chat escrito se guardaba y el núcleo seguía viendo
+  // el tablero de antes — Perseo no veía la nota que él mismo acababa de poner.
 
   const aplicar = useCallback((cambio: (d: Datos) => Datos) => {
     setDatos(previos => {
       const siguientes = cambio(previos);
       guardar(siguientes);
+      // El aviso va aquí dentro, pegado al `guardar`, y no después del
+      // `setDatos`: el actualizador puede correr más tarde, y avisar antes de
+      // que el almacén esté escrito haría que quien lo lea —la copia para el
+      // núcleo, en `App.tsx`— mandase el tablero de antes. En modo estricto
+      // esto avisa dos veces; la espera del otro lado junta los dos avisos.
+      avisar();
       return siguientes;
     });
   }, []);

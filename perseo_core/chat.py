@@ -157,6 +157,11 @@ hables del buzón sin pasar por aquí.
 detalle, lo que lleva días parado, los pendientes y lo cerrado esta semana—. \
 Para «¿qué tengo que hacer?» o cuando pida ayuda para organizarse. NUNCA te \
 inventes qué tiene pendiente.
+- crear_tarea(titulo, detalle?, columna?) / mover_tarea(titulo, columna): \
+clavar una nota nueva y moverla de columna. El tablero vive en la app, así que \
+esto NO se aplica al momento: se le pide a la ventana y ella lo hace cuando \
+está abierta. Dilo así —«queda apuntada»—, no digas que ya está en el tablero \
+si la app está cerrada. La papelera no borra; borrar de verdad es cosa suya.
 - buscar_en_memoria(texto, carpeta?) / leer_nota(ruta) / guardar_recuerdo(entidad, \
 contexto?, descripcion_visual?): la memoria a largo plazo, que son las notas \
 del vault de Obsidian **del señor Persus**. El vault tiene dos zonas:
@@ -274,10 +279,55 @@ def _declaraciones() -> list[dict[str, Any]]:
                 "El tablero de tareas del señor Persus: cuántas notas lleva sin hacer, "
                 "en proceso y completadas, qué tiene entre manos con el detalle de cada "
                 "nota, lo que lleva días parado sin moverse, los pendientes y lo cerrado "
-                "esta semana. Es de solo lectura: crear, mover y tirar notas es cosa "
-                "suya, en la pantalla de tareas de la app."
+                "esta semana. Es de solo lectura: para cambiar el tablero están "
+                "crear_tarea y mover_tarea."
             ),
             "parameters": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "crear_tarea",
+            "description": (
+                "Clava una nota nueva en el tablero del señor Persus. El título es "
+                "corto, como lo escribiría él; el detalle es para lo que no cabe en "
+                "el título. El tablero vive en la app: esto deja la orden pedida y la "
+                "ventana la aplica cuando está abierta, así que dilo como lo que es "
+                "—queda apuntada— en vez de dar por hecho que ya está clavada."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "titulo": {"type": "string", "description": "El título de la nota, corto."},
+                    "detalle": {"type": "string", "description": "Lo que no cabe en el título."},
+                    "columna": {
+                        "type": "string",
+                        "enum": ["sin_hacer", "en_proceso", "completadas"],
+                        "description": "Dónde se clava. Sin nada, 'sin_hacer'.",
+                    },
+                },
+                "required": ["titulo"],
+            },
+        },
+        {
+            "name": "mover_tarea",
+            "description": (
+                "Mueve una nota del tablero a otra columna, buscándola por su título. "
+                "Para cuando el señor Persus diga que ha terminado algo, que se pone "
+                "con ello o que lo tira. El título no tiene que ser exacto, pero si "
+                "encajan dos notas la ventana no moverá ninguna. La papelera no borra: "
+                "de ahí se recupera, y borrar de verdad lo hace él en la pantalla."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "titulo": {"type": "string", "description": "El título de la nota."},
+                    "columna": {
+                        "type": "string",
+                        "enum": ["sin_hacer", "en_proceso", "completadas", "papelera"],
+                        "description": "La columna de destino.",
+                    },
+                },
+                "required": ["titulo", "columna"],
+            },
         },
         {
             "name": "buscar_en_memoria",
@@ -705,6 +755,34 @@ async def _ejecutar_herramienta(nombre: str, argumentos: dict[str, Any]) -> str:
     if nombre == "consultar_tareas":
         # Lo mismo, y por lo mismo. Ver `tareas.py`.
         return await asyncio.to_thread(tareas.resumen, cfg.directorio_datos)
+
+    if nombre in ("crear_tarea", "mover_tarea"):
+        # No se escribe el tablero desde aquí: se le pide a la ventana, que es
+        # su único escritor. Ver el punto 3 de la cabecera de `tareas.py`.
+        accion = "crear" if nombre == "crear_tarea" else "mover"
+        try:
+            orden = await asyncio.to_thread(
+                tareas.encolar,
+                cfg.directorio_datos,
+                accion,
+                str(argumentos.get("titulo", "") or ""),
+                columna=str(argumentos.get("columna", "") or ""),
+                detalle=str(argumentos.get("detalle", "") or ""),
+            )
+        except ValueError as error:
+            return f"No se ha pedido nada: {error}."
+        destino = orden.get("columna")
+        if accion == "crear":
+            return (
+                f"Pedido a la app: clavar «{orden['titulo']}»"
+                + (f" en {destino}" if destino else "")
+                + ". Se hará en cuanto la ventana esté abierta; si lo está, en segundos."
+            )
+        return (
+            f"Pedido a la app: mover «{orden['titulo']}» a {destino}. Se hará en cuanto "
+            "la ventana esté abierta; si lo está, en segundos. Si hay más de una nota "
+            "con ese nombre no moverá ninguna."
+        )
 
     if nombre == "consultar_agenda":
         peticion: dict[str, Any] = {"accion": "proximos"}

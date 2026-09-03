@@ -15,8 +15,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   ALMACEN,
-  anadir, borrar, crear, cuenta, deColumna, diasDesde, editar, foto, guardar,
-  haceCuanto, leer, mover, restaurar, resumen, tirar, vaciarPapelera,
+  anadir, aplicarOrden, borrar, crear, crearDeFuera, cuenta, deColumna,
+  diasDesde, editar, foto, guardar, haceCuanto, leer, mover, moverDeFuera,
+  porTitulo, restaurar, resumen, tirar, vaciarPapelera,
   type Columna, type Datos,
 } from '../src/lib/tareas';
 
@@ -321,5 +322,120 @@ describe('lo que Perseo lee', () => {
     // almacén, y el espejo del núcleo recibe exactamente este texto.
     const d = conFechas([{ titulo: 'comprar pan', columna: 'sin_hacer', dias: 0 }]);
     expect(resumen(d, ahora)).toContain('1 sin hacer');
+  });
+});
+
+/**
+ * Lo que Perseo escribe.
+ *
+ * Aquí hay un segundo escritor sobre el tablero, y eso es lo que se vigila: que
+ * escriba donde debe, que no mueva la nota equivocada cuando dos se parecen, y
+ * que una orden mal formada —vienen por HTTP, de fuera de esta ventana— se
+ * cuente en vez de aplicarse a medias.
+ */
+describe('lo que Perseo escribe', () => {
+  beforeEach(() => {
+    const caja = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => caja.get(k) ?? null,
+      setItem: (k: string, v: string) => { caja.set(k, v); },
+      removeItem: (k: string) => { caja.delete(k); },
+      clear: () => caja.clear(),
+    });
+    guardar({ tareas: [] });
+  });
+
+  it('clava la nota y la deja guardada', () => {
+    const dicho = crearDeFuera({ titulo: '  Llamar al fontanero  ', detalle: 'el del bajo' });
+
+    expect(dicho).toContain('Llamar al fontanero');
+    const [t] = leer().tareas;
+    expect(t.titulo).toBe('Llamar al fontanero');
+    expect(t.detalle).toBe('el del bajo');
+    expect(t.columna).toBe('sin_hacer');
+  });
+
+  it('no clava nada en la papelera: nacer en la basura no es nacer', () => {
+    crearDeFuera({ titulo: 'x', columna: 'papelera' });
+    expect(leer().tareas[0].columna).toBe('sin_hacer');
+  });
+
+  it('una nota sin título no se clava', () => {
+    expect(crearDeFuera({ titulo: '   ' })).toContain('No se ha clavado');
+    expect(leer().tareas).toEqual([]);
+  });
+
+  it('encuentra la nota aunque él la diga sin tildes ni mayúsculas', () => {
+    guardar({ tareas: [crear({ titulo: 'Revisar el Presupuesto Anual' })] });
+    expect(porTitulo(leer(), 'revisar el presupuesto anual')).not.toBeNull();
+    expect(porTitulo(leer(), 'REVISAR EL')).not.toBeNull();
+    expect(porTitulo(leer(), 'presupuesto')).not.toBeNull();
+
+    guardar({ tareas: [crear({ titulo: 'Llamar a Jesús' })] });
+    expect(porTitulo(leer(), 'llamar a jesus')).not.toBeNull();
+  });
+
+  it('con dos notas que encajan no mueve ninguna', () => {
+    guardar({
+      tareas: [crear({ titulo: 'Llamar al fontanero' }), crear({ titulo: 'Llamar al seguro' })],
+    });
+    expect(porTitulo(leer(), 'llamar')).toBe('ambigua');
+
+    const dicho = moverDeFuera('llamar', 'completadas');
+    expect(dicho).toContain('más de una');
+    expect(cuenta(leer(), 'completadas')).toBe(0);
+  });
+
+  it('no resucita lo que él tiró aunque el título encaje', () => {
+    guardar({ tareas: [{ ...crear({ titulo: 'Comprar pan' }), columna: 'papelera' }] });
+    expect(porTitulo(leer(), 'comprar pan')).toBeNull();
+    expect(moverDeFuera('comprar pan', 'en_proceso')).toContain('No hay ninguna nota');
+  });
+
+  it('mueve por título y lo cuenta', () => {
+    guardar({ tareas: [crear({ titulo: 'El panel' })] });
+
+    expect(moverDeFuera('el panel', 'completadas')).toContain('completadas');
+    expect(leer().tareas[0].columna).toBe('completadas');
+    // Y moverla adonde ya está no es un fallo, pero se dice.
+    expect(moverDeFuera('el panel', 'completadas')).toContain('ya estaba');
+  });
+
+  it('a la papelera se dice que se recupera, porque se recupera', () => {
+    guardar({ tareas: [crear({ titulo: 'Comprar pan' })] });
+    const dicho = moverDeFuera('comprar pan', 'papelera');
+
+    expect(dicho).toContain('no se ha borrado');
+    expect(leer().tareas[0].columna).toBe('papelera');
+    expect(restaurar(leer(), leer().tareas[0].id).tareas[0].columna).toBe('sin_hacer');
+  });
+
+  it('una nota que no existe se dice, no se inventa', () => {
+    expect(moverDeFuera('la que no está', 'completadas')).toContain('No hay ninguna nota');
+  });
+
+  describe('las órdenes que llegan de fuera de la ventana', () => {
+    it('crea y mueve', () => {
+      aplicarOrden({ accion: 'crear', titulo: 'Comprar pan', detalle: 'integral' });
+      expect(leer().tareas[0].detalle).toBe('integral');
+
+      aplicarOrden({ accion: 'mover', titulo: 'comprar pan', columna: 'en_proceso' });
+      expect(leer().tareas[0].columna).toBe('en_proceso');
+    });
+
+    it('una orden sin columna válida no toca nada', () => {
+      guardar({ tareas: [crear({ titulo: 'Comprar pan' })] });
+
+      expect(aplicarOrden({ accion: 'mover', titulo: 'comprar pan', columna: 'inventada' }))
+        .toContain('no se ha tocado nada');
+      expect(leer().tareas[0].columna).toBe('sin_hacer');
+    });
+
+    it('una orden que no se entiende se cuenta y no se aplica', () => {
+      expect(aplicarOrden({ accion: 'borrar', titulo: 'Comprar pan' }))
+        .toContain('Orden desconocida');
+      expect(aplicarOrden(null)).toContain('Orden desconocida');
+      expect(leer().tareas).toEqual([]);
+    });
   });
 });

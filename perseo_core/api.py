@@ -735,6 +735,18 @@ async def _tareas_ver(peticion: web.Request) -> web.Response:
     )
 
 
+async def _tareas_recoger(peticion: web.Request) -> web.Response:
+    """La ventana recoge lo que Perseo le pidió hacer con el tablero.
+
+    Va por POST y no por GET porque vacía la cola: una ruta que cambia el estado
+    del servidor no puede ser una lectura, aunque lo que devuelva se parezca a
+    una. Ver `tareas.recoger` para por qué se entrega sin acuse de recibo.
+    """
+    cfg = peticion.app[CLAVE_CFG]
+    pendientes = await asyncio.to_thread(tareas.recoger, cfg.directorio_datos)
+    return web.json_response({"ordenes": pendientes})
+
+
 async def _biometria_estado(peticion: web.Request) -> web.Response:
     """Perfiles, progreso de aprendizaje y qué motores hay hoy.
 
@@ -1024,6 +1036,7 @@ def crear_app(cfg: almacen.Configuracion, bus: Bus, router: Router) -> web.Appli
             web.get("/habitos", _habitos_ver),
             web.post("/tareas", _tareas_espejo),
             web.get("/tareas", _tareas_ver),
+            web.post("/tareas/recoger", _tareas_recoger),
             web.get("/biometria", _biometria_estado),
             web.post("/biometria/voz", _biometria_voz),
             web.post("/biometria/cara", _biometria_cara),

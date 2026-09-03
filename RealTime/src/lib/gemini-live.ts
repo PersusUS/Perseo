@@ -58,7 +58,13 @@ import {
 } from './aviso-llamada';
 import { bloqueCenso, type PerfilConocido } from './quien-hay';
 import { resumenGuardado } from './habitos';
-import { resumenGuardado as resumenTareas } from './tareas';
+import {
+  COLUMNAS as COLUMNAS_TAREAS,
+  crearDeFuera as crearTarea,
+  moverDeFuera as moverTarea,
+  resumenGuardado as resumenTareas,
+  type Columna as ColumnaTarea,
+} from './tareas';
 
 /**
  * Modelo de la Fase C. Se baja del 3.1 a propósito: el 3.1 **no soporta audio
@@ -118,6 +124,11 @@ const PLANIFICACION: Record<string, FunctionResponseScheduling> = {
   // preguntar «¿qué tengo pendiente?» y que la lista llegue treinta segundos
   // después es no haberla preguntado.
   consultar_tareas: FunctionResponseScheduling.INTERRUPT,
+  // Clavar y mover son escrituras en el `localStorage` de esta ventana: pasan
+  // en el acto y se ven en el corcho al momento. Que la confirmación llegue
+  // detrás de otra frase haría dudar de si se hizo.
+  crear_tarea: FunctionResponseScheduling.INTERRUPT,
+  mover_tarea: FunctionResponseScheduling.INTERRUPT,
 };
 
 export class GeminiLiveClient {
@@ -665,6 +676,54 @@ ${censo}`;
                 parameters: { type: Type.OBJECT, properties: {}, required: [] }
               },
               {
+                // Escribir en el tablero, no solo leerlo. Pedido por el señor
+                // Persus el 2026-09-03: apuntar una tarea mientras habla es lo
+                // que hace que no se le olvide, y parar la conversación para ir
+                // a la pantalla es exactamente lo que no quiere hacer.
+                name: "crear_tarea",
+                behavior: Behavior.NON_BLOCKING,
+                description: "Clava una nota nueva en el tablero de tareas del señor Persus. Úsala cuando te pida apuntar algo, o cuando en la conversación aparezca algo que él dice que tiene que hacer. El título es corto y en infinitivo o imperativo, como lo escribiría él («Llamar al fontanero»), y el detalle es para lo que no cabe en el título — no repitas ahí el título. Se clava en «sin hacer» salvo que él diga otra cosa. Es inmediato y reversible: de la papelera se recupera, así que no pidas permiso para apuntar. NO la uses para recordarte cosas a ti: el tablero es suyo.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    titulo: {
+                      type: Type.STRING,
+                      description: "El título de la nota, corto. Es lo que se lee en el corcho."
+                    },
+                    detalle: {
+                      type: Type.STRING,
+                      description: "Lo que no cabe en el título: con quién, para cuándo, qué hace falta. Vacío si no hay nada que añadir."
+                    },
+                    columna: {
+                      type: Type.STRING,
+                      enum: ["sin_hacer", "en_proceso", "completadas"],
+                      description: "Dónde se clava. Sin nada, «sin_hacer». Usa «en_proceso» solo si él dice que ya está con ello."
+                    }
+                  },
+                  required: ["titulo"]
+                }
+              },
+              {
+                name: "mover_tarea",
+                behavior: Behavior.NON_BLOCKING,
+                description: "Mueve una nota del tablero a otra columna, buscándola por su título. Úsala cuando el señor Persus diga que ya ha terminado algo (a «completadas»), que se pone con ello («en_proceso»), o que lo tira («papelera»). El título no tiene que ser exacto: se busca sin tildes ni mayúsculas y basta con que empiece igual — pero si encajan dos notas no se mueve ninguna y te lo dirá, y entonces pregúntale a cuál se refiere. La papelera no borra: de ahí se recupera. Para borrar de verdad tiene que ir él a la pantalla.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    titulo: {
+                      type: Type.STRING,
+                      description: "El título de la nota, tal como él la ha llamado."
+                    },
+                    columna: {
+                      type: Type.STRING,
+                      enum: ["sin_hacer", "en_proceso", "completadas", "papelera"],
+                      description: "La columna de destino."
+                    }
+                  },
+                  required: ["titulo", "columna"]
+                }
+              },
+              {
                 // La puerta de extensión (N-3): lo que no tenga herramienta
                 // propia puede estar en un servidor MCP configurado.
                 name: "listar_mcp",
@@ -1135,6 +1194,30 @@ ${censo}`;
         response = { result: resumenTareas() };
       } catch (e: any) {
         response = { error: `No se pudo leer el tablero de tareas: ${e}` };
+      }
+    } else if (name === 'crear_tarea' || name === 'mover_tarea') {
+      // Escrituras, y también aquí dentro: el tablero está en el
+      // `localStorage` de esta ventana y esta ventana es donde corre esto. La
+      // pantalla, si está abierta, se entera sola —`aplicarDeFuera` avisa— y el
+      // espejo del núcleo sale con el cambio siguiente.
+      try {
+        const columna = COLUMNAS_TAREAS.includes(args?.columna)
+          ? (args.columna as ColumnaTarea)
+          : undefined;
+        response = {
+          result:
+            name === 'crear_tarea'
+              ? crearTarea({
+                  titulo: String(args?.titulo ?? ''),
+                  detalle: String(args?.detalle ?? ''),
+                  columna,
+                })
+              : columna
+                ? moverTarea(String(args?.titulo ?? ''), columna)
+                : 'No se ha movido nada: hace falta decir a qué columna.',
+        };
+      } catch (e: any) {
+        response = { error: `No se pudo tocar el tablero de tareas: ${e}` };
       }
     } else {
       try {
