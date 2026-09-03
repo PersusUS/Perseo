@@ -41,7 +41,7 @@ from typing import Any
 
 from aiohttp import web
 
-from . import almacen, biometria, dev, estado, grafo, habitos, politica, proyectos
+from . import almacen, biometria, dev, estado, grafo, habitos, politica, proyectos, tareas
 from .agentes import REGISTRO, Router
 from .bus import Bus
 
@@ -704,6 +704,37 @@ async def _habitos_ver(peticion: web.Request) -> web.Response:
     )
 
 
+async def _tareas_espejo(peticion: web.Request) -> web.Response:
+    """La ventana deja aquí su copia del tablero de tareas.
+
+    Gemela de `_habitos_espejo`: el corcho vive en el `localStorage` de la app y
+    esta ruta es cómo el núcleo se entera de él. El cuerpo trae el texto YA
+    redactado por la ventana, y el núcleo no vuelve a contar nada (ver
+    `tareas.py`): dos contabilidades del mismo tablero acaban discrepando, y
+    entonces ninguna de las dos vale.
+    """
+    cuerpo = await _cuerpo_json(peticion)
+    texto = str(cuerpo.get("texto", "")).strip()
+    if not texto:
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "Falta 'texto'"}), content_type="application/json"
+        )
+    cfg = peticion.app[CLAVE_CFG]
+    foto = cuerpo.get("foto")
+    copia = await asyncio.to_thread(
+        tareas.guardar, cfg.directorio_datos, texto, foto if isinstance(foto, dict) else None
+    )
+    return web.json_response({"sellado": copia["sellado"]})
+
+
+async def _tareas_ver(peticion: web.Request) -> web.Response:
+    """Lo último que mandó la ventana, con el aviso delante si viene vieja."""
+    cfg = peticion.app[CLAVE_CFG]
+    return web.json_response(
+        {"resumen": await asyncio.to_thread(tareas.resumen, cfg.directorio_datos)}
+    )
+
+
 async def _biometria_estado(peticion: web.Request) -> web.Response:
     """Perfiles, progreso de aprendizaje y qué motores hay hoy.
 
@@ -991,6 +1022,8 @@ def crear_app(cfg: almacen.Configuracion, bus: Bus, router: Router) -> web.Appli
             web.post("/confianza", _cambiar_confianza),
             web.post("/habitos", _habitos_espejo),
             web.get("/habitos", _habitos_ver),
+            web.post("/tareas", _tareas_espejo),
+            web.get("/tareas", _tareas_ver),
             web.get("/biometria", _biometria_estado),
             web.post("/biometria/voz", _biometria_voz),
             web.post("/biometria/cara", _biometria_cara),

@@ -29,11 +29,12 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 
 import {
   COLORES, NOMBRES_COLUMNA,
-  anadir, borrar, crear, deColumna, editar, guardar, haceCuanto, leer, mover,
-  restaurar, tirar, vaciarPapelera,
+  anadir, borrar, crear, deColumna, editar, foto, guardar, haceCuanto, leer,
+  mover, restaurar, resumen, tirar, vaciarPapelera,
   type Color, type Columna, type Datos, type Tarea,
 } from '../lib/tareas';
 import '../styles/tareas.css';
@@ -52,6 +53,12 @@ const UMBRAL = 5;
  *  llenar por abajo — no hay forma de llegar con la nota en la mano. */
 const BORDE_SCROLL = 48;
 const PASO_SCROLL = 12;
+
+/** Cuánto se espera, sin que nadie toque nada, antes de mandarle la copia al
+ *  núcleo. Igual que en los hábitos: arrastrar una nota cambia el estado
+ *  decenas de veces en un segundo y cada cambio sería un POST; con la espera,
+ *  un arrastre entero manda uno. */
+const ESPERA_ESPEJO = 2000;
 
 /** El gesto en curso. `activo` distingue el clic del arrastre; hasta que no se
  *  supera el umbral, la nota no se ha despegado del corcho. */
@@ -207,6 +214,26 @@ export const Tareas: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
    *  el estado de React que ve `soltar` es el del render donde nació el gesto. */
   const datosRef = useRef(datos);
   useEffect(() => { datosRef.current = datos; }, [datos]);
+
+  /** Y una copia al núcleo, para que Perseo lo sepa también fuera de la llamada.
+   *
+   *  El tablero vive en el `localStorage` de esta ventana, que es lo correcto
+   *  —mover una nota no puede depender de que el núcleo esté encendido— y a la
+   *  vez deja fuera a media casa: el Perseo de la llamada corre AQUÍ y lo lee
+   *  sin más, pero el chat escrito y los agentes son Python y no ven dentro de
+   *  un navegador. Esto es el puente, y va en una sola dirección: nadie mueve
+   *  notas desde el núcleo (ver `perseo_core/tareas.py`).
+   *
+   *  Si falla, se calla: el núcleo apagado es un estado normal de esta app, y
+   *  un aviso rojo por no haber podido mandar una copia que nadie ha pedido
+   *  sería alarmar por nada. El cambio siguiente la manda otra vez. */
+  useEffect(() => {
+    const t = setTimeout(() => {
+      invoke('tareas_espejo', { texto: resumen(datos), foto: foto(datos) })
+        .catch(e => console.debug('[Tareas] El núcleo no recogió la copia:', e));
+    }, ESPERA_ESPEJO);
+    return () => clearTimeout(t);
+  }, [datos]);
 
   const aplicar = useCallback((cambio: (d: Datos) => Datos) => {
     setDatos(previos => {

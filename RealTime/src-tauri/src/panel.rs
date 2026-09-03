@@ -348,6 +348,24 @@ pub async fn habitos_espejo(app: AppHandle, texto: String, foto: Value) -> Resul
     mandar(&app, "/habitos", json!({ "texto": texto, "foto": foto })).await
 }
 
+/// Deja en el nucleo una copia del tablero de tareas.
+///
+/// Mismo reparto que los habitos y por el mismo motivo: el corcho vive en el
+/// `localStorage` de esta ventana —mover una nota no puede depender de que el
+/// nucleo este encendido— y el chat escrito, el triaje y los agentes son
+/// Python y no ven dentro de un navegador.
+///
+/// Lo que viaja es el texto ya redactado, no las notas: quien cuenta es
+/// `src/lib/tareas.ts` y nadie mas (ver `perseo_core/tareas.py`).
+///
+/// Un fallo aqui tampoco es un fallo de la pantalla: con el nucleo apagado el
+/// señor Persus sigue moviendo sus notas y la copia sale con el cambio
+/// siguiente. Por eso el frontend se traga el error en vez de enseñarlo.
+#[tauri::command]
+pub async fn tareas_espejo(app: AppHandle, texto: String, foto: Value) -> Result<Value, String> {
+    mandar(&app, "/tareas", json!({ "texto": texto, "foto": foto })).await
+}
+
 /// Enciende o apaga el modo confianza.
 #[tauri::command]
 pub async fn panel_confianza(app: AppHandle, minutos: Option<f64>) -> Result<Value, String> {

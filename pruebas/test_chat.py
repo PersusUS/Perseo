@@ -26,7 +26,7 @@ def test_las_herramientas_estan_completas_y_con_forma() -> None:
     nombres = {d["name"] for d in chat._declaraciones()}
     esperadas = {
         "situacion_actual", "consultar_correo", "detalle_correo",
-        "consultar_agenda", "consultar_habitos",
+        "consultar_agenda", "consultar_habitos", "consultar_tareas",
         "buscar_en_memoria", "leer_nota", "guardar_recuerdo",
         "buscar_en_web", "leer_pagina", "controlar_pc", "encargar_codigo",
         "consultar_trabajo",

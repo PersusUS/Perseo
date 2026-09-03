@@ -48,7 +48,7 @@ from typing import Any, AsyncGenerator
 
 import aiohttp
 
-from . import almacen, correo_lectura, habitos, identidad, politica
+from . import almacen, correo_lectura, habitos, identidad, politica, tareas
 from .agentes import registrar
 
 logger = logging.getLogger(__name__)
@@ -153,6 +153,10 @@ asunto y clase real. detalle_correo(id) trae el extracto de uno. NUNCA \
 hables del buzón sin pasar por aquí.
 - consultar_agenda(horas?): el calendario próximo.
 - consultar_habitos: cómo va su seguimiento de hábitos este mes —casillas, rachas, lo que hoy le falta—. NUNCA supongas cómo va sin pasar por aquí.
+- consultar_tareas: su tablero de tareas —lo que tiene entre manos con su \
+detalle, lo que lleva días parado, los pendientes y lo cerrado esta semana—. \
+Para «¿qué tengo que hacer?» o cuando pida ayuda para organizarse. NUNCA te \
+inventes qué tiene pendiente.
 - buscar_en_memoria(texto, carpeta?) / leer_nota(ruta) / guardar_recuerdo(entidad, \
 contexto?, descripcion_visual?): la memoria a largo plazo, que son las notas \
 del vault de Obsidian **del señor Persus**. El vault tiene dos zonas:
@@ -261,6 +265,17 @@ def _declaraciones() -> list[dict[str, Any]]:
                 "porcentaje, lo que hoy le falta, las rachas vivas y las medias de "
                 "ánimo y motivación. Es de solo lectura: marcar es cosa suya, en la "
                 "pantalla de hábitos de la app."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "consultar_tareas",
+            "description": (
+                "El tablero de tareas del señor Persus: cuántas notas lleva sin hacer, "
+                "en proceso y completadas, qué tiene entre manos con el detalle de cada "
+                "nota, lo que lleva días parado sin moverse, los pendientes y lo cerrado "
+                "esta semana. Es de solo lectura: crear, mover y tirar notas es cosa "
+                "suya, en la pantalla de tareas de la app."
             ),
             "parameters": {"type": "object", "properties": {}},
         },
@@ -686,6 +701,10 @@ async def _ejecutar_herramienta(nombre: str, argumentos: dict[str, Any]) -> str:
         # Se lee del espejo en disco y no se encola: es un fichero de dos
         # kilobytes que ya está redactado. Ver `habitos.py`.
         return await asyncio.to_thread(habitos.resumen, cfg.directorio_datos)
+
+    if nombre == "consultar_tareas":
+        # Lo mismo, y por lo mismo. Ver `tareas.py`.
+        return await asyncio.to_thread(tareas.resumen, cfg.directorio_datos)
 
     if nombre == "consultar_agenda":
         peticion: dict[str, Any] = {"accion": "proximos"}

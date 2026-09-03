@@ -16,7 +16,8 @@
  *    poder probarla sin abrir un WebSocket.
  * 4. **Lo que se le cuenta al modelo sin que lo pida**: quién está delante
  *    (`quien-hay.ts`), quién empezó la llamada y qué avisos quedan pendientes
- *    (`aviso-llamada.ts`), y cómo va el seguimiento de hábitos (`habitos.ts`).
+ *    (`aviso-llamada.ts`), cómo va el seguimiento de hábitos (`habitos.ts`) y
+ *    por dónde va el tablero de tareas (`tareas.ts`).
  *
  * Quien toque esto: la interfaz va incrustada en el binario, así que editar
  * este fichero no cambia nada hasta `python commands/perseo.py actualizar`.
@@ -57,6 +58,7 @@ import {
 } from './aviso-llamada';
 import { bloqueCenso, type PerfilConocido } from './quien-hay';
 import { resumenGuardado } from './habitos';
+import { resumenGuardado as resumenTareas } from './tareas';
 
 /**
  * Modelo de la Fase C. Se baja del 3.1 a propósito: el 3.1 **no soporta audio
@@ -112,6 +114,10 @@ const PLANIFICACION: Record<string, FunctionResponseScheduling> = {
   // de red que esperar, así que la respuesta corta lo que se esté diciendo en
   // vez de hacer cola detrás de ello.
   consultar_habitos: FunctionResponseScheduling.INTERRUPT,
+  // El tablero está en el mismo `localStorage` y por el mismo motivo corta:
+  // preguntar «¿qué tengo pendiente?» y que la lista llegue treinta segundos
+  // después es no haberla preguntado.
+  consultar_tareas: FunctionResponseScheduling.INTERRUPT,
 };
 
 export class GeminiLiveClient {
@@ -649,6 +655,16 @@ ${censo}`;
                 parameters: { type: Type.OBJECT, properties: {}, required: [] }
               },
               {
+                // El corcho estaba en la pantalla de tareas y en ningún sitio
+                // más, igual que los hábitos antes de tener herramienta: él
+                // veía sus notas y Perseo no. Con esto el tablero deja de ser
+                // un tablón y pasa a ser algo sobre lo que se puede preguntar.
+                name: "consultar_tareas",
+                behavior: Behavior.NON_BLOCKING,
+                description: "El tablero de tareas del señor Persus tal como está ahora mismo: cuántas notas lleva sin hacer, en proceso y completadas, qué tiene entre manos con el detalle de cada nota, lo que lleva días parado sin moverse, los pendientes y lo cerrado esta semana. Úsala siempre que pregunte qué tiene que hacer, por dónde va, qué se le está atascando, o cuando te pida ayuda para organizarse o elegir por dónde seguir: sin ella te lo estarías inventando. Es de solo lectura y no gasta cuota; no pidas permiso para llamarla. NO sirve para crear, mover ni tirar notas — eso lo hace él en la pantalla de tareas.",
+                parameters: { type: Type.OBJECT, properties: {}, required: [] }
+              },
+              {
                 // La puerta de extensión (N-3): lo que no tenga herramienta
                 // propia puede estar en un servidor MCP configurado.
                 name: "listar_mcp",
@@ -1109,6 +1125,16 @@ ${censo}`;
         response = { result: resumenGuardado() };
       } catch (e: any) {
         response = { error: `No se pudo leer el seguimiento de hábitos: ${e}` };
+      }
+    } else if (name === 'consultar_tareas') {
+      // Mismo caso que los hábitos: el tablero vive en el `localStorage` de
+      // esta ventana, y esta ventana es donde corre este código. El núcleo
+      // tiene su copia porque el chat escrito no puede leer este almacén, no
+      // porque haga falta pasar por él para leerlo desde aquí.
+      try {
+        response = { result: resumenTareas() };
+      } catch (e: any) {
+        response = { error: `No se pudo leer el tablero de tareas: ${e}` };
       }
     } else {
       try {
