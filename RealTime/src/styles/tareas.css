@@ -1,0 +1,663 @@
+/* El corcho: la pantalla de tareas (clases `tb-`).
+
+   Esta hoja es la única de la casa que usa color y textura de verdad, y es a
+   propósito: el señor Persus pidió un corcho, y un corcho gris con rectángulos
+   planos no es un corcho. Todo lo demás —rótulos, cifras, botones, la escala de
+   espacios— sigue siendo el de la app, para que la pantalla se note parte de la
+   casa y no una isla.
+
+   ── De qué está hecho el corcho ─────────────────────────────────────────────
+   Ni una imagen: la CSP del binario solo deja `self` y una textura en base64
+   engorda el bundle para siempre. El aglomerado son cuatro capas de gradientes
+   de tamaños que no son múltiplos entre sí —26, 41, 17 y 63 px—: el ojo no
+   encuentra la repetición y lee grano en vez de papel pintado. Encima, un
+   viñeteado radial que oscurece los bordes, que es lo que hace que parezca una
+   superficie iluminada de frente y no un color plano.
+
+   El marco es de madera y va en su propia caja, no como `border` del corcho:
+   la sombra del marco tiene que caer SOBRE el corcho y un borde no proyecta
+   hacia dentro.
+
+   Los papeles están elegidos para pantalla NEGRA: tonos apagados con letra
+   oscura encima. Los amarillos de saturación de oficina, aquí, deslumbran. */
+
+/* ═══════════════════════════════════════
+   LA PANTALLA
+   ═══════════════════════════════════════ */
+
+.tb {
+  /* Tapa la llamada entera menos el riel de la ventana, igual que el panel y
+     que los hábitos: minimizar y esconder siguen alcanzables desde aquí. */
+  position: absolute;
+  inset: 38px 0 0;
+  z-index: 6;
+  background: #0b0908;
+  display: flex;
+  flex-direction: column;
+  gap: var(--e3);
+  padding: var(--e4);
+  overflow: hidden;
+}
+/* Mientras hay una nota en el aire, nada de la pantalla se selecciona:
+   arrastrar por encima de un título y dejar media frase en azul es lo que
+   delata que esto no es un objeto sino texto. */
+.tb-en-vuelo, .tb-en-vuelo * { user-select: none; cursor: grabbing !important; }
+
+.tb-cabecera {
+  display: flex;
+  align-items: center;
+  gap: var(--e3);
+  flex-wrap: wrap;
+}
+.tb-cabecera h2 {
+  font-size: var(--t-cuerpo);
+  font-weight: 300;
+  text-transform: uppercase;
+  letter-spacing: .4em;
+  /* La versalita con mucho tracking deja hueco muerto al final de la palabra:
+     se le descuenta para que el título quede a plomo con lo de al lado. */
+  margin: 0 calc(var(--e2) - .4em) 0 0;
+  color: var(--fg);
+}
+
+.tb-alta { display: flex; gap: var(--e2); flex: 1; min-width: 240px; }
+.tb-alta input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--t-lectura);
+  padding: var(--e2) var(--e3);
+}
+.tb-alta input::placeholder { color: var(--fg-dim); }
+.tb-alta input:focus { border-color: var(--fg-muted); outline: none; }
+
+.tb-alta button,
+.tb-volver,
+.tb-zona-accion {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font: inherit;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: .18em;
+  padding: var(--e2) var(--e3);
+  cursor: pointer;
+  transition: color var(--paso), border-color var(--paso), background var(--paso);
+}
+.tb-alta button:hover:not(:disabled),
+.tb-volver:hover,
+.tb-zona-accion:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--fg-muted);
+  background: rgba(255, 255, 255, .05);
+}
+.tb-alta button:disabled, .tb-zona-accion:disabled { opacity: .35; cursor: default; }
+
+.tb-cuenta-total {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: .18em;
+  color: var(--fg-dim);
+}
+
+/* ═══════════════════════════════════════
+   EL MARCO Y EL CORCHO
+   ═══════════════════════════════════════ */
+
+.tb-marco {
+  flex: 1;
+  min-height: 0;
+  padding: 14px;
+  /* Vetas de madera: bandas verticales de anchos irregulares. Un degradado
+     regular se lee como plástico rayado; los cortes desiguales, como tabla. */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .07), rgba(0, 0, 0, .25)),
+    repeating-linear-gradient(
+      90deg,
+      #5a3a20 0 7px, #6a462a 7px 11px, #4e321b 11px 16px,
+      #634023 16px 23px, #4a2f1a 23px 27px
+    ),
+    #59381f;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, .55),
+    inset 0 1px 0 rgba(255, 220, 180, .25),
+    inset 0 -1px 0 rgba(0, 0, 0, .5);
+}
+
+.tb-corcho {
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--e2);
+  padding: var(--e3);
+  background-color: #6f5030;
+  background-image:
+    /* El viñeteado, primero para que quede por encima de todo lo demás. */
+    radial-gradient(125% 95% at 50% 36%, rgba(255, 228, 185, .12) 0%, rgba(0, 0, 0, .44) 100%),
+    /* EL GRANO, y aquí está el cambio. Antes eran retículas de puntos, y una
+       retícula —por muy tenue y por muy primos que fueran sus tamaños— se lee
+       como papel pintado en cuanto hay una zona vacía grande. Esto es ruido
+       fractal de verdad (`feTurbulence`), un SVG de trescientos bytes metido en
+       la propia hoja: sin fichero, sin base64 de una foto, y la CSP del binario
+       lo admite porque `img-src` deja `data:`.
+
+       Dos frecuencias, que es lo que tiene el aglomerado: una fina para la
+       viruta y otra muy baja para las manchas de tono. Se funden con
+       `background-blend-mode` en vez de taparse — superpuestas a pelo, el ruido
+       gris apagaría el marrón. */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='g' x='0' y='0'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.62' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23g)' opacity='0.78'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420'%3E%3Cfilter id='v' x='0' y='0'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.05' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='420' height='420' filter='url(%23v)' opacity='0.55'/%3E%3C/svg%3E"),
+    /* Manchas anchas y blandas: la iluminación desigual del tablero. */
+    radial-gradient(ellipse 62% 48% at 20% 16%, rgba(255, 226, 178, .13), transparent 70%),
+    radial-gradient(ellipse 58% 52% at 80% 74%, rgba(70, 42, 16, .26), transparent 72%),
+    radial-gradient(ellipse 48% 40% at 64% 20%, rgba(255, 220, 168, .08), transparent 75%);
+  background-size: 100% 100%, 190px 190px, 420px 420px, 100% 100%, 100% 100%, 100% 100%;
+  background-blend-mode: normal, overlay, soft-light, normal, normal, normal;
+  /* El corcho está HUNDIDO en el marco: la madera le da sombra por dentro. */
+  box-shadow:
+    inset 0 3px 10px rgba(0, 0, 0, .55),
+    inset 0 -2px 6px rgba(0, 0, 0, .35);
+}
+
+/* Las tres zonas. Separadas por una costura clara sobre el corcho y no por
+   cajas: en un tablero de verdad las zonas se marcan con una cinta, y una caja
+   con fondo propio taparía el grano que acabamos de dibujar. */
+.tb-zona {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e2);
+  min-height: 0;
+  padding: var(--e2) var(--e2) 0;
+  border-left: 1px dashed rgba(255, 235, 205, .16);
+  transition: background var(--paso);
+}
+.tb-zona:first-child { border-left: none; }
+/* La zona donde caería lo que llevas en la mano: se aclara el corcho, como si
+   le diera la luz. */
+.tb-zona-diana { background: rgba(255, 240, 210, .07); }
+
+/* El rótulo de la zona es una etiqueta de papel clavada al corcho, con su
+   sombra y su giro. Es lo que hace que se lea como algo puesto encima. */
+.tb-zona-cabecera {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+  padding: 6px var(--e2);
+  background: linear-gradient(180deg, #efe6d2, #ded2b8);
+  color: #3a2c17;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .45);
+  transform: rotate(-.4deg);
+}
+.tb-zona:nth-child(2) .tb-zona-cabecera { transform: rotate(.5deg); }
+.tb-zona:nth-child(3) .tb-zona-cabecera { transform: rotate(-.7deg); }
+.tb-zona-cabecera h3 {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .18em;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tb-zona-icono { display: inline-flex; opacity: .7; }
+.tb-zona-icono svg { width: 14px; height: 14px; }
+.tb-zona-cuenta {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  margin-left: auto;
+  opacity: .6;
+}
+.tb-zona-accion {
+  padding: 2px 6px;
+  border-color: rgba(58, 44, 23, .35);
+  color: rgba(58, 44, 23, .75);
+  letter-spacing: .12em;
+}
+.tb-zona-accion:hover:not(:disabled) {
+  color: #3a2c17;
+  border-color: #3a2c17;
+  background: rgba(58, 44, 23, .10);
+}
+
+/* Las notas no se apilan en una columna de una sola nota de ancho: se reparten
+   por la zona y bajan de fila cuando no caben, como en un corcho de verdad.
+   Una nota estirada al ancho de la zona deja de parecer un papel adhesivo y
+   pasa a ser una fila de tabla. */
+.tb-pila {
+  display: flex;
+  flex-flow: row wrap;
+  align-content: flex-start;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Sitio para el giro de las notas y para la chincheta de la primera fila. */
+  padding: 12px 6px var(--e5);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 235, 205, .3) transparent;
+}
+
+.tb-vacia {
+  width: 100%;
+  margin: auto 0;
+  text-align: center;
+  font-size: var(--t-mini);
+  color: rgba(255, 240, 215, .38);
+  font-style: italic;
+}
+
+/* El hueco que se abre delante de la nota que va a caer. Es un rectángulo
+   hundido en el corcho y no una raya: enseña el tamaño de lo que viene. */
+.tb-hueco {
+  width: var(--tb-nota);
+  height: var(--tb-nota);
+  flex: none;
+  border: 1px dashed rgba(255, 245, 225, .55);
+  background: rgba(0, 0, 0, .22);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, .4);
+}
+
+/* ═══════════════════════════════════════
+   LAS NOTAS
+   ═══════════════════════════════════════ */
+
+/* El lado del papel. Un post-it es cuadrado: en cuanto se estira deja de
+   leerse como una nota escrita a mano. */
+.tb { --tb-nota: 186px; }
+
+.tb-nota {
+  position: relative;
+  flex: none;
+  width: var(--tb-nota);
+  height: var(--tb-nota);
+  overflow: hidden;
+  padding: 20px var(--e3) var(--e3);
+  cursor: grab;
+  transform: rotate(var(--giro, 0deg));
+  /* El papel no es plano: un poco más claro arriba, donde le da la luz, y la
+     sombra baja y dura que lo despega del corcho. */
+  background-image: linear-gradient(165deg, rgba(255, 255, 255, .30), rgba(0, 0, 0, .08) 60%);
+  box-shadow: 2px 4px 7px rgba(0, 0, 0, .45);
+  transition: transform var(--paso), box-shadow var(--paso), filter var(--paso);
+  /* La esquina de abajo, despegada. */
+  clip-path: polygon(0 0, 100% 0, 100% 93%, 91% 100%, 0 100%);
+  /* Sin esto, arrastrar con el dedo mueve la columna en vez de la nota. */
+  touch-action: none;
+}
+.tb-nota:hover,
+.tb-nota:focus-visible {
+  transform: rotate(0deg) scale(1.035);
+  box-shadow: 4px 8px 16px rgba(0, 0, 0, .6);
+  z-index: 2;
+}
+
+/* La chincheta: un círculo con brillo arriba a la izquierda y su sombrita
+   debajo. A 12 px es todo lo que hace falta para que se lea como metal. */
+.tb-chincheta {
+  position: absolute;
+  top: 6px; left: 50%;
+  width: 12px; height: 12px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #ffffff 0%, #d2d2d2 32%, #6d6d6d 72%, #2f2f2f 100%);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, .6), inset 0 -1px 1px rgba(0, 0, 0, .35);
+}
+
+.tb-nota-titulo {
+  margin: 0;
+  font-size: var(--t-lectura);
+  line-height: 1.35;
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.tb-nota-detalle {
+  margin: var(--e2) 0 0;
+  font-size: var(--t-mini);
+  line-height: 1.4;
+  opacity: .72;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+/* El pie va pegado al filo de abajo del papel y no detrás del texto: con
+   títulos de largos distintos, la fecha bailaba de altura en cada nota. */
+.tb-nota-pie {
+  position: absolute;
+  left: var(--e3);
+  bottom: 10px;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: .06em;
+  opacity: .5;
+}
+
+/* La nota en el aire. Va en `position: fixed` porque tiene que poder pasar por
+   encima del marco y llegar hasta la papelera, que está fuera del corcho; y
+   sin `pointer-events` porque si no, lo único que hay bajo el cursor es ella y
+   no se sabría nunca sobre qué se está soltando. */
+.tb-volando {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  overflow: hidden;
+  padding: 20px var(--e3) var(--e3);
+  transform: rotate(-4deg) scale(1.06);
+  background-image: linear-gradient(165deg, rgba(255, 255, 255, .32), rgba(0, 0, 0, .08) 60%);
+  box-shadow: 10px 18px 28px rgba(0, 0, 0, .6);
+  clip-path: polygon(0 0, 100% 0, 100% 93%, 91% 100%, 0 100%);
+  overflow: hidden;
+}
+
+/* Los cinco papeles. La letra la fija el papel, no el tema: sobre amarillo
+   claro, el blanco de la casa no se lee. */
+.tb-papel-amarillo { background-color: #e6d089; color: #2b2410; }
+.tb-papel-menta    { background-color: #a9cdae; color: #16261a; }
+.tb-papel-cielo    { background-color: #a5c3dc; color: #142430; }
+.tb-papel-rosa     { background-color: #ddaab0; color: #2e1a1d; }
+.tb-papel-lila     { background-color: #c0b2d8; color: #221b30; }
+
+/* ═══════════════════════════════════════
+   LA PAPELERA
+   ═══════════════════════════════════════ */
+
+/* En el rincón de abajo a la derecha, ladeada y casi fuera de la pantalla: en
+   reposo solo asoma un canto, porque una papelera no es lo que uno viene a
+   mirar. Entra entera al pasar por encima, mientras hay una nota en el aire
+   —para eso está— y mientras el cajón esté abierto.
+
+   La inclinación es del cubo entero y se conserva en todos los estados: una
+   papelera que se endereza al acercarse delata que es un botón. Solo cambia
+   cuánto asoma. */
+.tb-papelera {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 118px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transform: translate(46%, 30%) rotate(-45deg);
+  transition: transform .26s cubic-bezier(.34, 1.3, .5, 1), filter var(--paso);
+  filter: drop-shadow(-4px 6px 10px rgba(0, 0, 0, .6));
+}
+/* El rincón sensible. Va aparte del cubo y SIN girar, que es lo que arregla dos
+   cosas a la vez: perseguir con el ratón un canto tumbado de quince píxeles era
+   puntería, y una zona de ratón que gira con el dibujo cubre en pantalla una
+   diagonal que nadie ve ni entiende. Aquí el trozo de esquina es un rectángulo
+   de los de siempre.
+
+   Lleva ella el `data-papelera`, así que es también donde se suelta para tirar:
+   apuntar a la boca del cubo con una nota en la mano no es un gesto, es una
+   prueba de pulso. Se queda en el rincón y no crece más: lo que se tira se
+   recupera del cajón, pero el susto no. */
+.tb-papelera-zona {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  width: 170px;
+  height: 130px;
+}
+/* Asomada: entra en la pantalla entera, con su rótulo, y se endereza un poco
+   —lo justo para leerse, no tanto como para parecer un botón—. */
+.tb-papelera-zona:hover .tb-papelera,
+.tb-papelera-alerta,
+.tb-papelera-abierta { transform: translate(-6%, 2%) rotate(-45deg); }
+/* Con la nota justo encima se levanta del todo y se enciende. */
+.tb-papelera-apuntada {
+  transform: translate(-12%, -4%) rotate(-45deg) scale(1.06);
+  filter: drop-shadow(0 0 14px rgba(255, 240, 200, .55));
+}
+
+.tb-papelera svg {
+  width: 100%;
+  display: block;
+  fill: #9aa0a6;
+  stroke: #2c3034;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.tb-papelera-estria { stroke: rgba(44, 48, 52, .45); stroke-width: 2.5; fill: none; }
+
+/* La tapa gira desde su bisagra izquierda. El origen va en coordenadas del
+   propio dibujo (80×96), que es lo que hace `transform-box: view-box`. */
+.tb-papelera-tapa {
+  transform-box: view-box;
+  transform-origin: 10px 30px;
+  transition: transform .22s cubic-bezier(.34, 1.3, .5, 1);
+}
+.tb-papelera-apuntada .tb-papelera-tapa { transform: rotate(-38deg) translateY(-3px); }
+.tb-papelera-abierta .tb-papelera-tapa { transform: rotate(-22deg); }
+
+/* El rótulo, tumbado con el cubo, se leería de canto: se le devuelve el giro
+   para que salga a plomo a la izquierda de la boca, que es el único lado que
+   queda dentro de la pantalla. Y solo aparece cuando la papelera entra: en
+   reposo no hay sitio, y un rótulo suelto en el rincón no se entiende. */
+.tb-papelera-rotulo {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  opacity: 0;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: .18em;
+  color: var(--fg-dim);
+  transition: color var(--paso), opacity var(--paso);
+}
+.tb-papelera-zona:hover .tb-papelera-rotulo,
+.tb-papelera-alerta .tb-papelera-rotulo,
+.tb-papelera-abierta .tb-papelera-rotulo,
+.tb-papelera-apuntada .tb-papelera-rotulo { opacity: 1; }
+.tb-papelera-zona:hover .tb-papelera-rotulo,
+.tb-papelera-apuntada .tb-papelera-rotulo { color: var(--fg); }
+.tb-papelera-rotulo b { color: #e6d089; font-weight: 400; }
+
+/* El cajón: lo que hay dentro de la papelera, encima de ella. */
+.tb-cajon {
+  position: absolute;
+  right: var(--e5);
+  bottom: 96px;
+  z-index: 31;
+  width: min(380px, calc(100% - var(--e5) * 2));
+  max-height: 46%;
+  overflow-y: auto;
+  background: #14110f;
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .7);
+  padding: var(--e3);
+}
+.tb-cajon header { display: flex; align-items: center; gap: var(--e2); margin-bottom: var(--e2); }
+.tb-cajon h3 {
+  flex: 1;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: .2em;
+  color: var(--fg-muted);
+}
+.tb-cajon ul {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: var(--e1);
+}
+.tb-cajon li {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+  padding: var(--e2);
+  border: 1px solid var(--border);
+}
+.tb-cajon-titulo {
+  flex: 1;
+  font-size: var(--t-mini);
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tb-mota { width: 10px; height: 10px; flex: none; }
+.tb-cajon button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.tb-cajon button:hover:not(:disabled) { color: var(--fg); border-color: var(--fg-muted); }
+.tb-cajon button:disabled { opacity: .35; cursor: default; }
+.tb-cajon .tb-peligro { border-color: rgba(190, 60, 60, .6); color: #d98080; }
+.tb-cajon .tb-peligro:hover { background: rgba(150, 30, 30, .3); color: #ffffff; }
+
+/* ═══════════════════════════════════════
+   LA FICHA
+   ═══════════════════════════════════════ */
+
+.tb-velo {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--e5);
+  background: rgba(0, 0, 0, .72);
+  backdrop-filter: blur(2px);
+}
+
+/* La ficha es la misma nota, ampliada: mismo papel, misma sombra, sin girar.
+   Abrir el detalle en una tarjeta gris del sistema rompería la ilusión justo
+   en el momento en que uno está mirando de cerca. */
+.tb-ficha {
+  width: min(540px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: var(--e5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--e3);
+  background-image: linear-gradient(165deg, rgba(255, 255, 255, .28), rgba(0, 0, 0, .06) 60%);
+  box-shadow: 6px 14px 34px rgba(0, 0, 0, .72);
+  clip-path: polygon(0 0, 100% 0, 100% 97%, 96% 100%, 0 100%);
+}
+
+.tb-ficha-titulo,
+.tb-ficha-detalle {
+  background: rgba(255, 255, 255, .28);
+  border: 1px solid rgba(0, 0, 0, .18);
+  color: inherit;
+  font: inherit;
+  padding: var(--e2) var(--e3);
+  width: 100%;
+}
+.tb-ficha-titulo { font-size: var(--t-cuerpo); font-weight: 600; }
+.tb-ficha-detalle {
+  font-size: var(--t-lectura);
+  line-height: 1.5;
+  min-height: 140px;
+  resize: vertical;
+}
+.tb-ficha-titulo::placeholder,
+.tb-ficha-detalle::placeholder { color: currentColor; opacity: .45; }
+.tb-ficha-titulo:focus,
+.tb-ficha-detalle:focus { outline: none; border-color: rgba(0, 0, 0, .45); }
+
+.tb-ficha-fila { display: flex; align-items: center; gap: var(--e3); flex-wrap: wrap; }
+.tb-ficha-rotulo {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: .18em;
+  opacity: .6;
+  min-width: 72px;
+}
+
+.tb-colores { display: flex; gap: var(--e2); }
+.tb-color {
+  width: 22px; height: 22px;
+  border: 1px solid rgba(0, 0, 0, .3);
+  cursor: pointer;
+  padding: 0;
+  transition: transform var(--paso), box-shadow var(--paso);
+}
+.tb-color:hover { transform: scale(1.12); }
+.tb-color-puesto { box-shadow: 0 0 0 2px rgba(0, 0, 0, .55); }
+
+.tb-mover { display: flex; gap: var(--e2); flex-wrap: wrap; }
+.tb-mover button,
+.tb-ficha-pie button {
+  background: rgba(255, 255, 255, .25);
+  border: 1px solid rgba(0, 0, 0, .25);
+  color: inherit;
+  font: inherit;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  padding: var(--e2) var(--e3);
+  cursor: pointer;
+  transition: background var(--paso), border-color var(--paso);
+}
+.tb-mover button:hover,
+.tb-ficha-pie button:hover { background: rgba(255, 255, 255, .5); }
+.tb-mover button[aria-pressed="true"] {
+  background: rgba(0, 0, 0, .78);
+  border-color: rgba(0, 0, 0, .78);
+  color: #ffffff;
+}
+
+.tb-ficha-fechas {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: .06em;
+  opacity: .55;
+}
+
+.tb-ficha-pie {
+  display: flex;
+  gap: var(--e2);
+  flex-wrap: wrap;
+  padding-top: var(--e3);
+  border-top: 1px solid rgba(0, 0, 0, .18);
+}
+.tb-ficha-cerrar { margin-left: auto; }
+/* Lo que no tiene vuelta atrás se ve venir: rojo sobre papel, que aquí es el
+   único sitio donde el color significa peligro. */
+.tb-ficha .tb-peligro {
+  background: rgba(140, 20, 20, .85);
+  border-color: rgba(90, 10, 10, .9);
+  color: #ffffff;
+}
+.tb-ficha .tb-peligro:hover { background: rgba(170, 25, 25, .95); }
+
+/* Ventanas estrechas: tres columnas dejan de caber mucho antes que el corcho.
+   Se reparten en dos y una, que sigue siendo un tablero. */
+@media (max-width: 780px) {
+  .tb-corcho { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .tb-corcho { grid-template-columns: 1fr; }
+  .tb-papelera { width: 64px; }
+}

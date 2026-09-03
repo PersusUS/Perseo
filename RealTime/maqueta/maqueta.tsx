@@ -12,7 +12,8 @@
  * más. Si algo se ve bien aquí y mal en la app, es que la app lleva otra cosa.
  *
  * Qué pantalla se sirve lo decide la almohadilla de la dirección, no un cambio
- * de fichero: el panel en `/`, los hábitos en `#habitos` y `#habitos-plantilla`
+ * de fichero: el panel en `/`, el corcho de tareas en `#tareas`, los hábitos en
+ * `#habitos` y `#habitos-plantilla`
  * —que son la misma pantalla en sus dos aires y por eso están las dos, para
  * poder comprobar de un vistazo que un color nuevo se declaró en los dos
  * bloques de variables y no solo en el negro—.
@@ -22,6 +23,7 @@ import ReactDOM from "react-dom/client";
 
 import { Habitos } from "../src/components/Habitos";
 import { Panel } from "../src/components/Panel";
+import { Tareas } from "../src/components/Tareas";
 import "../src/styles/globals.css";
 
 /** Datos de mentira para los hábitos: un mes a medio hacer.
@@ -84,6 +86,7 @@ function Maqueta() {
     return () => removeEventListener("hashchange", cambio);
   }, []);
 
+  if (ruta.startsWith("#tareas")) return <Tareas onCerrar={() => {}} />;
   if (ruta.startsWith("#habitos")) {
     sembrar();
     return <Habitos onCerrar={() => {}} estilo={ruta === "#habitos-plantilla" ? "plantilla" : "perseo"} />;

@@ -23,6 +23,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 interface Props {
   onPanel: () => void;
   onHabitos: () => void;
+  onTareas: () => void;
   onAjustes: () => void;
   onProyectos: () => void;
   proyectosAbiertos: boolean;
@@ -63,7 +64,7 @@ function ventanaActual() {
 }
 
 export const Marco: React.FC<Props> = ({
-  onPanel, onHabitos, onAjustes, onProyectos, proyectosAbiertos,
+  onPanel, onHabitos, onTareas, onAjustes, onProyectos, proyectosAbiertos,
 }) => {
   const [completa, setCompleta] = useState(true);
 
@@ -98,6 +99,9 @@ export const Marco: React.FC<Props> = ({
               preferencias—. Agruparlas por lo que hacen y no por cuándo se
               añadieron. */}
           <button className="marco-boton" onClick={onHabitos}>Hábitos</button>
+          {/* El corcho va pegado a Hábitos por lo mismo: las dos son pantallas
+              suyas —lo que él lleva a mano— y no ventanas al núcleo. */}
+          <button className="marco-boton" onClick={onTareas}>Tareas</button>
           <button className="marco-boton" onClick={onAjustes}>Ajustes</button>
         </div>
 

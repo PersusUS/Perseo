@@ -27,6 +27,7 @@ import { PerseoFace } from './components/PerseoFace';
 import { Settings } from './components/Settings';
 import { Panel } from './components/Panel';
 import { Habitos } from './components/Habitos';
+import { Tareas } from './components/Tareas';
 import { Proyectos } from './components/Proyectos';
 import { Escenografia, comoReloj, type Fase } from './components/Escenografia';
 import { Marco } from './components/Marco';
@@ -107,6 +108,7 @@ function App() {
   // src-tauri/src/panel.rs para por qué no puede ser la interfaz del núcleo.
   const [showPanel, setShowPanel] = useState(false);
   const [showHabitos, setShowHabitos] = useState(false);
+  const [showTareas, setShowTareas] = useState(false);
   // El aire de la pantalla de hábitos vive aquí y no dentro de ella para que
   // Ajustes pueda cambiarlo en caliente, igual que hace con el aspecto del
   // modo live. Ver components/Settings.tsx.
@@ -702,6 +704,10 @@ function App() {
           cortan. Ver components/Habitos.tsx. */}
       {showHabitos && <Habitos onCerrar={() => setShowHabitos(false)} estilo={estiloHabitos} />}
 
+      {/* El corcho de tareas, con la misma regla: tapa la llamada, no la
+          corta. Ver components/Tareas.tsx. */}
+      {showTareas && <Tareas onCerrar={() => setShowTareas(false)} />}
+
       {/* La llamada entrante de un subagente: timbre y decisión del señor
           Persus. Nada de entrar solos — él acepta o lo deja para después, y
           si no contesta a tiempo cae sola a llamadas pendientes. */}
@@ -750,6 +756,7 @@ function App() {
       <Marco
         onPanel={() => setShowPanel(true)}
         onHabitos={() => setShowHabitos(true)}
+        onTareas={() => setShowTareas(true)}
         onAjustes={() => setShowSettings(true)}
         // La pestaña vuelve a estar viva (encargo del señor Persus, 2026-08-24):
         // pulsar una ficha arranca los servidores del proyecto — modo
