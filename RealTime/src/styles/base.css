@@ -21,11 +21,18 @@
 
   --bg: #000000;
   --fg: #ffffff;
-  --fg-muted: #999999;
-  --fg-dim: #555555;
-  --surface: rgba(255, 255, 255, 0.06);
-  --surface-hover: rgba(255, 255, 255, 0.18);
-  --border: rgba(255, 255, 255, 0.15);
+  /* Los grises van altos a proposito. La pantalla se usa tambien al aire
+     libre, y ahi un texto al 55%% de blanco sobre negro deja de leerse: la luz
+     ambiente sube el negro de la pantalla y se come el escalon. Toda la hoja
+     esta subida sobre la misma curva (alfa elevado a 0.78), que aclara mucho
+     lo tenue y casi nada lo que ya era claro, para que la jerarquia siga
+     siendo la misma y solo cambie el suelo. El peso base tambien sube de 300 a
+     400: la linea fina es lo primero que desaparece al sol. */
+  --fg-muted: #ababab;
+  --fg-dim: #8a8a8a;
+  --surface: rgba(255, 255, 255, 0.111);
+  --surface-hover: rgba(255, 255, 255, 0.262);
+  --border: rgba(255, 255, 255, 0.228);
   --danger: #ffffff;
   --call-green: #ffffff;
   /* Sin fuentes de fuera: la CSP del binario (`tauri.conf.json`) solo deja
@@ -93,6 +100,6 @@ html, body, #root {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font);
-  font-weight: 300;
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
 }

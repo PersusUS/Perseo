@@ -63,9 +63,9 @@
 /* ── El aire de la plantilla: los colores de la hoja ─────────────────────── */
 
 .hb[data-estilo="plantilla"] {
-  --hb-fondo: #eae7e2;
+  --hb-fondo: #eeece8;
   --hb-panel: #ffffff;
-  --hb-panel-alto: #f4f2ee;
+  --hb-panel-alto: #f5f5f2;
   /* El taupe de las cabeceras, que es el color de la hoja. */
   --hb-jefe: #8a8177;
   --hb-jefe-tinta: #ffffff;
@@ -89,7 +89,7 @@
   /* Muy claro a propósito: es el hueco de la barra, no la barra. Con el taupe
      de antes, un mes a cero enseñaba treinta y una columnas llenas de gris y
      se leía como «todo hecho», que es lo contrario de lo que decía. */
-  --hb-carril: #efece7;
+  --hb-carril: #f2f0ec;
   /* La tipografía de la hoja de la que salió esto. Aptos es la de Office desde
      2024 y Calibri la de antes; las dos son estrechas y de altura de x pequeña,
      que es lo que hace que una tabla de 31 columnas se lea como una tabla. Inter
@@ -117,28 +117,28 @@
 
 .hb[data-estilo="perseo"] {
   --hb-fondo: #000000;
-  --hb-panel: rgba(255, 255, 255, .04);
-  --hb-panel-alto: rgba(255, 255, 255, .07);
-  --hb-jefe: rgba(255, 255, 255, .1);
+  --hb-panel: rgba(255, 255, 255, 0.081);
+  --hb-panel-alto: rgba(255, 255, 255, 0.126);
+  --hb-jefe: rgba(255, 255, 255, 0.166);
   --hb-jefe-tinta: #ffffff;
-  --hb-borde: rgba(255, 255, 255, .14);
-  --hb-borde-vivo: rgba(255, 255, 255, .34);
+  --hb-borde: rgba(255, 255, 255, 0.216);
+  --hb-borde-vivo: rgba(255, 255, 255, 0.431);
   --hb-tinta: #ffffff;
-  --hb-tinta-suave: #9a9a9a;
-  --hb-tinta-tenue: #5a5a5a;
+  --hb-tinta-suave: #acacac;
+  --hb-tinta-tenue: #717171;
   --hb-acento: #ffffff;
   --hb-marca-fondo: #ffffff;
   --hb-marca-tinta: #000000;
-  --hb-marca-filo: rgba(255, 255, 255, .3);
-  --hb-finde: rgba(255, 255, 255, .04);
+  --hb-marca-filo: rgba(255, 255, 255, 0.391);
+  --hb-finde: rgba(255, 255, 255, 0.081);
   --hb-hoy: rgba(251, 191, 36, .16);
   --hb-hoy-filo: #fbbf24;
   --hb-serie-a: #ffffff;
-  --hb-serie-a-relleno: rgba(255, 255, 255, .16);
+  --hb-serie-a-relleno: rgba(255, 255, 255, 0.239);
   --hb-serie-b: #fbbf24;
   --hb-serie-b-relleno: rgba(251, 191, 36, .16);
-  --hb-cruz: rgba(255, 255, 255, .07);
-  --hb-carril: rgba(255, 255, 255, .08);
+  --hb-cruz: rgba(255, 255, 255, 0.126);
+  --hb-carril: rgba(255, 255, 255, 0.139);
   /* El aire negro se queda con la de la app, que es a la que acompaña. */
   --hb-fuente: var(--font);
   --hb-fuente-rotulo: var(--mono);
@@ -241,13 +241,13 @@
 }
 .hb-titulo-mes {
   display: flex; align-items: center; gap: 2px;
-  font-size: var(--hb-t-mini); opacity: .9;
+  font-size: var(--hb-t-mini); opacity: 0.921;
 }
 .hb-titulo-mes button {
   width: 16px; height: 16px; flex: none;
   background: none; border: none; color: inherit;
   font: inherit; font-size: 14px; line-height: 1; cursor: pointer; padding: 0;
-  opacity: .65; transition: opacity var(--paso);
+  opacity: 0.715; transition: opacity var(--paso);
 }
 .hb-titulo-mes button:hover { opacity: 1; }
 
@@ -312,8 +312,8 @@
    gráfica cuenta lo mismo, pero se distingue de un vistazo lo que ya pasó. */
 .hb-col.finde .hb-col-relleno { background: var(--hb-tinta-tenue); }
 .hb-col.hoy .hb-col-relleno { background: var(--hb-hoy-filo); }
-.hb-col.futuro { opacity: .4; }
-.hb-col:hover .hb-col-relleno { opacity: .72; }
+.hb-col.futuro { opacity: 0.489; }
+.hb-col:hover .hb-col-relleno { opacity: 0.774; }
 .hb-col-rotulo {
   font-size: var(--hb-t-micro); color: var(--hb-tinta-tenue);
   margin-top: 2px; white-space: nowrap; overflow: hidden; max-width: 100%;
@@ -453,7 +453,7 @@
   display: block; margin-top: 2px;
   font-family: var(--font); font-weight: 400;
   text-transform: none; letter-spacing: 0;
-  font-size: var(--hb-t-micro); opacity: .72; line-height: 1.2;
+  font-size: var(--hb-t-micro); opacity: 0.774; line-height: 1.2;
 }
 
 .hb-th-semana {
@@ -561,7 +561,7 @@
 .hb-td-celda { height: var(--hb-fila); background: var(--hb-panel); line-height: 0; vertical-align: middle; }
 .hb-td-celda.finde { background: var(--hb-finde); }
 .hb-td-celda.hoy { background: var(--hb-hoy); }
-.hb-td-celda.futuro .hb-marca { opacity: .45; }
+.hb-td-celda.futuro .hb-marca { opacity: 0.536; }
 
 /* La diana es la CELDA, no el cuadrito. El botón medía 16 px en el centro de un
    hueco de 26 × 27 y fallar el clic era lo normal; ahora llena la celda y el

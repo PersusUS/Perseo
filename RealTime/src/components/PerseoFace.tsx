@@ -23,12 +23,12 @@ const Anillos: React.FC = () => (
   <>
     <div className="anillo g1">
       <svg viewBox="0 0 340 340" aria-hidden>
-        <circle className="anillo-traz" cx="170" cy="170" r="168" strokeWidth="1" strokeDasharray="2 10" opacity=".5" />
+        <circle className="anillo-traz" cx="170" cy="170" r="168" strokeWidth="1" strokeDasharray="2 10" opacity=".58" />
       </svg>
     </div>
     <div className="anillo g2">
       <svg viewBox="0 0 340 340" aria-hidden>
-        <g className="anillo-traz" strokeWidth="1.2" opacity=".7">
+        <g className="anillo-traz" strokeWidth="1.2" opacity=".76">
           <path d="M170 24 a146 146 0 0 1 126 73" />
           <path d="M296 243 a146 146 0 0 1 -126 73" />
           <path d="M44 243 a146 146 0 0 1 0 -146" />
@@ -37,7 +37,7 @@ const Anillos: React.FC = () => (
     </div>
     <div className="anillo g3">
       <svg viewBox="0 0 340 340" aria-hidden>
-        <g className="anillo-traz" strokeWidth="2" opacity=".55">
+        <g className="anillo-traz" strokeWidth="2" opacity=".63">
           <path d="M170 46 l0 12" />
           <path d="M170 282 l0 12" />
           <path d="M46 170 l12 0" />

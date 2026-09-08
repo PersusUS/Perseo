@@ -32,7 +32,7 @@
   border-bottom: 1px solid var(--border);
 }
 .pnl-cabecera h2 {
-  font-size: var(--t-cuerpo); font-weight: 300;
+  font-size: var(--t-cuerpo); font-weight: 400;
   text-transform: uppercase; letter-spacing: .4em;
   /* La versalita con mucho tracking deja un hueco muerto al final de la
      palabra: se le quita para que el título quede a plomo con lo de abajo. */
@@ -56,7 +56,7 @@
 }
 /* La pestaña que no está elegida también contesta al ratón: sin esto, media
    barra parece deshabilitada. */
-.pnl-pestanas button:hover { color: var(--fg-muted); background: rgba(255, 255, 255, .03); }
+.pnl-pestanas button:hover { color: var(--fg-muted); background: rgba(255, 255, 255, 0.065); }
 .pnl-pestanas button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--fg); }
 .pnl-cuenta { color: #fbbf24; letter-spacing: 0; }
 
@@ -78,7 +78,7 @@
 }
 /* Un filo que se aclara al pasar por encima. No hay sombra ni elevación: en
    una pantalla negra, la única profundidad honesta es el borde. */
-.pnl-tarjeta:hover { border-color: rgba(255, 255, 255, .28); }
+.pnl-tarjeta:hover { border-color: rgba(255, 255, 255, 0.37); }
 .pnl-piezas { display: flex; flex-direction: column; gap: 14px; }
 .pnl-cabeza {
   display: flex; align-items: center; gap: 8px;
@@ -124,7 +124,7 @@
 
 /* Un correo resuelto se apaga y baja al fondo de su cajón, pero sigue ahí:
    esconderlo quitaría la forma de ver que el triaje se ha comido algo. */
-.pnl-correo.resuelto { opacity: .4; }
+.pnl-correo.resuelto { opacity: 0.489; }
 .pnl-correo.resuelto .pnl-asunto { text-decoration: line-through; }
 .pnl-acciones-correo { display: flex; gap: 6px; margin-top: 6px; align-items: center; flex-wrap: wrap; }
 .pnl-acciones-correo button {
@@ -179,7 +179,7 @@
 }
 .pnl-form textarea { resize: vertical; min-height: 90px; }
 .pnl-form input:focus, .pnl-form textarea:focus {
-  outline: none; border-color: rgba(255, 255, 255, .35);
+  outline: none; border-color: rgba(255, 255, 255, 0.441);
 }
 .pnl-form button {
   font: inherit; font-size: 12px; font-weight: 400; cursor: pointer;
@@ -209,7 +209,7 @@
    no un titular. En proporcional, 214 y 999 medían distinto y la fila entera
    se recolocaba sola cada vez que terminaba un trabajo. */
 .pnl-cifra b {
-  font-family: var(--mono); font-size: var(--t-cifra); font-weight: 200;
+  font-family: var(--mono); font-size: var(--t-cifra); font-weight: 300;
   line-height: 1; letter-spacing: -.02em;
 }
 
@@ -263,7 +263,7 @@
   /* Acento monocromo de la máquina: filo blanco a la izquierda y superficie
      un punto más presente. Se distingue de un vistazo sin sacar el color
      de su sitio — que es de los puntos de estado. */
-  background: rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, 0.153);
   border: 1px solid var(--border);
   border-left: 3px solid var(--fg);
 }
@@ -321,7 +321,7 @@
    claro sobre pantalla negra y delata el descuido antes que nada. */
 .pnl-chat-hilo, .pnl-chat-lista, .pnl-cuerpo-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, .18) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.262) transparent;
 }
 .pnl-chat-hilo::-webkit-scrollbar, .pnl-chat-lista::-webkit-scrollbar,
 .pnl-cuerpo-scroll::-webkit-scrollbar { width: 10px; }
@@ -329,7 +329,7 @@
 .pnl-cuerpo-scroll::-webkit-scrollbar-track { background: transparent; }
 .pnl-chat-hilo::-webkit-scrollbar-thumb, .pnl-chat-lista::-webkit-scrollbar-thumb,
 .pnl-cuerpo-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, 0.239);
   border: 3px solid var(--bg);
 }
 
@@ -352,7 +352,7 @@
   display: flex; align-items: baseline; gap: 8px;
   font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em;
   color: var(--fg);
-  opacity: .85;
+  opacity: 0.881;
 }
 .pnl-turno-hora { font-size: 10.5px; color: var(--fg-muted); font-variant-numeric: tabular-nums; letter-spacing: .06em; }
 
@@ -381,7 +381,7 @@
 .pnl-burbuja.pensando span:nth-child(2), .pnl-pensando span:nth-child(2) { animation-delay: .18s; }
 .pnl-burbuja.pensando span:nth-child(3), .pnl-pensando span:nth-child(3) { animation-delay: .36s; }
 @keyframes pnl-pulso {
-  0%, 100% { opacity: .25; transform: translateY(0); }
+  0%, 100% { opacity: 0.339; transform: translateY(0); }
   50% { opacity: 1; transform: translateY(-2px); }
 }
 
@@ -391,7 +391,7 @@
   padding: 12px 0 2px;
   border-top: 1px solid var(--border);
 }
-.pnl-chat-form input:disabled { opacity: .55; }
+.pnl-chat-form input:disabled { opacity: 0.627; }
 
 /* ── Encargos (antes «Agentes») ─────────────────────────────────────────── */
 .pnl-agentes-form { display: flex; flex-direction: column; gap: 10px; }
@@ -401,7 +401,7 @@
   background: var(--surface); color: var(--fg); padding: 11px 14px;
 }
 .pnl-agentes-form select:focus, .pnl-agentes-form textarea:focus {
-  outline: none; border-color: rgba(255, 255, 255, .35);
+  outline: none; border-color: rgba(255, 255, 255, 0.441);
 }
 .pnl-agentes-form textarea { resize: vertical; min-height: 96px; }
 /* La lista desplegada la pinta el navegador, no esta hoja: `color-scheme: dark`
@@ -469,7 +469,7 @@
   background: transparent; border: 1px dashed var(--border);
   color: var(--fg-dim); padding: 8px 12px; font: inherit; font-size: 11px;
 }
-.pnl-ejemplo:hover { color: var(--fg); border-color: rgba(255, 255, 255, .4); }
+.pnl-ejemplo:hover { color: var(--fg); border-color: rgba(255, 255, 255, 0.489); }
 
 /* Cabecera de cada montón: en marcha, terminados. */
 .pnl-seccion {
@@ -491,8 +491,8 @@
   /* Una rejilla tan tenue que no se ve, pero se nota: le quita a la tarjeta el
      aspecto de rectángulo liso sin meter ni un elemento más en el DOM. */
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.061) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.061) 1px, transparent 1px);
   background-size: 22px 22px, 22px 22px;
 }
 
@@ -504,7 +504,7 @@
   width: 12px;
   height: 12px;
   pointer-events: none;
-  opacity: 0.5;
+  opacity: 0.582;
 }
 
 .pnl-hud::before {
@@ -558,14 +558,14 @@
   vector-effect: non-scaling-stroke;
 }
 
-.pnl-linea-area { fill: rgba(255, 255, 255, 0.07); stroke: none; }
+.pnl-linea-area { fill: rgba(255, 255, 255, 0.126); stroke: none; }
 
 .pnl-cita {
   display: flex;
   align-items: baseline;
   gap: 12px;
   padding: 5px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.126);
 }
 
 .pnl-cita:last-of-type { border-bottom: none; }
@@ -600,7 +600,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.pnl-lectura-sep { opacity: 0.4; }
+.pnl-lectura-sep { opacity: 0.489; }
 
 /* El punto que late. Un panel quieto y un panel colgado se ven igual. */
 .pnl-latido {
@@ -612,12 +612,12 @@
 }
 
 @keyframes latido {
-  0%, 100% { opacity: 0.25; }
+  0%, 100% { opacity: 0.339; }
   50% { opacity: 1; }
 }
 
 .pnl-linea-mitad {
-  stroke: rgba(255, 255, 255, 0.12);
+  stroke: rgba(255, 255, 255, 0.191);
   stroke-width: 1;
   stroke-dasharray: 3 5;
   vector-effect: non-scaling-stroke;
@@ -718,7 +718,7 @@
 }
 @keyframes pnl-late {
   0%, 100% { opacity: 1; }
-  50%      { opacity: .25; }
+  50%      { opacity: 0.339; }
 }
 
 /* ── Contraste (2026-08-24, mirando la maqueta) ──────────────────────────────
@@ -734,7 +734,7 @@
 
 /* Las cajas se distinguían del fondo solo por las esquinas. Un punto más de
    filo y de superficie: siguen siendo negras, pero ahora son cajas. */
-.pnl-tarjeta { border-color: rgba(255, 255, 255, .2); }
+.pnl-tarjeta { border-color: rgba(255, 255, 255, 0.285); }
 
 /* La línea de estado de arriba se partía en dos por columna estrecha teniendo
    media pantalla vacía al lado. */
