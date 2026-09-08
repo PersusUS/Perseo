@@ -54,6 +54,7 @@ import {
   cargarAjustesPersistidos,
   type AspectoLive,
   type EstiloHabitos,
+  type ModoMicro,
 } from './lib/config';
 
 // ── Types ──
@@ -115,6 +116,20 @@ function App() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
+  // Manos libres o pulsar para hablar (ModoMicro en lib/config.ts). Vive aquí
+  // y no dentro de Ajustes porque manda sobre la barra de controles: en
+  // «pulsar» el botón de silenciar deja el sitio al de hablar.
+  const [modoMicro, setModoMicro] = useState<ModoMicro>(defaultConfig.modoMicro);
+  // El modo con el que se ABRIÓ la sesión en curso. El ajuste puede cambiar a
+  // mitad de llamada y esa llamada sigue siendo la que era: el servidor solo
+  // acepta señales de turno si se le pidió con la detección apagada, así que
+  // sin esto la barra espaciadora hablaría con una sesión que no escucha.
+  const modoMicroRef = useRef<ModoMicro>(defaultConfig.modoMicro);
+  // Si el botón de hablar está pulsado AHORA MISMO. Se duplica en una
+  // referencia porque los atajos de teclado se registran una sola vez y
+  // leerían el valor del cierre — el de cuando se montaron.
+  const [pulsando, setPulsando] = useState(false);
+  const pulsandoRef = useRef(false);
   const [showSettings, setShowSettings] = useState(false);
   // El volumen NO es estado de React. Llega a 60 por segundo desde el
   // reproductor (`audio-player.ts` lo mide con un rAF), y con `useState` eso
@@ -224,6 +239,7 @@ function App() {
       if (state === 'connected') {
         if (sesionDesde.current === null) sesionDesde.current = Date.now();
         audioManager.start(); // Reactivar el micrófono al reconectar
+        armarMicro();
         if (defaultConfig.cameraEnabled) cameraManager.start();
         // Reconocimiento de personas: solo si está encendido en Ajustes. Se
         // rearma en cada reconexión porque 'disconnected' lo apaga siempre.
@@ -246,6 +262,10 @@ function App() {
         addTranscript('system', 'Conectado.');
         conectadoRef.current = true;
       } else if (state === 'disconnected' || state === 'error') {
+        // Un turno abierto que se queda a medias no se cierra solo: sin esto,
+        // el botón de hablar seguiría encendido sobre una llamada muerta.
+        pulsandoRef.current = false;
+        setPulsando(false);
         audioManager.stop();
         cameraManager.stop();
         screenManager.stop();
@@ -683,10 +703,52 @@ function App() {
     inicioEpisodio.current = conversacionRef.current.length;
     audioPlayer.initialize();
     audioManager.start();
+    armarMicro();
     geminiClient.connect();
   };
 
+  /**
+   * Deja el micrófono como pide el modo: de par en par en manos libres, mudo
+   * hasta que se pulse en «pulsar para hablar». Se llama al llamar y en cada
+   * reconexión, porque `audioManager.stop()` devuelve el paso abierto.
+   */
+  const armarMicro = () => {
+    const modo = defaultConfig.modoMicro;
+    modoMicroRef.current = modo;
+    setModoMicro(modo);
+    audioManager.transmitir(modo !== 'pulsar');
+    pulsandoRef.current = false;
+    setPulsando(false);
+  };
+
+  /** Se aprieta el botón de hablar: se avisa al modelo y se abre el paso. */
+  const empezarAHablar = () => {
+    if (modoMicroRef.current !== 'pulsar') return;
+    if (!conectadoRef.current || pulsandoRef.current) return;
+    pulsandoRef.current = true;
+    setPulsando(true);
+    // Y que ningún botón se quede con el foco mientras se habla: pulsar
+    // «Llamar» se lo deja al de colgar, y la barra espaciadora lo activaría
+    // por su cuenta. Cinturón además del `preventDefault` de las dos teclas.
+    const enfocado = document.activeElement as HTMLElement | null;
+    if (enfocado && enfocado.tagName === 'BUTTON') enfocado.blur();
+    // El aviso primero y el audio después: con la detección automática
+    // apagada, un trozo que llegue antes del `activityStart` se tira.
+    geminiClient.abrirTurno();
+    audioManager.transmitir(true);
+  };
+
+  /** Se suelta: se cierra el paso y se le dice al modelo que conteste. */
+  const dejarDeHablar = () => {
+    if (!pulsandoRef.current) return;
+    pulsandoRef.current = false;
+    setPulsando(false);
+    audioManager.transmitir(false);
+    geminiClient.cerrarTurno();
+  };
+
   const handleHangup = async () => {
+    dejarDeHablar();
     geminiClient.disconnect();
     audioManager.stop();
     audioPlayer.clearQueue();
@@ -711,6 +773,44 @@ function App() {
     }
     setTranscripts([]);
   };
+
+  // La barra espaciadora hace lo mismo que el botón, que es como se usa esto
+  // de verdad: mirando la pantalla y sin buscar el ratón. Se registra una sola
+  // vez y solo lee referencias, así que no se le queda ningún valor viejo.
+  useEffect(() => {
+    const escribiendo = (destino: EventTarget | null) => {
+      const el = destino as HTMLElement | null;
+      if (!el || !el.tagName) return false;
+      return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
+    };
+    const abajo = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.repeat || escribiendo(e.target)) return;
+      // Sin esto la barra además pulsa el botón que tenga el foco, y el
+      // teclado colgaba la llamada mientras se hablaba.
+      e.preventDefault();
+      empezarAHablar();
+    };
+    const arriba = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      // Y aquí otra vez, que es donde de verdad importa: un botón enfocado se
+      // activa con la barra en el KEYUP, no en el keydown, así que cancelar
+      // solo el keydown dejaba el click vivo — se hablaba, se soltaba y el
+      // teclado pulsaba «Colgar». Ver también el desenfoque de `empezarAHablar`.
+      if (!escribiendo(e.target)) e.preventDefault();
+      dejarDeHablar();
+    };
+    // Cambiar de ventana con la barra apretada dejaba el turno abierto para
+    // siempre: la tecla se suelta donde ya no lo oye nadie.
+    const fuera = () => dejarDeHablar();
+    window.addEventListener('keydown', abajo);
+    window.addEventListener('keyup', arriba);
+    window.addEventListener('blur', fuera);
+    return () => {
+      window.removeEventListener('keydown', abajo);
+      window.removeEventListener('keyup', arriba);
+      window.removeEventListener('blur', fuera);
+    };
+  }, []);
 
   const toggleMute = () => {
     if (isMuted) { audioManager.start(); setIsMuted(false); }
@@ -757,6 +857,9 @@ function App() {
     : connectionState === 'error' ? 'Error de enlace'
     : isMuted ? 'Silenciado'
     : isSpeaking ? 'Hablando'
+    // Pulsando, «Escuchando» sería mentira la mayor parte del tiempo: el
+    // micrófono está cerrado hasta que se aprieta, y la pantalla lo dice.
+    : isConnected && modoMicro === 'pulsar' ? (pulsando ? 'Le escucho' : 'Pulse para hablar')
     : isConnected ? 'Escuchando'
     : '';
 
@@ -945,9 +1048,29 @@ function App() {
       <div className="controls-bar">
         {isActive && (
           <>
-            <button className={`ctrl-btn ${isMuted ? 'muted' : ''}`} onClick={toggleMute} title={isMuted ? 'Activar micro' : 'Silenciar'}>
-              {isMuted ? <IconMicOff /> : <IconMic />}
-            </button>
+            {/* En «pulsar para hablar» el botón de silenciar no pinta nada: el
+                micrófono ya está cerrado de serie. Su sitio lo ocupa el de
+                hablar, que se mantiene apretado —o la barra espaciadora—. */}
+            {modoMicro === 'pulsar' ? (
+              <button
+                className={`ctrl-btn hablar ${pulsando ? 'pulsando' : ''}`}
+                onPointerDown={empezarAHablar}
+                onPointerUp={dejarDeHablar}
+                onPointerLeave={dejarDeHablar}
+                onPointerCancel={dejarDeHablar}
+                // El botón no es un botón de pulsar y soltar del teclado: la
+                // barra ya la escucha la ventana entera, y dejarle su
+                // comportamiento de siempre abría dos turnos por pulsación.
+                onKeyDown={e => e.preventDefault()}
+                title="Mantén pulsado para hablar (o la barra espaciadora)"
+              >
+                {pulsando ? <IconMic /> : <IconMicOff />}
+              </button>
+            ) : (
+              <button className={`ctrl-btn ${isMuted ? 'muted' : ''}`} onClick={toggleMute} title={isMuted ? 'Activar micro' : 'Silenciar'}>
+                {isMuted ? <IconMicOff /> : <IconMic />}
+              </button>
+            )}
             <button className={`ctrl-btn ${cameraStream ? 'active' : ''}`} onClick={toggleCamera} title="Cámara">
               {cameraStream ? <IconCamera /> : <IconCameraOff />}
             </button>
@@ -971,6 +1094,9 @@ function App() {
           llamadaActiva={isActive}
           onAspecto={setAspecto}
           onEstiloHabitos={setEstiloHabitos}
+          // Fuera de llamada el cambio se ve al momento; dentro no se toca la
+          // sesión viva — la abrió el modo anterior y así se queda.
+          onModoMicro={(modo) => { if (!isActive) { modoMicroRef.current = modo; setModoMicro(modo); } }}
         />
       )}
     </div>

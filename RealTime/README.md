@@ -25,8 +25,12 @@ Construida con React 19, TypeScript y Vite, empaquetada con Tauri 2.
   de empezar de cero.
 - **Audio proactivo**: puede callarse ante lo que no va con él, que hace falta con un
   micrófono siempre cerca.
-- **Ajustes que se quedan**: clave, voz, instrucciones del sistema y si se guardan las
-  conversaciones. Se persisten en el almacén local que gestiona Rust.
+- **Manos libres o pulsar para hablar**: en un sitio con ruido la detección automática
+  toma cualquier voz de fondo por una orden, así que en Ajustes se puede cerrar el
+  micrófono y abrirlo solo mientras se mantiene el botón —o la barra espaciadora—. El
+  modo viaja en el `setup` del socket, así que cambiarlo entra en la llamada siguiente.
+- **Ajustes que se quedan**: clave, voz, modo de micrófono, instrucciones del sistema y
+  si se guardan las conversaciones. Se persisten en el almacén local que gestiona Rust.
 
 ## Cómo habla con el núcleo
 

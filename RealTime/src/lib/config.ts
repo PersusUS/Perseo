@@ -32,6 +32,24 @@ export type PosicionRiel = Record<AspectoLive, { x: number; y: number }>;
  */
 export type EstiloHabitos = 'perseo' | 'plantilla';
 
+/**
+ * Cómo se le da la palabra a Perseo durante la llamada.
+ *
+ * - `manos-libres`: el servidor decide solo cuándo empieza y cuándo acaba una
+ *   frase (detección automática de voz). Es lo de siempre y no hay que tocar
+ *   nada para hablar.
+ * - `pulsar`: el micrófono va cerrado y solo se abre mientras se mantiene
+ *   pulsado el botón de hablar —o la barra espaciadora—. En un sitio con ruido
+ *   la detección automática toma por orden cualquier voz de fondo, y Perseo
+ *   contesta a quien no le ha hablado; pulsando, solo entra lo que se dice a
+ *   propósito.
+ *
+ * El modo se fija al ABRIR la sesión (`realtimeInputConfig` viaja en el setup
+ * del socket), así que cambiarlo con una llamada en curso no la altera: entra
+ * en la siguiente. Ver lib/gemini-live.ts.
+ */
+export type ModoMicro = 'manos-libres' | 'pulsar';
+
 export interface PerseoConfig {
   geminiApiKey: string;
   voiceName: string;
@@ -64,6 +82,8 @@ export interface PerseoConfig {
   posicionRiel: PosicionRiel;
   /** Con qué aire se dibuja la pantalla de hábitos. Ver EstiloHabitos. */
   estiloHabitos: EstiloHabitos;
+  /** Manos libres o pulsar para hablar. Ver ModoMicro. */
+  modoMicro: ModoMicro;
 }
 
 export const defaultConfig: PerseoConfig = {
@@ -91,6 +111,9 @@ export const defaultConfig: PerseoConfig = {
   // La plantilla, que es de donde salió la pantalla y lo que el señor Persus
   // quiere ver: 'mantén los colores'. El aire negro sigue en Ajustes.
   estiloHabitos: 'plantilla',
+  // De fábrica, manos libres: es una llamada, y en un despacho callado no hay
+  // nada que pulsar. El que trabaje con ruido alrededor lo cambia en Ajustes.
+  modoMicro: 'manos-libres',
   // El centro de la mitad izquierda, a la altura de la cara: el mismo punto
   // para los tres aspectos hasta que él arrastre cada uno a su sitio.
   posicionRiel: {
@@ -224,7 +247,7 @@ export const SYSTEM_PROMPT_POR_DEFECTO = defaultConfig.systemPrompt;
 export const VERSION_PROMPT = '2026-08-27-confirmaciones';
 
 /** Ajustes que se persisten en el almacén local que gestiona Rust. */
-const AJUSTES_PERSISTIDOS = ['voiceName', 'systemPrompt', 'saveHistoryEnabled', 'aspectoLive', 'pantallaAuto', 'identidadActivada', 'perfilPersus', 'posicionRiel', 'estiloHabitos'] as const;
+const AJUSTES_PERSISTIDOS = ['voiceName', 'systemPrompt', 'saveHistoryEnabled', 'aspectoLive', 'pantallaAuto', 'identidadActivada', 'perfilPersus', 'posicionRiel', 'estiloHabitos', 'modoMicro'] as const;
 
 /**
  * Carga los ajustes guardados sobre la configuración por defecto.

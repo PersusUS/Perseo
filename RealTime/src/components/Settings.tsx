@@ -25,6 +25,7 @@ import {
   SYSTEM_PROMPT_POR_DEFECTO,
   type AspectoLive,
   type EstiloHabitos,
+  type ModoMicro,
 } from '../lib/config';
 import {
   borrarPerfil,
@@ -46,6 +47,9 @@ interface Props {
   /** Ídem para el aire de la pantalla de hábitos. Misma regla que el aspecto:
    *  si hay que guardar para saber cómo queda, no es elegir, es apostar. */
   onEstiloHabitos?: (estilo: EstiloHabitos) => void;
+  /** Cambia la barra de controles al elegir el modo de micrófono. Con una
+   *  llamada en curso la ventana lo ignora: la sesión viva sigue como nació. */
+  onModoMicro?: (modo: ModoMicro) => void;
 }
 
 /** Los tres aspectos del modo live. Ver components/Escenografia.tsx. */
@@ -61,6 +65,20 @@ const ESTILOS_HABITOS: { valor: EstiloHabitos; nombre: string; que: string }[] =
   { valor: 'plantilla', nombre: 'Plantilla', que: 'El beige y el taupe de la hoja de la que salió la pantalla.' },
 ];
 
+/** Los dos modos de micrófono. Ver ModoMicro en lib/config.ts. */
+const MODOS_MICRO: { valor: ModoMicro; nombre: string; que: string }[] = [
+  {
+    valor: 'manos-libres',
+    nombre: 'Manos libres',
+    que: 'Perseo escucha siempre y contesta cuando detecta que has terminado.',
+  },
+  {
+    valor: 'pulsar',
+    nombre: 'Pulsar para hablar',
+    que: 'El micrófono va cerrado; se abre mientras mantienes el botón o la barra espaciadora.',
+  },
+];
+
 const VOCES: { valor: string; nombre: string; como: string }[] = [
   { valor: 'Charon', nombre: 'Charon', como: 'Muy grave' },
   { valor: 'Orus', nombre: 'Orus', como: 'Grave' },
@@ -69,7 +87,7 @@ const VOCES: { valor: string; nombre: string; como: string }[] = [
 ];
 
 export const Settings: React.FC<Props> = ({
-  onClose, llamadaActiva = false, onAspecto, onEstiloHabitos,
+  onClose, llamadaActiva = false, onAspecto, onEstiloHabitos, onModoMicro,
 }) => {
   const [voice, setVoice] = useState(defaultConfig.voiceName);
   const [prompt, setPrompt] = useState(defaultConfig.systemPrompt);
@@ -81,6 +99,7 @@ export const Settings: React.FC<Props> = ({
   const [perfilPersus, setPerfilPersus] = useState(defaultConfig.perfilPersus);
   const [aspecto, setAspecto] = useState<AspectoLive>(defaultConfig.aspectoLive);
   const [estiloHabitos, setEstiloHabitos] = useState<EstiloHabitos>(defaultConfig.estiloHabitos);
+  const [modoMicro, setModoMicro] = useState<ModoMicro>(defaultConfig.modoMicro);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
 
@@ -205,6 +224,7 @@ export const Settings: React.FC<Props> = ({
   // al pulsar la ficha, así que sin esto «Cancelar» dejaría el cambio hecho.
   const [aspectoOriginal] = useState<AspectoLive>(defaultConfig.aspectoLive);
   const [estiloHabitosOriginal] = useState<EstiloHabitos>(defaultConfig.estiloHabitos);
+  const [modoMicroOriginal] = useState<ModoMicro>(defaultConfig.modoMicro);
 
   const voiceCambiada = voice !== defaultConfig.voiceName;
   const hayClave = !!defaultConfig.geminiApiKey;
@@ -219,9 +239,15 @@ export const Settings: React.FC<Props> = ({
     onEstiloHabitos?.(valor);
   };
 
+  const elegirModoMicro = (valor: ModoMicro) => {
+    setModoMicro(valor);
+    onModoMicro?.(valor);
+  };
+
   const cerrarSinGuardar = () => {
     if (aspecto !== aspectoOriginal) onAspecto?.(aspectoOriginal);
     if (estiloHabitos !== estiloHabitosOriginal) onEstiloHabitos?.(estiloHabitosOriginal);
+    if (modoMicro !== modoMicroOriginal) onModoMicro?.(modoMicroOriginal);
     onClose();
   };
 
@@ -239,6 +265,7 @@ export const Settings: React.FC<Props> = ({
       await guardarAjuste('perfilPersus', perfilPersus);
       await guardarAjuste('aspectoLive', aspecto);
       await guardarAjuste('estiloHabitos', estiloHabitos);
+      await guardarAjuste('modoMicro', modoMicro);
       onClose();
     } catch (e) {
       setError(`No se pudo guardar: ${e}`);
@@ -308,6 +335,30 @@ export const Settings: React.FC<Props> = ({
             </div>
             {llamadaActiva && voiceCambiada && (
               <p className="ajustes-nota">La voz se aplicará al volver a llamar.</p>
+            )}
+          </section>
+
+          <section className="ajustes-bloque">
+            <div className="ajustes-titulo">Micrófono</div>
+            <div className="ajustes-fichas">
+              {MODOS_MICRO.map(m => (
+                <button
+                  key={m.valor}
+                  className={`ajustes-ficha ${modoMicro === m.valor ? 'elegida' : ''}`}
+                  onClick={() => elegirModoMicro(m.valor)}
+                >
+                  <span className="ajustes-ficha-nombre">{m.nombre}</span>
+                  <span className="ajustes-ficha-que">{m.que}</span>
+                </button>
+              ))}
+            </div>
+            <p className="ajustes-nota">
+              Con ruido alrededor —gente hablando, la tele, una cafetería— manos libres
+              toma cualquier voz por una orden y Perseo contesta a quien no le ha
+              hablado. Pulsando solo entra lo que le dices a propósito.
+            </p>
+            {llamadaActiva && modoMicro !== modoMicroOriginal && (
+              <p className="ajustes-nota">El modo del micrófono se aplicará al volver a llamar.</p>
             )}
           </section>
 

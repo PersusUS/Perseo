@@ -429,6 +429,28 @@
 
 .ctrl-btn.muted svg { stroke: #bababa; }
 
+/* Pulsar para hablar: en reposo es un micrófono cerrado y apagado, y mientras
+   se mantiene apretado se enciende entero — hay que saber de un vistazo si lo
+   que se está diciendo está entrando o cayendo al vacío. */
+.ctrl-btn.hablar {
+  border-style: dashed;
+  /* El texto de dentro de un botón se selecciona al mantenerlo pulsado, y el
+     arrastre cancelaba el gesto a mitad de frase. */
+  user-select: none;
+  touch-action: none;
+}
+
+.ctrl-btn.hablar svg { stroke: #bababa; }
+
+.ctrl-btn.hablar.pulsando {
+  background: #ffffff;
+  border-color: #ffffff;
+  border-style: solid;
+  transform: scale(1.08);
+}
+
+.ctrl-btn.hablar.pulsando svg { stroke: #000000; }
+
 
 /* ═══════════════════════════════════════
    AJUSTES (rehechos el 2026-08-22)

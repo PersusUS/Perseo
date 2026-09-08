@@ -15,6 +15,27 @@ export class AudioManager {
    */
   public onTrozoPCM: ((trozo: ArrayBuffer) => void) | null = null;
 
+  /**
+   * Si lo que oye el micrófono sale de este ordenador o se tira.
+   *
+   * Con «pulsar para hablar» (ModoMicro en lib/config.ts) el micrófono sigue
+   * abierto entre pulsación y pulsación —volver a pedirlo cada vez añade medio
+   * segundo de arranque y se come el principio de la frase—, pero los trozos
+   * no viajan a ningún sitio: ni a Gemini ni al reconocimiento de voz, que
+   * aprendería el ruido de la sala en lugar de una persona.
+   */
+  private transmitiendo = true;
+
+  /**
+   * Abre o cierra el paso del micrófono sin soltar el dispositivo.
+   *
+   * `false` deja el micrófono encendido y mudo; `true` lo vuelve a dejar pasar.
+   * Es lo que usa el botón de pulsar para hablar.
+   */
+  transmitir(abierto: boolean) {
+    this.transmitiendo = abierto;
+  }
+
   async start() {
     if (this.captureContext) return;
 
@@ -41,6 +62,7 @@ export class AudioManager {
       this.sourceNode.connect(this.workletNode);
 
       this.workletNode.port.onmessage = (event) => {
+        if (!this.transmitiendo) return;
         const pcmBuffer = event.data; // ArrayBuffer of Int16
         this.onTrozoPCM?.(pcmBuffer);
         const base64 = this.arrayBufferToBase64(pcmBuffer);
@@ -63,6 +85,9 @@ export class AudioManager {
   }
 
   stop() {
+    // Un micrófono parado se vuelve a abrir de par en par: si el gatillo
+    // siguiera cerrado, la llamada siguiente en manos libres nacería muda.
+    this.transmitiendo = true;
     if (this.workletNode) {
       this.workletNode.disconnect();
       this.workletNode = null;

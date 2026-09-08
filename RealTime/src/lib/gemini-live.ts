@@ -456,14 +456,22 @@ ${censo}`;
           // Con las dos sensibilidades altas y 600 ms de silencio la frase se
           // cierra cuando de verdad se acabó. El riesgo de cortar una pausa
           // larga lo cubre la proactividad: el modelo puede decidir callarse.
-          realtimeInputConfig: {
-            automaticActivityDetection: {
-              startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
-              endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
-              prefixPaddingMs: 100,
-              silenceDurationMs: 600,
-            },
-          },
+          //
+          // Con «pulsar para hablar» esto se apaga entero: el turno lo abre y
+          // lo cierra el botón (`abrirTurno`/`cerrarTurno`), que es justo lo
+          // que se quiere donde hay ruido — ninguna voz de fondo puede
+          // empezar una frase que nadie ha dicho. Ver ModoMicro en config.ts.
+          realtimeInputConfig:
+            defaultConfig.modoMicro === 'pulsar'
+              ? { automaticActivityDetection: { disabled: true } }
+              : {
+                  automaticActivityDetection: {
+                    startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
+                    endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
+                    prefixPaddingMs: 100,
+                    silenceDurationMs: 600,
+                  },
+                },
           tools: [{
             functionDeclarations: [
               {
@@ -1305,6 +1313,24 @@ ${censo}`;
         }
       });
     }
+  }
+
+  /**
+   * Abre un turno a mano: «empiezo a hablar».
+   *
+   * Solo tiene sentido con la detección automática apagada (modo `pulsar`).
+   * Sin este aviso el servidor no da por empezada ninguna frase y el audio que
+   * se le mande no se contesta nunca.
+   */
+  abrirTurno() {
+    if (!this.session) return;
+    this.session.sendRealtimeInput({ activityStart: {} });
+  }
+
+  /** Cierra el turno abierto: «he terminado, conteste». */
+  cerrarTurno() {
+    if (!this.session) return;
+    this.session.sendRealtimeInput({ activityEnd: {} });
   }
 
   sendVideoChunk(base64Data: string) {
