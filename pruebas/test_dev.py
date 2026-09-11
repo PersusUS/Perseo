@@ -59,10 +59,29 @@ def test_del_perfil_no_se_sale(dev_falso, intento: str) -> None:
         dev.resolver_raiz(intento)
 
 
-def test_subir_hacia_el_perfil_ahora_vale(dev_falso: Path) -> None:
-    """El cerco es el perfil entero, no la raíz: «..» cae dentro y se permite."""
-    destino = dev.resolver_raiz("..")
-    assert Path.home() in destino.parents or destino == Path.home()
+def test_subir_hacia_el_perfil_ahora_vale(
+    cfg: almacen.Configuracion, tmp_path: Path, monkeypatch
+) -> None:
+    """El cerco es el perfil entero, no la raíz: «..» cae dentro y se permite.
+
+    El perfil se finge —`tmp_path` hace de casa— y no es un capricho: en
+    Windows el directorio temporal cuelga del perfil de verdad y en Linux no,
+    así que con el perfil real esta prueba pasaba en una máquina y fallaba en
+    la otra. Fingiéndolo se comprueba la REGLA, que es lo que importa, en las
+    dos.
+    """
+    raiz = tmp_path / "proyecto"
+    (raiz / "dentro").mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setenv("PERSEO_DEV_MOTOR", "falso")
+    monkeypatch.setenv("PERSEO_DEV_RAIZ", str(raiz))
+    monkeypatch.setattr(dev, "_motor", None)
+    dev.iniciar(almacen.cargar_configuracion())
+    try:
+        destino = dev.resolver_raiz("..")
+        assert destino == tmp_path.resolve()
+    finally:
+        dev.detener()
 
 
 def test_un_directorio_que_no_existe_se_rechaza(dev_falso) -> None:

@@ -811,6 +811,17 @@ def _entrada_de_opencode(entrada: Any) -> dict[str, Any]:
     return {_CLAVES_OPENCODE.get(clave, clave): valor for clave, valor in entrada.items()}
 
 
+def _nombre_de_ruta(ruta: str) -> str:
+    """El nombre del fichero, venga la ruta con barras de Windows o de Unix.
+
+    `Path(...).name` solo entiende el separador del sistema donde corre, y
+    el agente puede estar en el otro: en Linux, `C:\\Users\\x\\api.py` es un
+    nombre de fichero entero, y la línea del progreso salía con la ruta
+    completa en vez de con `api.py`. Se parten los dos separadores.
+    """
+    return re.split(r"[\\/]", ruta.rstrip("\\/"))[-1] or ruta
+
+
 def _contar_herramienta(nombre: str, entrada: dict[str, Any]) -> str:
     """Una línea corta y en cristiano de lo que el agente acaba de hacer."""
     verbo = _COMO_SE_CUENTA.get(nombre, nombre)
@@ -818,7 +829,11 @@ def _contar_herramienta(nombre: str, entrada: dict[str, Any]) -> str:
     for clave in ("file_path", "path", "pattern", "command", "description"):
         valor = entrada.get(clave) if isinstance(entrada, dict) else None
         if valor:
-            detalle = Path(str(valor)).name if clave in ("file_path", "path") else str(valor)
+            detalle = (
+                _nombre_de_ruta(str(valor))
+                if clave in ("file_path", "path")
+                else str(valor)
+            )
             break
     return f"{verbo} {detalle}".strip()[:120]
 
