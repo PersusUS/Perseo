@@ -1,16 +1,13 @@
 /**
  * La escenografía de la pantalla de la llamada (T-11, 2026-08-22).
- *
  * Aquí vive todo lo que decora el modo live y nada de lo que lo hace funcionar:
  * la llamada, la cara, la transcripción y los controles siguen en `App.tsx`.
  * Este fichero solo pinta el puesto de mando alrededor.
- *
  * Hay tres aspectos y se eligen en Ajustes (`aspectoLive`). Los tres respetan
  * el límite que se fijó en T-7 y que no conviene deshacer: **negro, monocromo,
  * la ola al fondo y nada de neones**. Lo que da el aire de sala de control es la
  * geometría y el movimiento, no el color; el color sigue reservado para los
  * puntos de estado.
- *
  * Y una licencia que es a propósito: las lecturas dicen «PERSEO V2» donde por
  * dentro hay otra cosa. Es decoración, no un dato de diagnóstico — lo que sí
  * hace falta para depurar (latencia, kHz, tiempo en pie) es de verdad.
@@ -20,8 +17,14 @@ import { invoke } from '@tauri-apps/api/core';
 import type { AspectoLive } from '../lib/config';
 import { CONSTRUCCION, EN_DESARROLLO } from '../lib/version';
 
-/** En qué punto de la llamada estamos. Manda el dibujo, no el texto. */
-export type Fase = 'reposo' | 'conectando' | 'escuchando' | 'hablando';
+/**
+ * En qué punto de la llamada estamos. Manda el dibujo, no el texto.
+ * `espera` es la fase de «pulsar para hablar» con el botón suelto: hay llamada
+ * abierta, pero el micrófono está cerrado. Antes esto se dibujaba como
+ * `escuchando`, y la pantalla se quedaba clavada en «Escuchando» mientras
+ * nadie hablaba — decía justo lo contrario de lo que pasaba (2026-09-09).
+ */
+export type Fase = 'reposo' | 'conectando' | 'espera' | 'escuchando' | 'hablando';
 
 interface Props {
   aspecto: AspectoLive;
@@ -44,8 +47,19 @@ const REFRESCO_ESTADO = 20000;
 const KANJI: Record<Fase, string> = {
   reposo: '待機',      // en espera
   conectando: '接続',  // conectando
+  espera: '無音', // micrófono cerrado, esperando la pulsación
   escuchando: '傾聴',  // escuchando
   hablando: '応答',    // respondiendo
+};
+
+/** Lo que dice la cartela grande de «cartel», por fase. Corto a propósito: la
+ * cartela va en una sola línea y sin partir. */
+const CARTELA: Record<Fase, string> = {
+  reposo: 'En reposo',
+  conectando: 'Conectando',
+  espera: 'Pulse para hablar',
+  escuchando: 'Escuchando',
+  hablando: 'Hablando',
 };
 
 /** hh:mm:ss a partir de segundos. */
@@ -101,7 +115,6 @@ const Bloque: React.FC<{ titulo: string; ficha?: React.ReactNode; children?: Rea
 
 /** Las barras de voz: se mueven con lo que dice Perseo y se caen solas cuando
  *  calla, así que también sirven para ver que el audio llega.
- *
  *  La altura la calcula el CSS con `--vol` —que ya viene suavizada— y un factor
  *  por barra: así se mueven sin que React repinte nada. */
 const BarrasVoz: React.FC = () => (
@@ -115,7 +128,6 @@ const BarrasVoz: React.FC = () => (
 );
 
 /** La columna de instrumentos del aspecto `mando`.
- *
  *  Lee lo mismo que el panel (`panel_estado`) y no abre ninguna vía nueva. Si
  *  el núcleo no contesta —o `psutil` no está— se queda con lo que había y no
  *  enseña un error en mitad de una llamada: esto informa, no manda. */
@@ -265,11 +277,8 @@ export const Escenografia: React.FC<Props> = ({ aspecto, fase, estadoTexto, sesi
             </div>
             {/* La cartela cambia de texto al cambiar de fase, y entra animada:
                 la `key` es lo que hace que React la vuelva a montar. */}
-            <div className="esc-cartela" key={fase}>
-              {fase === 'reposo' ? 'En reposo'
-                : fase === 'conectando' ? 'Conectando'
-                : fase === 'escuchando' ? 'Escuchando'
-                : 'Hablando'}
+            <div className={`esc-cartela ${fase === 'espera' ? 'esc-cartela-larga' : ''}`} key={fase}>
+              {CARTELA[fase]}
             </div>
             <div className="esc-cartel-regla" />
             <div className="esc-cartel-datos">

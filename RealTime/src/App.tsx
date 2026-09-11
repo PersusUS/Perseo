@@ -1,12 +1,9 @@
 /**
  * La ventana de Perseo: quién enciende qué, y en qué orden.
- *
  * Es el orquestador de la cara de voz. No habla con Gemini —eso es
  * `lib/gemini-live.ts`—, no dibuja la escenografía —`components/Escenografia.tsx`—
  * y no decide nada de lo que se hace: reparte estado y escucha eventos.
- *
  * Lo que sostiene desde aquí:
- *
  * - **El estado de la llamada** (conectando, conectado, error), el silencio del
  *   micrófono, la transcripción de los dos lados y quién está hablando.
  * - **Las cuatro pantallas que se abren encima**: ajustes, panel, hábitos y el
@@ -15,7 +12,6 @@
  * - **Lo que llega de fuera sin pedirlo**: los eventos de Tauri (`listen`) para
  *   abrir el panel desde la bandeja, las llamadas entrantes y las
  *   confirmaciones pendientes que el núcleo deja esperando un sí.
- *
  * La clave de la API nunca pasa por aquí: la lee Rust del almacén cifrado y
  * este fichero solo se entera de si está lista (`apiKeyReady`).
  */
@@ -45,6 +41,7 @@ import { geminiClient } from './lib/gemini-live';
 import { sonar, callar } from './lib/timbre';
 import { audioManager } from './lib/audio-manager';
 import { audioPlayer } from './lib/audio-player';
+import { iniciarDiagnostico, pararDiagnostico } from './lib/diagnostico';
 import { cameraManager } from './lib/camera-manager';
 import { screenManager } from './lib/screen-manager';
 import { vigilante, type CaraDetectada } from './lib/identidad';
@@ -76,7 +73,6 @@ const MAX_MENSAJES = 400;   // tope de memoria de una sesión
 
 /** Cada cuánto se le pregunta al núcleo si hay algo pendiente que hacer con el
  *  tablero de tareas.
- *
  *  El corcho vive en el `localStorage` de esta ventana, así que el chat escrito
  *  y los agentes —que son Python— no pueden clavar una nota: dejan la orden en
  *  el núcleo y esto la recoge. Ocho segundos porque la conversación escrita
@@ -161,8 +157,8 @@ function App() {
   // que a veces falla.
   const [sesion, setSesion] = useState(0);
   const sesionDesde = useRef<number | null>(null);
-  // Lo que Perseo ha pedido hacer y está parado esperando un sí. Ver H-51: la
-  // pregunta vivía solo en el panel, que en mitad de una llamada nadie mira.
+  // Lo que Perseo ha pedido hacer y está parado esperando un sí. Vive aquí
+  // y no solo en el panel, que en mitad de una llamada nadie mira.
   const [pendientes, setPendientes] = useState<{ id: number; pregunta: string }[]>([]);
   /** Aviso de subagente terminado, esperando que se acepte o se deje para luego. */
   const [avisoEntrante, setAvisoEntrante] = useState<string | null>(null);
@@ -205,7 +201,7 @@ function App() {
   // Antes había dos almacenes en paralelo (un ref y un estado) y se
   // desincronizaban: el ref se vaciaba en 'disconnected', que es justo el evento
   // que emite handleReconnect antes de reconectar, así que el historial que se
-  // inyectaba al reconectar siempre estaba vacío. Ver H-06.
+  // inyectaba al reconectar siempre estaba vacío.
   const conversacionRef = useRef<TranscriptMsg[]>([]);
   // Dónde empieza el episodio en curso: la transcripción anterior a esa marca
   // no viaja al prompt ni en reconexión. Lo pide el arreglo del 2026-08-24 —
@@ -215,7 +211,7 @@ function App() {
   useEffect(() => { conversacionRef.current = transcripts; }, [transcripts]);
 
   /** Persiste la conversación como Markdown en el vault, donde el RAG la indexa
-   *  solo. Antes esto era un console.log con la escritura comentada. Ver H-07. */
+   * solo. Antes esto era un console.log con la escritura comentada. */
   const guardarConversacion = async (mensajes: TranscriptMsg[]) => {
     const utiles = mensajes.filter(m => m.type !== 'system' && m.text.trim());
     if (utiles.length === 0) return;
@@ -281,7 +277,7 @@ function App() {
         setIsSpeaking(false);
         // La conversación NO se borra aquí: 'disconnected' también se emite en
         // cada reconexión automática, y borrarla era lo que dejaba sin efecto la
-        // reinyección de contexto. Se guarda y se limpia al colgar. Ver H-06.
+        // reinyección de contexto. Se guarda y se limpia al colgar.
       }
     };
 
@@ -374,7 +370,7 @@ function App() {
 
     // Historial que se reinyecta en el prompt al reconectar. Ahora incluye
     // también lo que dijo el usuario, porque la transcripción de entrada ya
-    // está activada (H-05); antes solo se recuperaba el monólogo de Perseo.
+    // está activada; antes solo se recuperaba el monólogo de Perseo.
     // Solo el EPISODIO actual: una llamada nueva no hereda la transcripción
     // de las anteriores, o Perseo llegaría creyendo que sigue en la de antes
     // — el mismo porqué de matar el testigo al colgar.
@@ -407,7 +403,7 @@ function App() {
   }, []);
 
   // Cargar la API Key desde Rust (almacén local o variable de entorno del
-  // sistema). Ya no viaja dentro del bundle — ver H-17.
+  // sistema). Ya no viaja dentro del bundle
   useEffect(() => {
     (async () => {
       try {
@@ -426,7 +422,6 @@ function App() {
 
   /**
    * Qué hacer con un marcador de autollamada.
-   *
    * Vacío —palabra clave o aplauso—: entrar en llamada sin más, que es para lo
    * que el detector existe. Con motivo —un subagente terminó—: TIMBRE y
    * decisión del señor Persus; si prefiere no atender, queda pendiente y se
@@ -444,8 +439,6 @@ function App() {
   // fichero marcador que se borra al leerlo), no con un JSON importado
   // estáticamente: Vite congelaba ese valor al compilar, así que en producción
   // el disparo por aplausos no funcionaba, y además nunca volvía a false.
-  // Ver H-09.
-  //
   // Al abrirse ya NO hay llamada sola (encargo del señor Persus, 2026-08-24):
   // el marcador vacío de la palabra clave o del aplauso se consume y basta —
   // la ventana ya está al frente y la llamada empieza cuando él pulse. Solo
@@ -514,7 +507,7 @@ function App() {
 
   // El cronómetro de la llamada. Cuenta desde una marca de tiempo y no sumando
   // segundos, porque 'disconnected' se emite también en cada reconexión
-  // automática (H-06) y sumando se pondría a cero a media conversación. La
+  // automática y sumando se pondría a cero a media conversación. La
   // marca solo se borra al colgar, que es cuando la llamada acaba de verdad.
   useEffect(() => {
     const t = setInterval(() => {
@@ -525,12 +518,10 @@ function App() {
   }, []);
 
   // Lo que Perseo pidió hacer con el tablero desde fuera de esta ventana.
-  //
   // Va en App y no dentro de la pantalla de tareas a propósito: una nota que se
   // pide por el chat escrito tiene que clavarse aunque el corcho esté cerrado.
   // Si está abierto se entera solo, porque `aplicarOrden` avisa (ver
   // EVENTO_CAMBIO en lib/tareas.ts).
-  //
   // Un fallo aquí no se enseña: el núcleo apagado es un estado normal de esta
   // app, y las órdenes esperan en su cola hasta la próxima vuelta.
   useEffect(() => {
@@ -549,17 +540,14 @@ function App() {
 
   // Y la copia del tablero para el núcleo, que sale de aquí y de ningún otro
   // sitio.
-  //
   // Estuvo dentro de la pantalla de tareas hasta el 2026-09-03. Dejó de valer
   // en cuanto Perseo pudo escribir: con el corcho cerrado esa pantalla no
   // existe, así que una nota clavada por voz o por el chat se guardaba en el
   // almacén y el núcleo seguía sirviendo el tablero de antes — Perseo no veía
   // la nota que él mismo acababa de poner. Aquí se oye a los tres escritores
   // por igual, porque los tres avisan (ver `avisar()` en lib/tareas.ts).
-  //
   // Se manda también al arrancar: si la última vez se cerró la app antes de que
   // saliera la copia, esta es la ocasión de ponerla al día.
-  //
   // Si falla, se calla: el núcleo apagado es un estado normal de esta app.
   useEffect(() => {
     let espera: ReturnType<typeof setTimeout>;
@@ -701,6 +689,9 @@ function App() {
     // Empieza un EPISODIO: lo que se hable aquí es lo único que se reinyecta
     // si la red corta a mitad — la transcripción de llamadas anteriores no.
     inicioEpisodio.current = conversacionRef.current.length;
+    // El cuaderno de la llamada, para poder mirar después por qué se oyó como
+    // se oyó. Ver lib/diagnostico.ts.
+    iniciarDiagnostico(`micrófono ${defaultConfig.modoMicro}, pantalla ${defaultConfig.pantallaAuto ? 'automática' : 'apagada'}`);
     audioPlayer.initialize();
     audioManager.start();
     armarMicro();
@@ -748,6 +739,7 @@ function App() {
   };
 
   const handleHangup = async () => {
+    pararDiagnostico(`${audioPlayer.diagnostico().vecesSeca} veces seca la cola`);
     dejarDeHablar();
     geminiClient.disconnect();
     audioManager.stop();
@@ -767,7 +759,7 @@ function App() {
     }
 
     // Colgar sí cierra la conversación de verdad: aquí es donde se guarda y se
-    // limpia, no en cada 'disconnected'. Ver H-06 y H-07.
+    // limpia, no en cada 'disconnected'. Ver y.
     if (defaultConfig.saveHistoryEnabled) {
       await guardarConversacion(conversacionRef.current);
     }
@@ -842,10 +834,15 @@ function App() {
   // La fase manda el dibujo. El texto largo de un error vive solo en la
   // transcripción (lo pone `onError`); bajo la cara y en la cinta manda una
   // etiqueta corta, porque una frase que crece rompe la composición.
+  // «Escuchando» solo cuando el micrófono está abierto de verdad: pulsando
+  // para hablar y con el botón suelto, el paso está cerrado y la pantalla se
+  // quedaba clavada en «Escuchando» mientras no oía nada (2026-09-09).
+  const microAbierto = modoMicro !== 'pulsar' || pulsando;
   const fase: Fase = !isActive ? 'reposo'
     : connectionState === 'connecting' ? 'conectando'
     : isSpeaking ? 'hablando'
-    : 'escuchando';
+    : microAbierto ? 'escuchando'
+    : 'espera';
 
   // La etiqueta corta es lo que se pinta bajo el nombre y en la cinta de
   // «mando»: cuatro palabras como mucho. El detalle de un error —que puede
@@ -862,6 +859,10 @@ function App() {
     : isConnected && modoMicro === 'pulsar' ? (pulsando ? 'Le escucho' : 'Pulse para hablar')
     : isConnected ? 'Escuchando'
     : '';
+
+  // La cara: «escuchando» es un estado del micrófono, no de la llamada. Con el
+  // botón suelto no late, se queda quieta — que es lo que está haciendo.
+  const caraEscuchando = isConnected && !isSpeaking && microAbierto;
 
   return (
     // El volumen viaja como variable de CSS (`--vol`, la escribe el rAF de
@@ -989,7 +990,7 @@ function App() {
         <div className="perseo-face-container">
           <PerseoFace
             isSpeaking={isSpeaking}
-            isListening={isConnected && !isSpeaking}
+            isListening={caraEscuchando}
             isConnecting={connectionState === 'connecting'}
             aspecto={aspecto}
           />
@@ -1005,7 +1006,7 @@ function App() {
 
       {/* Lo que Perseo ha pedido hacer y espera un sí. Sale aquí y no solo en el
           panel: en mitad de una llamada el panel no se está mirando, así que la
-          acción se quedaba parada y parecía que la herramienta no iba (H-51). */}
+          acción se quedaba parada y parecía que la herramienta no iba. */}
       {!!pendientes.length && (
         <div className="pendientes">
           {pendientes.map(p => (

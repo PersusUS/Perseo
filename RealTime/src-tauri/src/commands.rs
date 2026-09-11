@@ -39,7 +39,7 @@ fn pantalla_principal() -> Result<Monitor, String> {
 
 /// Cuanto mide la imagen que ve el modelo y cuanto mide la pantalla de verdad.
 ///
-/// Existe por H-50: el modelo senala sobre la imagen y `pc.py` clica en pixeles
+/// Existe por: el modelo senala sobre la imagen y `pc.py` clica en pixeles
 /// de pantalla, y nadie traducia entre las dos cosas.
 #[derive(serde::Serialize)]
 pub struct GeometriaPantalla {
@@ -94,7 +94,7 @@ pub async fn capture_screen_base64(quality: u8) -> Result<String, String> {
 ///
 /// El motivo de que esto viva en Rust y no en el frontend: cualquier variable
 /// con prefijo VITE_ la incrusta Vite dentro del JavaScript compilado, asi que
-/// la clave quedaba en claro dentro del .exe. Ver H-17.
+/// la clave quedaba en claro dentro del .exe.
 #[tauri::command]
 pub fn obtener_api_key(app: AppHandle) -> Result<String, String> {
     let store = app.store(ARCHIVO_AJUSTES).map_err(|e| e.to_string())?;
@@ -139,7 +139,7 @@ fn clave_del_nucleo(app: &AppHandle) -> String {
 /// Lee un ajuste cualquiera del almacen local.
 ///
 /// Los Ajustes solo mutaban un objeto en memoria, asi que la voz y el prompt se
-/// perdian al cerrar la aplicacion. Ver H-08.
+/// perdian al cerrar la aplicacion.
 #[tauri::command]
 pub fn obtener_ajuste(app: AppHandle, clave: String) -> Result<Option<serde_json::Value>, String> {
     let store = app.store(ARCHIVO_AJUSTES).map_err(|e| e.to_string())?;
@@ -168,7 +168,7 @@ pub fn guardar_ajuste(
 /// leerlo. Antes esto era `src/autocall.json`, importado estaticamente por
 /// React, con dos problemas: Vite congela el valor al compilar (asi que en
 /// produccion el disparo por aplausos no funcionaba) y nadie lo devolvia a
-/// false, de modo que toda apertura manual entraba en llamada sola. Ver H-09.
+/// false, de modo que toda apertura manual entraba en llamada sola.
 #[tauri::command]
 pub fn consumir_autollamada(app: AppHandle) -> Result<String, String> {
     for ruta in rutas_marcador_autollamada(&app) {
@@ -221,4 +221,45 @@ fn rutas_de_marcador(app: &AppHandle, nombre: &str) -> Vec<std::path::PathBuf> {
 // perseo-core y espera el resultado: una sola memoria, una sola cola, y lo que
 // se pide por voz aparece tambien en la web del movil. Antes esto era un puente
 // de tuberias hacia TOOLS/, y antes de eso un interprete de Python nuevo en cada
-// llamada: 7,5 s medidos contra un timeout de 10 s. Ver H-10 a H-15.
+// llamada: 7,5 s medidos contra un timeout de 10 s. Ver a.
+
+/// Cuaderno de la llamada: lo que la interfaz apunta para poder mirarlo luego.
+///
+/// Una compilacion de release no lleva devtools, asi que lo que la ventana
+/// escribe en la consola se va con la ventana y no hay forma de mirar por que
+/// se oyo entrecortada una respuesta. Estas lineas caen en un fichero de texto
+/// junto a los datos del nucleo, se leen desde fuera y se pisan solas cuando el
+/// fichero se hace grande: es un cuaderno de depuracion, no un historial.
+const TOPE_DIAGNOSTICO: u64 = 512 * 1024;
+
+fn ruta_diagnostico() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("perseo_core")
+        .join("datos")
+        .join("llamada.log")
+}
+
+#[tauri::command]
+pub fn anotar_diagnostico(lineas: Vec<String>) -> Result<(), String> {
+    use std::io::Write;
+
+    let ruta = ruta_diagnostico();
+    if let Some(dir) = ruta.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if std::fs::metadata(&ruta).map(|m| m.len()).unwrap_or(0) > TOPE_DIAGNOSTICO {
+        let _ = std::fs::remove_file(&ruta);
+    }
+
+    let mut fichero = std::fs::OpenOptions::new()
+.create(true)
+.append(true)
+.open(&ruta)
+.map_err(|e| e.to_string())?;
+    for linea in lineas {
+        writeln!(fichero, "{linea}").map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}

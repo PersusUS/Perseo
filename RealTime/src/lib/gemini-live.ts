@@ -1,9 +1,7 @@
 /**
  * El cliente de Gemini Live: la boca y los oídos de la llamada.
- *
  * Es el fichero más grande de `src/lib/` y hasta el 2026-08-26 fue el único sin
  * una línea que dijera qué era. Lo que hay dentro, en orden:
- *
  * 1. **La sesión**: apertura contra `v1alpha` con audio nativo, testigo de
  *    reanudación guardado (`perseo.sesion.testigo`) y cierre limpio. El porqué
  *    de cada constante está anotado justo debajo de ella.
@@ -18,7 +16,6 @@
  *    (`quien-hay.ts`), quién empezó la llamada y qué avisos quedan pendientes
  *    (`aviso-llamada.ts`), cómo va el seguimiento de hábitos (`habitos.ts`) y
  *    por dónde va el tablero de tareas (`tareas.ts`).
- *
  * Quien toque esto: la interfaz va incrustada en el binario, así que editar
  * este fichero no cambia nada hasta `python commands/perseo.py actualizar`.
  */
@@ -36,6 +33,7 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { defaultConfig } from './config';
 import { audioPlayer } from './audio-player';
+import { apuntar } from './diagnostico';
 import {
   ACCIONES_DE_RATON,
   ACCIONES_PC,
@@ -70,7 +68,6 @@ import {
  * Modelo de la Fase C. Se baja del 3.1 a propósito: el 3.1 **no soporta audio
  * proactivo ni llamadas a función asíncronas**, que son las dos patas sobre las
  * que se apoya toda esta fase.
- *
  * Comprobado contra la API con esta clave (`models?key=…`, filtrando por
  * `bidiGenerateContent`): `gemini-2.5-flash-live-preview` —el nombre que daba
  * la documentación— **no existe**. Las variantes 2.5 disponibles son las de
@@ -96,6 +93,9 @@ const CLAVE_PENDIENTES = 'perseo.avisos.pendientes';
  * `INTERRUPT` corta lo que esté diciendo; `WHEN_IDLE` espera a que termine la
  * frase. Se reserva el corte para lo que el usuario está esperando —la
  * respuesta de la memoria— y lo demás llega sin pisar a nadie.
+ * Ojo: esto es la PREFERENCIA, no la última palabra. Si Perseo está hablando
+ * en el momento de devolver el resultado, se degrada a `WHEN_IDLE` — ver
+ * `ejecutarHerramienta`. Cortarle a media palabra se oye como una avería.
  */
 const PLANIFICACION: Record<string, FunctionResponseScheduling> = {
   // La memoria vive en el servidor MCP 'vault' y la web, en el 'navegador';
@@ -143,11 +143,10 @@ export class GeminiLiveClient {
   public onPersonaNombrada: (etiqueta: string, nombre: string) => void = () => {};
   /** Un trabajo que paró a pedir un sí. Durante una llamada la pregunta vivía
    *  solo en el panel y en Telegram, así que la acción no pasaba y el modelo se
-   *  quedaba diciendo «no parece que haya funcionado». Ver H-51. */
+   * quedaba diciendo «no parece que haya funcionado». */
   public onAprobacionPendiente: (id: number, pregunta: string) => void = () => {};
   /** Un trabajo pendiente que acaba de resolverse por voz. Saca su tarjeta de
-   *  la pantalla: seguir ahí invitaba a pulsar lo que ya se contestó hablando.
-   *  Ver N-1 en bitacora/11_HISTORIA.md §12. */
+   *  la pantalla: seguir ahí invitaba a pulsar lo que ya se contestó hablando. */
   public onAprobacionResuelta: (id: number) => void = () => {};
   /** Enciende o apaga la vista de pantalla. Lo pone la aplicación, que es
    *  quien vive el ciclo de captura; devuelve la frase que lee el modelo. */
@@ -190,7 +189,7 @@ export class GeminiLiveClient {
   private socketAbierto = false;
   /**
    * Intentos seguidos **sin una sesión estable**. No se reinicia al abrir el
-   * socket —eso era el bucle de H-49— sino cuando una llamada aguanta
+   * socket —eso era el bucle de— sino cuando una llamada aguanta
    * `MS_SESION_ESTABLE` viva.
    */
   private retryCount = 0;
@@ -248,7 +247,6 @@ export class GeminiLiveClient {
 
   /**
    * La aplicación anuncia una llamada nueva, y con ella QUIÉN la pidió.
-   *
    * Con motivo (un subagente terminó) la llamada es saliente y el motivo ya
    * dice lo demás; sin él, ha llamado el señor Persus a Perseo: etiqueta de
    * entrante para que el modelo no invente que llama él — la escena del
@@ -260,7 +258,6 @@ export class GeminiLiveClient {
 
   /**
    * Aviso de identidad en vivo («ahora habla Persus», «delante hay X e Y»).
-   *
    * Va por `sendClientContent` con `turnComplete: false`, que es el canal para
    * añadir contexto SIN pedir turno. Antes iba por realtime-input, igual que el
    * motivo de llamada, y ahí el aviso entra como si alguien acabara de hablar:
@@ -294,7 +291,6 @@ export class GeminiLiveClient {
 
   /**
    * El censo de gente conocida, traído del núcleo para las instrucciones.
-   *
    * Nunca lanza: si la biometría está apagada, sin modelos o el núcleo no
    * contesta, la llamada tiene que abrirse igual. Lo que se pierde entonces es
    * una lista de nombres, no la conversación.
@@ -312,7 +308,6 @@ export class GeminiLiveClient {
 
   /**
    * El cliente del SDK, construido con la clave que haya **ahora**.
-   *
    * No se construye en el constructor a propósito. Este módulo exporta una
    * instancia (`geminiClient`), así que el constructor corre al importarlo —
    * antes de que `App.tsx` pida la clave a Rust—, y el cliente se quedaba con
@@ -446,7 +441,7 @@ ${censo}`;
           // Sin esto no hay transcripción en absoluto: con salida solo de audio
           // el modelo nunca envía partes de texto, así que el overlay únicamente
           // mostraba mensajes de sistema pese a que el README anunciaba
-          // "transcripción en tiempo real". Ver H-05.
+          // "transcripción en tiempo real".
           inputAudioTranscription: {},
           outputAudioTranscription: {},
           // Cuándo se da por terminada una frase. Sin esto manda el ajuste de
@@ -456,7 +451,6 @@ ${censo}`;
           // Con las dos sensibilidades altas y 600 ms de silencio la frase se
           // cierra cuando de verdad se acabó. El riesgo de cortar una pausa
           // larga lo cubre la proactividad: el modelo puede decidir callarse.
-          //
           // Con «pulsar para hablar» esto se apaga entero: el turno lo abre y
           // lo cierra el botón (`abrirTurno`/`cerrarTurno`), que es justo lo
           // que se quiere donde hay ruido — ninguna voz de fondo puede
@@ -551,7 +545,7 @@ ${censo}`;
                 // nadie se la había declarado al modelo. Sin ella, preguntar
                 // por lo que hay escrito en el vault acababa en `search_files`
                 // del MCP, que solo mira NOMBRES de fichero — de ahí que Perseo
-                // no supiera contestar con sus propias notas (H-78).
+                // no supiera contestar con sus propias notas.
                 name: "buscar_en_memoria",
                 behavior: Behavior.NON_BLOCKING,
                 description: "Busca DENTRO del texto de las notas del vault de Obsidian y devuelve las que hablan de eso, con su ruta y un extracto. Es la memoria a largo plazo del señor Persus y la tuya: úsala SIEMPRE que la pregunta sea sobre lo que él tiene apuntado —sus proyectos, sus gustos, su salud, vuestras conversaciones— antes de decir que no lo sabes. Las carpetas 01_ a 09_ son cosas suyas; 10_PERSEO/ son las tuyas. No confundir con el servidor MCP 'vault', que maneja ficheros y solo busca por nombre.",
@@ -820,6 +814,10 @@ ${censo}`;
           },
           onclose: (event: any) => {
             console.log('[Gemini] WebSocket Closed:', event);
+            apuntar(
+              `enlace: cerrado (${event?.code ?? 'sin código'})` +
+                (event?.reason ? `: ${String(event.reason)}` : '')
+            );
             this.isConnecting = false;
             this.socketAbierto = false;
             this.limpiarTopeDeConexion();
@@ -830,13 +828,13 @@ ${censo}`;
             // guardaba igual y el reintento lo volvía a mandar, cada intento
             // fallaba idéntico y la app se quedaba en «Conectando…» para
             // siempre, sin forma de salir desde la interfaz. Se tira y se
-            // empieza de cero, que es exactamente lo que hace falta. Ver H-48.
+            // empieza de cero, que es exactamente lo que hace falta.
             const motivo = String(event?.reason ?? '');
 
             // Por qué se cortó, en pantalla. Un cierre silencioso con reintento
             // detrás es indistinguible de "la app no funciona": se pasaron
             // horas mirando el certificado, la clave y la red antes de descubrir
-            // que el servidor lo estaba diciendo y nadie lo enseñaba (H-48).
+            // que el servidor lo estaba diciendo y nadie lo enseñaba.
             if (!this.isManualDisconnect) {
               this.onError(
                 `Se cortó la conexión (${event?.code ?? 'sin código'})` +
@@ -905,7 +903,6 @@ ${censo}`;
   /**
    * Manda el contexto pendiente por texto en tiempo real, si ya hay sesión y
    * socket abierto.
-   *
    * Se llama desde los dos sitios que pueden completar esa pareja —`onopen` y
    * la asignación de `this.session`— porque el SDK no garantiza cuál va
    * primero. Es idempotente: quien llega segundo encuentra el texto y lo
@@ -928,8 +925,7 @@ ${censo}`;
 
   /**
    * Da por buena la sesión cuando lleva viva `MS_SESION_ESTABLE`.
-   *
-   * Aquí estaba el fallo de H-49: el contador se ponía a cero en cuanto el
+   * Aquí estuvo el fallo: el contador se ponía a cero en cuanto el
    * socket abría, así que una sesión que el servidor cerraba un segundo después
    * dejaba la espera del reintento en `2^0` = 1 s, indefinidamente. Un intento
    * por segundo contra la API, que es justo lo que provoca el `1011` del que
@@ -1008,6 +1004,8 @@ ${censo}`;
         // respuestas, así que una consulta lenta se llevaba por delante a las
         // rápidas. Con NON_BLOCKING el modelo sigue hablando mientras tanto, y
         // eso solo sirve de algo si aquí tampoco se espera.
+        const nombres = (message.toolCall.functionCalls ?? []).map((c: any) => c?.name).join(', ');
+        apuntar(`herramienta: ${nombres || 'sin nombre'}`);
         for (const call of message.toolCall.functionCalls ?? []) {
             void this.ejecutarHerramienta(call);
         }
@@ -1030,6 +1028,10 @@ ${censo}`;
     // reconexión recupera la sesión en vez de perderla.
     if (message.goAway) {
         console.warn('[Gemini] El servidor va a cerrar la sesión:', message.goAway);
+        // Al cuaderno también: un `1011` precedido de este aviso es un cierre
+        // anunciado por tiempo, y uno sin aviso es otra cosa. Sin la línea, los
+        // dos se ven igual desde fuera.
+        apuntar(`enlace: el servidor avisa de que va a cerrar (${JSON.stringify(message.goAway)})`);
         return;
     }
 
@@ -1056,13 +1058,25 @@ ${censo}`;
     }
 
     if (contenido.interrupted) {
-        console.log('[Gemini] Model turn interrupted');
+        // Con cuánta respuesta ya recibida se corta. Es LA cifra para separar
+        // los dos motivos de que a Perseo se le oiga entrecortado: si aquí se
+        // tiran cientos de milisegundos una y otra vez, no es la red — es la
+        // detección automática de voz tomando por orden el ruido de la sala (o
+        // la propia voz de Perseo por los altavoces), y la cura es «pulsar
+        // para hablar». Si no salen interrupciones, el corte es de la cola de
+        // reproducción y lo cuenta `[AudioPlayer] Cola seca`.
+        const reservaMs = audioPlayer.diagnostico().reservaMs;
+        apuntar(`enlace: interrumpido — se tiran ${reservaMs} ms de respuesta ya recibida`);
         audioPlayer.clearQueue();
         this.onTranscript('ai', '', true);
     }
 
     // Fin de turno: cierra los mensajes abiertos de ambos lados.
     if (contenido.turnComplete) {
+        // Y la frase siguiente vuelve a nacer con colchón. No corta nada de lo
+        // que aún está sonando. Ver lib/audio-player.ts.
+        audioPlayer.finDeTurno();
+        apuntar(`enlace: turno completo — quedaban ${audioPlayer.diagnostico().reservaMs} ms por sonar`);
         this.onTranscript('user', '', true);
         this.onTranscript('ai', '', true);
         // Primer turno completo tras entregar avisos: el asunto se da por
@@ -1085,12 +1099,11 @@ ${censo}`;
 
   /**
    * Saca a la pantalla de la llamada un trabajo que se quedó esperando un sí.
-   *
    * El núcleo contesta «Queda pendiente de que lo confirmes: … (trabajo #57)» y
    * eso hasta ahora solo lo leía el modelo. La pregunta de verdad estaba en el
    * panel, que durante una llamada no se está mirando, así que un
    * `atajo_teclado` se quedaba parado para siempre y parecía que la herramienta
-   * no funcionaba. Ver H-51.
+   * no funcionaba.
    */
   private avisarSiEsperaUnSi(resultado: string) {
     const pendiente = resultado.match(/pendiente de que lo confirmes:\s*(.*?)\s*\(trabajo #(\d+)\)/i);
@@ -1100,11 +1113,9 @@ ${censo}`;
 
   /**
    * Pasa a píxeles de pantalla lo que el modelo señaló sobre la imagen.
-   *
    * El modelo apunta con las coordenadas normalizadas de 0 a 1000 sobre el JPEG
    * que recibe; `pc.py` clica en píxeles. Sin esta traducción, «clica el primer
-   * resultado» caía a un tercio de donde debía. Ver H-50 y `coordenadas.ts`.
-   *
+   * resultado» caía a un tercio de donde debía. Ver y `coordenadas.ts`.
    * Si la geometría no se puede leer, se manda lo que dijo el modelo: un clic
    * mal puesto es malo, pero peor es que la herramienta deje de funcionar por
    * una consulta que en el 99 % de los casos da igual.
@@ -1128,7 +1139,6 @@ ${censo}`;
 
   /**
    * Ejecuta una herramienta y devuelve su resultado en cuanto lo tiene.
-   *
    * Va aparte de `handleMessage` porque no se espera: mientras el núcleo
    * trabaja, el mensaje siguiente del modelo tiene que poder procesarse.
    */
@@ -1233,7 +1243,7 @@ ${censo}`;
         // El tope de espera vive en Rust (30 s), y cuando salta el trabajo sigue
         // vivo en la cola: no se pierde, solo deja de esperarse. Aquí había un
         // Promise.race de 10 s que abandonaba la promesa mientras el otro lado
-        // seguía trabajando para un consumidor que ya no existía. Ver H-11 y H-12.
+        // seguía trabajando para un consumidor que ya no existía. Ver y.
         const result = await invoke("ejecutar_herramienta", {
             toolName: name,
             argumentos: JSON.stringify(argumentos)
@@ -1262,13 +1272,27 @@ ${censo}`;
         return;
     }
 
+    // Obligatorio con NON_BLOCKING: sin esto el modelo no sabe si cortar lo
+    // que está diciendo o esperar a terminar la frase.
+    // Y el corte SOLO se pide si ahora mismo no está hablando. El mapa de
+    // arriba dice qué merece llegar cuanto antes; esto dice cuándo se puede
+    // sin partir una palabra por la mitad. El 2026-09-09 el cuaderno de la
+    // llamada lo dejó medido: 1.357 ms de voz ya recibida a la basura, 100 ms
+    // después de `consultar_tareas`. Eso es lo que se oía entrecortado, y no
+    // era ni la red ni el colchón de reproducción. Lo que se retrasa a cambio
+    // es un «un momento, por favor» de dos segundos.
+    const preferida = PLANIFICACION[name] ?? FunctionResponseScheduling.WHEN_IDLE;
+    const hablando = audioPlayer.estaSonando();
+    const scheduling = hablando ? FunctionResponseScheduling.WHEN_IDLE : preferida;
+    if (hablando && preferida === FunctionResponseScheduling.INTERRUPT) {
+        apuntar(`herramienta: ${name} espera a que acabe la frase en vez de cortarla`);
+    }
+
     const functionResponses = [{
         id,
         name,
         response,
-        // Obligatorio con NON_BLOCKING: sin esto el modelo no sabe si cortar lo
-        // que está diciendo o esperar a terminar la frase.
-        scheduling: PLANIFICACION[name] ?? FunctionResponseScheduling.WHEN_IDLE,
+        scheduling,
     }];
 
     try {
@@ -1317,7 +1341,6 @@ ${censo}`;
 
   /**
    * Abre un turno a mano: «empiezo a hablar».
-   *
    * Solo tiene sentido con la detección automática apagada (modo `pulsar`).
    * Sin este aviso el servidor no da por empezada ninguna frase y el audio que
    * se le mande no se contesta nunca.

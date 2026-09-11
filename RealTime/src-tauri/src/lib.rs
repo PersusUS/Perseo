@@ -31,7 +31,7 @@ pub fn run() {
             bandeja::instalar(app.handle())?;
             // Deja el PID en un fichero para que el detector de aplausos sepa
             // que Perseo ya esta abierto sin tener que adivinar el nombre del
-            // ejecutable. Ver H-21.
+            // ejecutable.
             presencia::anunciar(app.handle());
             autollamada::vigilar(app.handle().clone());
             Ok(())
@@ -77,6 +77,7 @@ pub fn run() {
             commands::obtener_ajuste,
             commands::guardar_ajuste,
             commands::consumir_autollamada,
+            commands::anotar_diagnostico,
             nucleo::ejecutar_herramienta,
             nucleo::precalentar_herramientas,
             nucleo::biometria_estado,

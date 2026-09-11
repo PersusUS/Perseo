@@ -420,9 +420,14 @@
   padding: 0 clamp(36px, 7vw, 120px) 110px;
 }
 
+/* El marco arranca por debajo del riel de la ventana (38 px), no a 26 px de
+   arriba: ahí su borde superior pasaba justo por debajo de PANEL · HÁBITOS ·
+   TAREAS · AJUSTES —parecía subrayarlos— y el borde derecho cruzaba por el
+   medio del aspa de esconder. El riel es una barra de título; el marco es la
+   escena, y una escena no se dibuja encima de su barra de título. */
 .esc-marco {
   position: absolute;
-  inset: 26px;
+  inset: 46px 26px 26px;
   border: 1px solid rgba(255, 255, 255, 0.262);
   pointer-events: none;
   z-index: 1;
@@ -443,16 +448,31 @@
 }
 
 /* El kanji del fondo va en vertical, así que hay que darle ancho: sin él la
-   caja se estira a lo ancho y el texto de al lado se le mete dentro. */
+   caja se estira a lo ancho y el texto de al lado se le mete dentro.
+   Y ALTO: los cuatro estados son de dos caracteres, y una columna de dos
+   caracteres mide el doble que uno. Con la altura al aire la caja se quedaba
+   en la mitad de la ventana, el segundo carácter se pasaba a una segunda
+   columna —a la izquierda, que es como fluye `vertical-rl`— y se metía encima
+   de la cartela; de paso, esa columna de más desbordaba el contenedor unos
+   catorce píxeles y la pantalla entera se podía deslizar de lado: bastaba que
+   un botón cogiera el foco para que el marco y el riel de arriba aparecieran
+   corridos a la izquierda (2026-09-09). */
 .esc-kanji {
+  --kanji: min(36vh, 300px);
   position: absolute;
   right: 3%;
   top: 50%;
   transform: translateY(-50%);
-  width: min(46vh, 340px);
+  /* Un 20 % más ancho que el cuerpo: la caja crece hacia la izquierda —está
+     anclada por la derecha— y así el trazo no se recorta contra el borde. */
+  width: calc(var(--kanji) * 1.2);
+  /* Dos caracteres, y un pelo de más: con exactamente el doble, el espaciado
+     entre letras se sale por abajo y el segundo carácter salta de columna. */
+  height: calc(var(--kanji) * 2.3);
+  overflow: hidden;
   line-height: 1;
   text-align: center;
-  font-size: min(46vh, 340px);
+  font-size: var(--kanji);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.089);
   writing-mode: vertical-rl;
@@ -515,6 +535,11 @@
   white-space: nowrap;
   animation: esc-entrar 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
+
+/* «Pulse para hablar» tiene el triple de letras que «Hablando», y la cartela
+   va en una sola línea: a 80 px se salía del marco. Se baja el cuerpo solo en
+   esa fase en lugar de partir la línea o dejar que desborde. */
+.esc-cartela.esc-cartela-larga { font-size: clamp(24px, 3.6vw, 46px); }
 
 @keyframes esc-entrar {
   from { opacity: 0; transform: translateX(-14px); }
