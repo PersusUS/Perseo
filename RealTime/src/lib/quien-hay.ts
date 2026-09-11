@@ -1,6 +1,5 @@
 /**
  * Quién está delante, dicho de forma que el modelo no se confunda.
- *
  * El aviso de identidad viajaba antes como «[IDENTIDAD] Ahora habla X» y con
  * eso no bastaba: en la llamada del 2026-08-25 la cámara etiquetó al padre del
  * señor Persus como «Desconocido 1», Perseo no supo qué hacer con la etiqueta
@@ -8,8 +7,8 @@
  * importa aquí — si quien habla es el dueño de la casa o es una visita—, así
  * que las cadenas lo dicen a las claras y viven en este módulo, sin WebSocket
  * ni React de por medio, para poder probarlas.
- *
- * Regla que sostiene todo lo demás: **solo Jesús es «el señor Persus»**. Con
+ * Regla que sostiene todo lo demás: **el trato del dueño es de una sola
+ * persona** —`TRATO_DUENO`, aquí abajo—. Con
  * cualquier otra persona ese trato es un error de bulto —le dice a un invitado
  * que es otro—, y además filtra a quien no debe la agenda, el buzón y la
  * memoria del dueño.
@@ -19,12 +18,41 @@
 export const PERFIL_PERSUS_POR_DEFECTO = 'Persus';
 
 /**
+ * **Los dos ajustes que cambia quien clone esto**, y los únicos dos sitios
+ * donde el dueño de esta casa aparece escrito.
+ * `TRATO_DUENO` es cómo le llama Perseo delante de cualquiera, y viaja dentro
+ * de todos los avisos `[IDENTIDAD]` que este módulo redacta. Va con artículo
+ * —«el señor Persus», «la señora Lovelace»— porque las frases lo necesitan;
+ * cuando hace falta sin él, lo quita `sinArticulo`.
+ * Cambiar esta constante cambia la llamada entera. El prompt largo de la voz
+ * es aparte y se edita en Ajustes (`systemPrompt`).
+ */
+export const TRATO_DUENO = 'el señor Persus';
+
+/**
  * Nombres que se dan por suyos aunque el ajuste apunte a otro perfil. El
  * reconocimiento aprende solo y el perfil puede acabar llamándose «Jesús»
  * porque así lo dijo él al enrolarse; tratarle de visita por una letra sería
  * peor que la suposición.
+ * Van en minúsculas y sin tildes: se comparan ya normalizados.
  */
-const ALIAS_DEL_SENOR = ['persus', 'jesus', 'jesus perez bazarot'];
+const ALIAS_DEL_DUENO = ['persus', 'jesus', 'jesus perez bazarot'];
+
+/** El trato sin el artículo: «señor Persus», para entrecomillarlo. */
+function sinArticulo(trato: string): string {
+  return trato.replace(/^(el|la|los|las)\s+/i, '');
+}
+
+/** El trato a gritos —«EL SEÑOR PERSUS»—, para el censo. */
+const TRATO_MAYUSCULAS = TRATO_DUENO.toUpperCase();
+
+/** «del señor Persus», «de la señora Lovelace»: la contracción, bien hecha. */
+const TRATO_POSESIVO = /^el\s+/i.test(TRATO_DUENO)
+  ? `del ${sinArticulo(TRATO_DUENO)}`
+  : `de ${TRATO_DUENO}`;
+
+/** El trato entrecomillado, para decirle al modelo que NO lo use con alguien. */
+const TRATO_COMILLAS = `«${sinArticulo(TRATO_DUENO)}»`;
 
 /** Minúsculas, sin tildes y sin espacios de más: comparar nombres, no bytes. */
 function normalizar(texto: string): string {
@@ -45,7 +73,7 @@ export function esElSenor(nombre: string | null, perfilPersus: string): boolean 
   if (!nombre) return false;
   const limpio = normalizar(nombre);
   if (!limpio || esProvisional(nombre)) return false;
-  return limpio === normalizar(perfilPersus) || ALIAS_DEL_SENOR.includes(limpio);
+  return limpio === normalizar(perfilPersus) || ALIAS_DEL_DUENO.includes(limpio);
 }
 
 /**
@@ -54,30 +82,30 @@ export function esElSenor(nombre: string | null, perfilPersus: string): boolean 
  * trato.
  */
 export function etiquetaPersona(nombre: string, perfilPersus: string): string {
-  if (esElSenor(nombre, perfilPersus)) return 'el señor Persus';
+  if (esElSenor(nombre, perfilPersus)) return TRATO_DUENO;
   if (esProvisional(nombre)) {
-    return `${nombre} (etiqueta provisional del reconocimiento, NO es su nombre ni es el señor Persus)`;
+    return `${nombre} (etiqueta provisional del reconocimiento, NO es su nombre ni es ${TRATO_DUENO})`;
   }
-  return `${nombre} (NO es el señor Persus)`;
+  return `${nombre} (NO es ${TRATO_DUENO})`;
 }
 
 /** El aviso de quién habla ahora, listo para `informarIdentidad`. */
 export function avisoHablante(nombre: string, perfilPersus: string): string {
   if (esElSenor(nombre, perfilPersus)) {
-    return '[IDENTIDAD] Quien habla ahora es el señor Persus. Trato de siempre.';
+    return `[IDENTIDAD] Quien habla ahora es ${TRATO_DUENO}. Trato de siempre.`;
   }
   if (esProvisional(nombre)) {
     return (
-      `[IDENTIDAD] Quien habla ahora NO es el señor Persus: es ${etiquetaPersona(nombre, perfilPersus)}. ` +
-      'No le llames «señor Persus» ni le trates como a él. Preséntate, pregúntale su nombre con naturalidad ' +
+      `[IDENTIDAD] Quien habla ahora NO es ${TRATO_DUENO}: es ${etiquetaPersona(nombre, perfilPersus)}. ` +
+      `No le llames ${TRATO_COMILLAS} ni le trates como a él. Preséntate, pregúntale su nombre con naturalidad ` +
       `y, en cuanto te lo diga, llama a 'nombrar_persona' con etiqueta='${nombre}' y su nombre real. ` +
-      'Nada privado del señor Persus (agenda, correo, notas, encargos) sale de tu boca delante de él.'
+      `Nada privado ${TRATO_POSESIVO} (agenda, correo, notas, encargos) sale de tu boca delante de él.`
     );
   }
   return (
-    `[IDENTIDAD] Quien habla ahora es ${nombre}, que NO es el señor Persus. Trátale de usted por su nombre, ` +
-    'nunca de «señor Persus». Si necesitas saber quién es, lee su nota en «Perseo/Personas» con el servidor ' +
-    'MCP vault. Nada privado del señor Persus sale de tu boca delante de él sin que él lo autorice en voz alta.'
+    `[IDENTIDAD] Quien habla ahora es ${nombre}, que NO es ${TRATO_DUENO}. Trátale de usted por su nombre, ` +
+    `nunca de ${TRATO_COMILLAS}. Si necesitas saber quién es, lee su nota en «Perseo/Personas» con el servidor ` +
+    `MCP vault. Nada privado ${TRATO_POSESIVO} sale de tu boca delante de él sin que él lo autorice en voz alta.`
   );
 }
 
@@ -92,7 +120,7 @@ export function avisoCaras(nombres: string[], perfilPersus: string): string | nu
   let texto = `[IDENTIDAD] Delante de la cámara: ${etiquetas.join(', ')}.`;
   if (visitas.length) {
     texto +=
-      ' Hay alguien que no es el señor Persus: no le llames así, y no cuentes delante de esa persona' +
+      ` Hay alguien que no es ${TRATO_DUENO}: no le llames así, y no cuentes delante de esa persona` +
       ' nada privado suyo. Si aún no sabes quién es, pregúntaselo y guárdalo con la herramienta' +
       " 'nombrar_persona'.";
   }
@@ -108,7 +136,6 @@ export interface PerfilConocido {
 
 /**
  * El censo de gente conocida, para las instrucciones de sistema.
- *
  * Es «registro de hablantes por prompt», que es lo que recomiendan los
  * trabajos de diarización con LLM: el modelo entra en la llamada sabiendo a
  * quién puede encontrarse en vez de descubrirlo por un aviso suelto a mitad de
@@ -124,11 +151,11 @@ export function bloqueCenso(
     const muestras =
       [p.voz ? 'voz' : null, p.caras > 0 ? 'cara' : null].filter(Boolean).join(' y ') ||
       'sin muestras';
-    if (esElSenor(p.nombre, perfilPersus)) return `- ${p.nombre} — ES EL SEÑOR PERSUS (${muestras})`;
+    if (esElSenor(p.nombre, perfilPersus)) return `- ${p.nombre} — ES ${TRATO_MAYUSCULAS} (${muestras})`;
     if (esProvisional(p.nombre)) {
       return `- ${p.nombre} — alguien a quien reconoces pero cuyo nombre aún no sabes (${muestras})`;
     }
-    return `- ${p.nombre} — NO es el señor Persus (${muestras})`;
+    return `- ${p.nombre} — NO es ${TRATO_DUENO} (${muestras})`;
   });
   return (
     '[PERSONAS QUE YA RECONOCES POR VOZ O POR CARA — el reconocimiento corre en este ordenador ' +
@@ -142,7 +169,6 @@ const MARCA = '[IDENTIDAD]';
 
 /**
  * Ecos cortos: lo que el modelo dice cuando resume el aviso en vez de leerlo.
- *
  * Van anclados al principio porque solo se aplican a lo que viene JUSTO
  * después de la marca; ahí, por construcción, no hay palabras de Perseo.
  */
@@ -165,18 +191,15 @@ function limpiarEco(resto: string): string {
 
 /**
  * Quita de una transcripción el aviso de identidad que el modelo haya leído.
- *
  * Las instrucciones ya le dicen que esas líneas no se leen en voz alta, y aun
  * así el 2026-08-26 abrió una llamada con «[IDENTIDAD] Persus Buenos días,
  * señor Persus». Que se cuele en el audio es cosa del modelo; que se quede
  * escrito en la pantalla y en la bitácora del vault, no: eso sí está en
  * nuestra mano.
- *
  * `avisos` son los que la aplicación mandó hace poco. Cuando el modelo los lee
  * literales, esa comparación los borra enteros —es la única forma de saber
  * dónde acaba el aviso y empieza lo que Perseo dice—; cuando los resume, queda
  * la marca y de ella tira `ECOS`.
- *
  * Solo toca el texto donde encuentra la marca o un aviso conocido, así que
  * pasar dos veces la misma cadena —la transcripción llega troceada y se
  * relimpia entera a cada trozo— no come nada de lo que Perseo sí dijo.

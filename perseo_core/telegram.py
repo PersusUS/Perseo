@@ -22,7 +22,6 @@ hay una persona: **por voz durante una llamada**, o en el panel y la web.
 Una cosa sigue sin ser opcional: **sin token configurado, el núcleo arranca
 igual.** Telegram es un canal más, no una pieza de la que dependa nada.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §5 y §7, bitacora/06_HANDOFF.md §4 y bitacora/11_HISTORIA.md §12.
 """
 
 from __future__ import annotations

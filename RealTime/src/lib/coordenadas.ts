@@ -7,7 +7,7 @@
  * `perseo_core/pc.py`, en cambio, clica en píxeles de la pantalla real. Nadie
  * traducía entre las dos cosas, así que un «clica el primer resultado» acababa
  * en cualquier parte — normalmente arriba a la izquierda, porque 0-1000 sobre
- * una pantalla de 1920 se queda a la mitad. Ver H-50.
+ * una pantalla de 1920 se queda a la mitad.
  */
 
 export interface GeometriaPantalla {

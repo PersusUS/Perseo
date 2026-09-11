@@ -69,8 +69,7 @@ trabajo corre y te cuenta el resultado cuando calla.
 
   La clave se mete **desde la propia aplicación** (botón ⚙) y la guarda Rust. **No** en un
   `.env` con prefijo `VITE_`: Vite incrusta esas variables dentro del JavaScript
-  compilado, así que la clave acababa en claro dentro del `.exe`. Ver
-  `bitacora/02_HALLAZGOS.md` (H-17).
+  compilado, así que la clave acababa en claro dentro del `.exe`.
 
 ## Arrancar
 

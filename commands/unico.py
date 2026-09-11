@@ -8,8 +8,8 @@ Perseo apagado sin que nadie lo sepa—. Con el detector de aplausos ese criteri
 sale al revés: contestar «no está» de más arranca otro, y la tarea
 `PerseoRevivir` lo intenta **cada diez minutos**, para siempre.
 
-Se vio el 2026-08-26 con tres detectores a la vez sobre el mismo micrófono
-(H-76). Tres procesos oyendo el mismo aplauso disparan tres veces, y desde
+Se vio el 2026-08-26 con tres detectores a la vez sobre el mismo micrófono.
+Tres procesos oyendo el mismo aplauso disparan tres veces, y desde
 fuera el síntoma es que Perseo «se abre solo» o que la palabra clave hace cosas
 raras.
 

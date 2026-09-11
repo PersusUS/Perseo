@@ -15,7 +15,7 @@ posibles es "no estoy seguro": el modelo tiene dónde escalar en vez de inventar
 Si Ollama no está levantado, el router no rompe nada: cae a "encolar", que es la
 opción segura — el trabajo queda registrado y visible en vez de perderse.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §3 y §9 (Fase A).
+
 """
 
 from __future__ import annotations

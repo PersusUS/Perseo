@@ -25,7 +25,7 @@ Por qué esto entra en Perseo y cómo convive con lo que ya había:
    ejecutarse lo escribió una persona en el fichero del disco, como en
    `proyectos.json`.
 
-Ver bitacora/11_HISTORIA.md §13.
+
 """
 
 from __future__ import annotations

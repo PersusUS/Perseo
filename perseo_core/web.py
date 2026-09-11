@@ -35,7 +35,7 @@ DOS REGLAS DE SEGURIDAD, Y NINGUNA ES OPCIONAL
    `_DnsFijado` cierra esa ventana: la conexión solo puede ir a direcciones que
    ya pasaron el filtro.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §7 y §8.
+
 """
 
 from __future__ import annotations

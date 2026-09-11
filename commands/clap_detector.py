@@ -86,7 +86,7 @@ def is_app_running():
 
     Se pregunta por el PID que deja la propia aplicación, no por el nombre del
     ejecutable en el `tasklist`. Atar esto al nombre del binario era lo que hacía
-    que renombrar el paquete Rust rompiera el detector en silencio. Ver H-21.
+    que renombrar el paquete Rust rompiera el detector en silencio.
     """
     try:
         return presencia.app_viva()
@@ -104,8 +104,8 @@ def levantar_app():
     Antes esto lanzaba `npm run tauri dev`, que es modo desarrollo: minutos de
     compilación en frío, y el bucle que esperaba la ventana mataba el árbol a
     los dos minutos — la app jamás llegó a abrirse y el síntoma era «aplaudí y
-    no pasó nada» (H-56). La app de verdad es el binario construido y sellado,
-    el mismo que abre `perseo on`; ahí viven el despegue del job (H-53), el
+    no pasó nada». La app de verdad es el binario construido y sellado,
+    el mismo que abre `perseo on`; ahí viven el despegue del job, el
     aviso si la construcción está vieja y el mensaje si no está construida.
     """
     import perseo
@@ -117,7 +117,7 @@ def parar_musica_cuando_abra_la_app(tope_segundos: float = 90.0):
     """La intro suena mientras Perseo despierta, y calla cuando ya está despierto.
 
     Antes esta parada vivía dentro del bucle que vigilaba `npm run tauri dev`;
-    al pasar el arranque a la app construida (H-56) se quedó fuera y la canción
+    al pasar el arranque a la app construida se quedó fuera y la canción
     seguía entera por encima de la llamada. Se pregunta por la marca de
     presencia —lo mismo que mira el splash— y con tope, para que un arranque
     fallido no deje la música sonando sola en el salón.
@@ -148,7 +148,7 @@ def trigger_action():
     # aplicación borra al leerlo. Antes se escribía dentro de src/autocall.json,
     # que React importaba estáticamente: Vite congelaba el valor al compilar (el
     # disparo no funcionaba en producción) y nadie lo devolvía a false, así que
-    # toda apertura manual entraba en llamada sola. Ver H-09.
+    # toda apertura manual entraba en llamada sola.
     #
     # Se deja **siempre**, también con la app abierta. Desde que Perseo vive en
     # la bandeja del sistema, el caso normal es que ya esté corriendo: Rust
@@ -182,7 +182,7 @@ def trigger_action():
     pythonw_exe = sys.executable.replace("python.exe", "pythonw.exe")
     try:
         # `pythonw` ya es sin consola, pero la bandera lo garantiza aunque
-        # `sys.executable` no sea el que se espera (H-75).
+        # `sys.executable` no sea el que se espera.
         banderas = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
         subprocess.Popen([pythonw_exe, splash_path], creationflags=banderas)
     except Exception as e:
@@ -226,7 +226,7 @@ def audio_callback(indata, frames, time_info, status):
     # Los desbordamientos del audio de entrada se ignoran a propósito, y este es
     # el único sitio del fichero donde callarse está justificado: esto corre en el
     # hilo del micrófono, y escribir por consola desde aquí provoca justo el
-    # desbordamiento que se está reportando. No es el H-25.
+    # desbordamiento que se está reportando. No es el.
     if status:
         pass
 
@@ -302,7 +302,7 @@ def start_listening():
     # «no está» y arranca otro — cada diez minutos, que es cada cuánto lo
     # intenta `PerseoRevivir`. El 2026-08-26 había TRES sobre el mismo
     # micrófono: tres procesos que oyen el mismo aplauso disparan tres veces
-    # (H-76). La cerradura del sistema no depende de que nadie acierte.
+    # La cerradura del sistema no depende de que nadie acierte.
     cerrojo = unico.tomar(CERROJO)
     if cerrojo is None:
         print("[i] Ya hay un detector de aplausos escuchando. Este se va.")

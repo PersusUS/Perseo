@@ -112,7 +112,7 @@ def test_el_vault_grande_de_documents_va_al_entorno(tmp_path: Path, monkeypatch)
 
 
 def test_con_tailscale_se_abre_el_tailnet(tmp_path: Path) -> None:
-    """Sin esto, el enlace de Telegram no sirve desde el móvil (H-35)."""
+    """Sin esto, el enlace de Telegram no sirve desde el móvil."""
     ajustes = configurar_arranque.ajustes_recomendados(tmp_path, hay_tailscale=True)
     assert ajustes["PERSEO_CORE_HOST"] == "tailscale"
 
@@ -171,7 +171,7 @@ def test_el_arranque_corto_no_cuenta_como_bueno(vivio: float) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# El registro del núcleo (H-41)
+# El registro del núcleo
 # --------------------------------------------------------------------------- #
 
 

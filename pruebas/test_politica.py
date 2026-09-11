@@ -68,7 +68,7 @@ def test_la_confianza_no_tapa_lo_critico() -> None:
     """La llamada de voz enciende la confianza sola, y con ella nada preguntaba.
 
     Tener a alguien hablando no es su sí a ESTA orden: lo que no se deshace
-    pregunta igual. Ver H-80.
+    pregunta igual.
     """
     politica.registrar_niveles(lambda agente, peticion: politica.CRITICO)
     try:

@@ -12,7 +12,7 @@ límite y acabaría comiéndose la memoria del proceso. Perder un evento de
 progreso en un cliente dormido es aceptable — la cola de trabajos en SQLite
 sigue siendo la fuente de verdad, y al reconectar se lee de ahí.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §2.
+
 """
 
 from __future__ import annotations

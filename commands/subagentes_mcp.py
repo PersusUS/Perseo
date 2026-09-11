@@ -300,7 +300,7 @@ def _cargar() -> None:
                 "modelo": str(entrada.get("modelo") or ""),
                 # Lo cargado del disco NUNCA avisa: su ventana de gracia murió
                 # con el servidor anterior, y un aviso por algo de hace horas
-                # es ruido, no información (H-62).
+                # es ruido, no información.
                 "entregado": True,
                 "inicio": 0.0,
                 "fin": None,
@@ -399,7 +399,7 @@ def _avisar_si_nadie_pregunto(id_tarea: str) -> None:
 
     Avisar ES entregar: quien tiene que saberlo, ya lo sabe — por oído o por
     Telegram. Sin marcar `entregado` aquí, una tarea vieja seguía «pendiente»
-    para siempre y cada camino que la revisaba volvía a contarla (H-62).
+    para siempre y cada camino que la revisaba volvía a contarla.
     """
     with _cerrojo:
         tarea = _tareas.get(id_tarea)

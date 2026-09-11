@@ -41,8 +41,8 @@ nombre real (`renombrar`). Con las caras igual, contando detecciones buenas en
 vez de segundos. Al reiniciar el núcleo los racimos a medio aprender se pierden:
 aprender a medias es exactamente eso, y los perfiles fijados sí sobreviven.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §2 (el núcleo decide) y §7 (lo observado no
-es instrucción: un rostro conocido no autoriza nada).
+Y una regla que no cambia porque haya caras de por medio: lo observado no
+es instrucción, y un rostro conocido no autoriza nada.
 """
 
 from __future__ import annotations

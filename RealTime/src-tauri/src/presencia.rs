@@ -6,7 +6,7 @@
 //! que no deberian estarlo — **el nombre del binario y el funcionamiento del
 //! detector**. Renombrar el paquete rompia la deteccion en silencio: la app
 //! seguia arrancando, y de pronto cada aplauso abria una segunda instancia. Ver
-//! H-21.
+//!.
 //!
 //! Ahora la aplicacion deja un fichero con su PID al arrancar y lo borra al
 //! salir. Quien quiera saber si esta viva lee el numero y pregunta al sistema

@@ -199,13 +199,13 @@ def test_el_fichero_pone_lo_que_el_modelo_no_sabe() -> None:
     async def guion() -> None:
         mcp.definiciones.clear()
         mcp.definiciones["mentira"] = definicion(
-            argumentos_por_defecto={"estricto": {"path": "C:/Users/<usuario>/Documents/Persus"}}
+            argumentos_por_defecto={"estricto": {"path": "C:/Users/ejemplo/Documents/vault"}}
         )
         servidor = mcp.ServidorMcp("mentira", mcp.definiciones["mentira"])
         await servidor.arrancar()
         try:
             respuesta = await servidor.llamar("estricto", {"command": "buscar"})
-            assert "Persus" in respuesta
+            assert "C:/Users/ejemplo/Documents/vault" in respuesta
         finally:
             await servidor.detener()
 
@@ -305,7 +305,7 @@ def test_el_powershell_que_solo_mira_no_para_a_pedir_un_si(cfg) -> None:
         )
 
     try:
-        assert nivel_de("Get-ChildItem -Directory C:/Users/<usuario>/Desktop") == politica.REVERSIBLE
+        assert nivel_de("Get-ChildItem -Directory C:/Users/ejemplo/Desktop") == politica.REVERSIBLE
         assert nivel_de("dir | Select-Object Name") == politica.REVERSIBLE
         # Lo que escribe, borra o se esconde detrás de una tubería, pregunta.
         assert nivel_de("Get-ChildItem | Remove-Item") == politica.IRREVERSIBLE

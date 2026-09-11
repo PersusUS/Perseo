@@ -1,7 +1,7 @@
 // Reproduce la configuración de `gemini-live.ts` en **una sola conexión**, manda
 // audio PCM de 16 kHz como hace la app y anota lo que pasa con marca de tiempo.
 // Sirve para separar "la API no acepta lo que mandamos" de "el cliente se porta
-// mal", que es lo que costó una tarde el 2026-08-17 (H-49). Se ejecuta a mano
+// mal", que es lo que costó una tarde el 2026-08-17. Se ejecuta a mano
 // desde `RealTime/`, y no forma parte de la app:
 //
 //     node sonda_llamada.mjs [sin-audio] [sin-herramientas]

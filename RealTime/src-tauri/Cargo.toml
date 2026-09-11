@@ -9,7 +9,7 @@ edition = "2021"
 # aplausos, que buscaba `temp-app.exe` en el tasklist. Las dos cosas se
 # arreglaron a la vez (2026-08-16): la aplicacion deja ahora su PID en un
 # fichero (`presencia.rs`) y el detector pregunta por el proceso, no por el
-# nombre. Ver H-21.
+# nombre.
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -36,7 +36,7 @@ xcap = "0.0.13"
 image = "0.25"
 base64 = "0.22"
 # Espera asincrona entre sondeos al nucleo. Nada bloqueante dentro de un comando
-# async de Tauri: eso secuestraba un worker del runtime durante segundos (H-10).
+# async de Tauri: eso secuestraba un worker del runtime durante segundos.
 tokio = { version = "1", features = ["time"] }
 # Cliente HTTP hacia perseo-core. Sin TLS a proposito: el nucleo escucha en el
 # bucle local y en el tailnet, que ya va cifrado por WireGuard, asi que arrastrar

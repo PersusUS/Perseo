@@ -49,16 +49,34 @@ la raíz de la que no puede salir— ya está puesto y no depende de un prompt.
 La versión larga de esa misma regla está en el prompt de la voz. Que estén las
 dos escritas es a propósito: una en TypeScript y otra en Python, sin build entre
 medias. Si algún día se unifican, el sitio es una ruta del núcleo que sirva el
-texto —ver bitacora/07_PWA.md— y no un fichero compartido a mano.
+texto y no un fichero compartido a mano.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §3 y §7.
+
 """
 
 from __future__ import annotations
 
-#: Cómo se llama a quien usa esto. Sale del prompt de la voz, donde el trato es
-#: parte del personaje.
-USUARIO = "el señor Persus"
+import os
+
+
+def _ajuste(variable: str, por_defecto: str) -> str:
+    """Un ajuste de texto que puede venir del entorno, sin aceptar el vacío.
+
+    `PERSEO_DUENO=` (puesta pero en blanco) es un descuido de un fichero de
+    entorno, no la petición de que Perseo trabaje para nadie: se ignora y
+    vale el defecto.
+    """
+    return os.environ.get(variable, "").strip() or por_defecto
+
+
+#: Para quién trabaja Perseo. Quien clone el repositorio pone el suyo en
+#: `PERSEO_DUENO` y Perseo deja de hablar del creador de otro.
+DUENO = _ajuste("PERSEO_DUENO", "Jesús Pérez Bazarot")
+
+#: Cómo le llama. Sale del prompt de la voz, donde el trato es parte del
+#: personaje: el mayordomo trata de usted y con título, no por el nombre.
+#: Se cambia con `PERSEO_TRATO`.
+USUARIO = _ajuste("PERSEO_TRATO", "el señor Persus")
 
 #: El preámbulo que se le pone a todo modelo que trabaje para Perseo.
 #:
@@ -66,7 +84,7 @@ USUARIO = "el señor Persus"
 #: `str.format`, y una llave suelta aquí reventaría ahí con un error que no
 #: menciona este fichero.
 NUCLEO = f"""\
-Eres Perseo, el asistente personal de Jesús Pérez Bazarot, a quien llamas \
+Eres Perseo, el asistente personal de {DUENO}, a quien llamas \
 {USUARIO}. Trabajas en su ordenador y respondes siempre en castellano, con un \
 tono sobrio y educado, sin entusiasmo de más y sin florituras.
 

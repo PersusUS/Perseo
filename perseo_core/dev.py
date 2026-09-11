@@ -41,7 +41,7 @@ Tres decisiones que gobiernan el módulo:
    Persus con el dedo (`origen` `texto` o `voz`) trabaja con
    `HERRAMIENTAS_PERMITIDAS_AMPLIAS` —`Bash` y subagentes incluidos, porque un
    agente que no puede arrancar un proceso no puede «abrir la app» y decía que
-   sí (H-74)—; lo que nace solo, de un correo o un disparador, se queda con la
+   sí—; lo que nace solo, de un correo o un disparador, se queda con la
    lista corta.
 3. **`dev` tiene su propio carril.** Un encargo de código tarda minutos; el
    correo y la memoria tardan milisegundos. Los atiende un trabajador aparte para
@@ -51,7 +51,7 @@ Tres decisiones que gobiernan el módulo:
    `<datos>/actividad/<id>.jsonl`. No se borra al terminar el encargo: la
    pregunta «dice HECHO, ¿pero qué hizo?» solo se hace después.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §3, §7 y §9 (Fase E).
+
 """
 
 from __future__ import annotations
@@ -438,7 +438,7 @@ class MotorOpencode:
         # escrito en la raíz del repositorio para verlo (2026-08-26): `opencode
         # run` levanta su propio servidor y resuelve el proyecto por su cuenta,
         # así que hereda el `cwd` y luego lo ignora. El encargo decía «ok» y
-        # había creado el fichero DOS CARPETAS más arriba. Es H-67 otra vez, con
+        # había creado el fichero DOS CARPETAS más arriba. Es el mismo fallo, con
         # otro motor: la raíz hay que decírsela, no dársela por supuesta.
         argumentos = [
             self._ejecutable,
@@ -643,9 +643,9 @@ class MotorSdk:
             # NO es un adorno. Sin el preset, el SDK arranca al agente SIN el
             # preámbulo de Claude Code —el que le dice en qué directorio está
             # trabajando— y el modelo se inventa rutas absolutas: el mismo
-            # encargo escribió en `C:\Users\<usuario>`, en `C:\Users\jp` y en la
+            # encargo escribió en la carpeta del usuario, en la de otro usuario y en la
             # raíz del repositorio, tres veces seguidas y ninguna donde tocaba.
-            # Con el preset, el fichero cae exactamente en `cwd` (H-67).
+            # Con el preset, el fichero cae exactamente en `cwd`.
             system_prompt={"type": "preset", "preset": "claude_code"},
         )
 
@@ -1131,7 +1131,7 @@ def _contexto_del_encargo(instruccion: str, raiz: Path) -> str:
        entera, porque los proyectos del señor Persus se llaman unos a otros y
        encerrar al agente en uno era el impuesto de cada encargo (2026-08-26).
     2. **Dónde vive el proyecto que se nombra**, si se nombra alguno. Es la
-       ruta absoluta, que es lo que evita que el modelo se la invente (H-67).
+       ruta absoluta, que es lo que evita que el modelo se la invente.
     3. **Que no dé por hecho lo que no hizo.** «Abre la app de armario» acabó
        en verde dos veces sin abrir nada (2026-08-25): un encargo que no se
        puede cumplir se dice, no se aprueba.

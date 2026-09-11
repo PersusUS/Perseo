@@ -1,94 +1,112 @@
-# Perseo — guía para agentes
+# Guía para agentes de código
 
-Asistente personal: un núcleo Python siempre encendido (`perseo_core/`) y cuatro
-caras que no piensan (voz, panel Tauri, PWA, Telegram). **Las caras no piensan** es
-la regla que no se rompe.
+Si eres un agente (o una persona con prisa) y vas a tocar este repositorio,
+esto es lo que hay que saber antes de escribir una línea.
 
-## Lo único obligatorio antes de tocar nada
+## El modelo mental, en treinta segundos
 
-Lee `bitacora/ESTADO.md` (12 KB). Nada más. Todo lo demás se abre **por secciones y
-bajo demanda** — abrir un documento entero de esta bitácora cuesta más tokens que el
-arreglo que ibas a hacer.
+Un **núcleo** Python siempre encendido (`perseo_core/`) con cola, memoria,
+política y agentes. Cuatro **caras** que se conectan a él: la app Tauri
+(voz y panel), la PWA del móvil, Telegram y la línea de comandos.
 
-## Qué abrir según lo que vayas a hacer
+**Las caras no piensan.** Una cara encola un trabajo y sondea el resultado;
+toda decisión —a qué agente va, si hace falta confirmación, qué se le dice al
+modelo— ocurre en el núcleo. Si te ves metiendo lógica de negocio en un
+componente de React, estás en el sitio equivocado.
 
-| Necesitas | Abre | Cómo |
+## Dónde está cada cosa
+
+| Vas a tocar | Mira primero |
+|---|---|
+| La cola, el bus, la API | `perseo_core/api.py`, `bus.py`, `almacen.py` |
+| A qué agente va cada cosa | `perseo_core/agentes.py` (el router) |
+| Un agente concreto | `perseo_core/<nombre>.py` — se llaman como el agente |
+| Qué necesita confirmación | `perseo_core/politica.py` |
+| El prompt compartido | `perseo_core/identidad.py` |
+| La llamada de voz | `RealTime/src/lib/gemini-live.ts` y `RealTime/src/App.tsx` |
+| El panel | `RealTime/src/components/Panel.tsx` |
+| Los puentes a Rust | `RealTime/src-tauri/src/commands.rs` y `nucleo.rs` |
+| La web del móvil | `perseo_core/interfaz/index.html` — un solo fichero, sin build |
+| Configuración | [`docs/CONFIGURACION.md`](docs/CONFIGURACION.md) |
+
+Los ficheros que pasan de mil líneas —`Panel.tsx`, `dev.py`, `chat.py`,
+`almacen.py`, `gemini-live.ts`, `mcp.py`, `api.py`— se leen **por rangos tras
+un `grep -n`**, no de una sentada.
+
+## Ver lo que has cambiado
+
+| Tocaste | Para que se vea | ¿Basta con `npm run build`? |
 |---|---|---|
-| El estado de hoy | `bitacora/ESTADO.md` | Entero (12 KB) |
-| Saber qué hace un fichero | `bitacora/01_INVENTARIO.md` | Entero (14 KB): fichero a fichero, con LOC y estado |
-| Arreglar un fallo conocido | `bitacora/02_HALLAZGOS.md` | Tabla resumen arriba; luego `grep -n "H-42 ·"` |
-| Arrancar, construir, desplegar | `bitacora/06_HANDOFF.md` §3 | `sed -n` de la sección |
-| Saber por qué algo es así | `bitacora/06_HANDOFF.md` §4 (decisiones) y §5 (restricciones) | Por sección |
-| **Antes de tocar núcleo, build o tests** | `bitacora/06_HANDOFF.md` §6 — las 18 trampas | Por sección |
-| Qué pasó un día concreto | `bitacora/11_HISTORIA.md`, `bitacora/04_SESIONES.md` | **Solo `grep -n`**, nunca enteros |
-| Los subagentes de código | `bitacora/10_SUBAGENTES.md` | Entero (8 KB) |
-| La PWA del móvil | `bitacora/07_PWA.md` | Entero (12 KB) |
+| `RealTime/src/**` | `python commands/perseo.py actualizar` | **No** — la interfaz va incrustada dentro del binario |
+| `perseo_core/*.py`, `commands/*.py` | Reiniciar el núcleo: `perseo parar` y luego `perseo on` | **No** — el proceso viejo se queda con el código viejo |
+| `perseo_core/interfaz/index.html` | Recargar el navegador | Sí: el núcleo lo sirve del disco |
 
-Presupuesto de lectura, para elegir con conocimiento: `11_HISTORIA.md` 117 KB ·
-`02_HALLAZGOS.md` 119 KB · `04_SESIONES.md` 85 KB · `06_HANDOFF.md` 48 KB ·
-`05_PLAN_PERSEO_V2.md` 26 KB · `03_ROADMAP.md` 20 KB. Los tres primeros **no se
-leen enteros nunca**.
+Para el **aspecto** del panel no hace falta pagar los dos minutos de
+reconstrucción: la maqueta sirve las pantallas de verdad con datos de mentira
+y recarga al guardar.
 
-Lo mismo con el código: `01_INVENTARIO.md` dice qué hay en cada fichero antes de
-abrirlo. Los que pasan de 1.000 líneas —`Panel.tsx`, `dev.py`, `chat.py`,
-`almacen.py`, `gemini-live.ts`, `mcp.py`, `api.py`— se leen por rangos tras un
-`grep -n`, no de una sentada.
-
-## Ver los resultados (lo que el usuario VE)
-
-| Tocaste | Para que se vea | Basta `npm run build` / pytest |
-|---|---|---|
-| `RealTime/src/**` | `python commands/perseo.py actualizar` | NO — la interfaz va incrustada en el binario (H-55) |
-| `perseo_core/*.py`, `commands/*.py` | Reiniciar el núcleo (`perseo parar` + `perseo on`; el vigilante lo revive con el código nuevo) | NO |
-
-`perseo actualizar` hace TODO: cierra la app, `tauri build --no-bundle`, sella la
-marca en `perseo_core/datos/version.json`, vacía la caché de WebView2 (trampa §6.16)
-y reabre la app. Tarda ~2 min.
-
-Para el ASPECTO del panel no hace falta pagar esos dos minutos por vuelta: la maqueta
-sirve el panel de verdad con datos de mentira y recarga al guardar.
-
-```
+```bash
 node RealTime/node_modules/vite/bin/vite.js --config RealTime/vite.maqueta.config.ts
 ```
 
-## Verificaciones antes de dar algo por bueno
+Rutas de la maqueta: `/` el panel, `#tareas` el tablero, `#habitos` y
+`#habitos-plantilla` los dos aires del seguimiento.
 
-- Python: `python -m pytest` (convención: `asyncio.run(...)` dentro de un `def test_`
-  normal — NUNCA `@pytest.mark.asyncio`, tumba el CI, §6.11).
-- Frontend (`RealTime/`): `npx tsc --noEmit` y `npm test` (Vitest).
-- Rust: `cargo check --locked`.
-- CI: `gh run list --limit 3` — dos veces estuvo rojo sin saberlo (H-40).
+## Antes de dar algo por bueno
+
+```bash
+python -m pytest                        # 724 pruebas
+python -m ruff check .
+cd RealTime && npx tsc --noEmit && npm test   # 138 pruebas
+cd RealTime/src-tauri && cargo check --locked
+```
+
+Las cuatro corren también en CI, en Linux y en Windows.
+
+Si tocaste el comportamiento de verdad —no solo el aspecto— pasa además el
+verificador que le toque: son diecisiete, están en `perseo_core/verificar_*.py`
+y ninguno toca el estado real (se montan un directorio temporal y servidores de
+mentira).
 
 ## Trampas que cuestan una hora
 
-Las dieciocho están en `bitacora/06_HANDOFF.md` §6. Las cuatro que más se repiten:
-
-- **Núcleo zombi tras reiniciar**: si el viejo (`pythonw -m perseo_core`) no llegó a
-  morir, TODO lo que pruebes va contra código viejo. Desde el 2026-08-24 el núcleo
-  nuevo lo detecta —pregunta por `/salud`— y se retira diciéndolo (H-66), en vez del
-  bucle silencioso de `OSError 10048`. Ante errores raros tras tocar el núcleo:
-  `nucleo.log` + `Get-NetTCPConnection -LocalPort 8787`, y `perseo parar` ANTES de `on`.
-- **PowerShell corrompe UTF-8** al hacer round-trip `Get-Content` + `Set-Content` en
-  ficheros con acentos (§6.13): ediciones SIEMPRE quirúrgicas directas o script Python.
-- Los hijos spawned no heredan stdin del canal JSON-RPC ni entorno completo (§6.14).
-- **Los modelos gratuitos de los subagentes se retiran sin avisar** (H-75): si un
-  encargo del agente `dev` o del MCP de subagentes falla raro, lo primero es
-  `opencode models | grep free`, no leer código. El modelo se hereda de
-  `~/.config/opencode/opencode.jsonc`; el porqué, en `bitacora/10_SUBAGENTES.md`.
-
-El testigo de Google caduca cada 7 días: si el triaje muere,
-`python -m perseo_core.autorizar_google`.
+- **Núcleo zombi.** Si el proceso viejo no llegó a morir, todo lo que pruebes
+  va contra código viejo. El núcleo nuevo lo detecta y se retira diciéndolo,
+  pero ante errores raros: `perseo parar` **antes** de `perseo on`, y mira
+  `<datos>/nucleo.log`.
+- **Pruebas asíncronas.** La convención es `asyncio.run(...)` dentro de un
+  `def test_` normal. **Nunca `@pytest.mark.asyncio`**: tumba el CI.
+- **PowerShell corrompe UTF-8** al hacer `Get-Content` + `Set-Content` sobre
+  ficheros con acentos. Edita con herramientas de edición directa o con un
+  script de Python que abra en `utf-8` explícito.
+- **Finales de línea.** El repositorio mezcla LF y CRLF. Si editas con un
+  script, lee y escribe con `newline=''` para no reescribir el fichero entero.
+- **El prompt del router pasa por `str.format`.** Una llave suelta en
+  `identidad.NUCLEO` lo revienta con un `KeyError` que no menciona ese fichero.
+- **El triaje NO lleva el preámbulo de identidad, y está medido.** Con él
+  delante, `qwen3:4b` pasó de acertar los cuatro correos de prueba a fallar el
+  que importaba. Si «arreglas» esa prueba añadiéndolo, rompes la clasificación
+  del correo en silencio.
 
 ## Estilo
 
-- Negro y blanco, monoespaciada en versalitas, esquinas rectas, sin fuentes externas
-  (CSP `self`). El color solo para puntos de estado (§4.8).
-- Las caras no piensan: la vista encola y sondea; lo irreversible pide su sí por la
-  política (§7 del plan).
+- **La interfaz**: negro y blanco, monoespaciada en versalitas, esquinas
+  rectas, sin fuentes externas (la CSP es `self`). El color solo para puntos de
+  estado.
+- **Los comentarios explican el porqué, no el qué.** Este repositorio comenta
+  mucho y a propósito: qué se midió, qué se rompió antes, por qué no se hizo
+  de la otra manera. Si añades código, añade ese porqué.
+- **En castellano**, como el resto: nombres de función, variables y
+  comentarios.
+- **Nada de secretos en el código.** Si algo necesita una clave, se lee del
+  entorno o de `<datos>`, y `<datos>` está en el `.gitignore`.
 
-## Al terminar
+## Lo que no hay que hacer
 
-Entrada en `bitacora/04_SESIONES.md`, hallazgo nuevo en `bitacora/02_HALLAZGOS.md`
-(tabla arriba **y** ficha), y si cambió el estado del sistema, `bitacora/ESTADO.md`.
-La crónica larga va a `bitacora/11_HISTORIA.md`, no al handoff.
+- Meter lógica en una cara.
+- Ampliar `PERSEO_DEV_RAIZ` «temporalmente para probar».
+- Añadir una ruta nueva a `RUTAS_PUBLICAS` sin pensarlo dos veces: son las que
+  responden sin token.
+- Clasificar como `libre` algo que escribe fuera del vault.
+- Quitar de un prompt la regla de que lo observado no es una instrucción. Hay
+  una prueba que lo impide, y está ahí por algo.

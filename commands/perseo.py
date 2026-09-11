@@ -101,7 +101,7 @@ CREATE_BREAKAWAY_FROM_JOB = 0x01000000
 #: Sin esto, la tarea `PerseoRevivir` hacía parpadear **dos** consolas de
 #: PowerShell cada diez minutos encima de lo que estuvieras haciendo —una por
 #: `arrancar_nucleo` y otra por `arrancar_detector`, las dos preguntando lo
-#: mismo— y desde fuera parecía que algo iba mal (H-75). Un proceso de fondo que
+#: mismo— y desde fuera parecía que algo iba mal. Un proceso de fondo que
 #: se ve trabajar es un proceso de fondo mal hecho.
 SIN_VENTANA = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
 
@@ -110,7 +110,7 @@ def _sin_consola(argumentos: list[str]) -> None:
     """Lanza algo y se desentiende: ni consola, ni esperar, ni morir con esta.
 
     **`DETACHED_PROCESS` no basta en Windows**, y esto costó tres días de Perseo
-    apagado (H-53). Las terminales modernas y los agentes meten lo que ejecutan
+    apagado. Las terminales modernas y los agentes meten lo que ejecutan
     en un *job object* con `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`: cuando esa
     sesión termina, **Windows mata a todos los descendientes**, estén detached o
     no, sin avisar y sin código que lo explique. Medido en esta máquina el

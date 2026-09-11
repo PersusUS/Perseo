@@ -45,7 +45,7 @@ pub(crate) fn base_url() -> String {
 /// Donde puede estar `perseo_core/datos/`, en orden. Sin rutas absolutas
 /// cableadas, igual que hacia el puente con la carpeta TOOLS: la primera vale en
 /// pruebas, la segunda en el binario instalado y la tercera en `tauri dev`.
-/// Ver H-15. Lo usa tambien `commands.rs` para la clave de Gemini.
+/// Lo usa tambien `commands.rs` para la clave de Gemini.
 pub(crate) fn rutas_datos(app: &AppHandle) -> Vec<PathBuf> {
     let mut rutas = Vec::new();
     if let Ok(datos) = std::env::var("PERSEO_CORE_DATOS") {
@@ -411,7 +411,7 @@ pub async fn ejecutar_herramienta(
 
     // La confirmacion no encola nada: resuelve un trabajo que ya esta parado.
     // Va antes de `traducir` porque no es un trabajo nuevo para un agente, es
-    // una decision sobre uno que existe. Ver N-1 en bitacora/11_HISTORIA.md §12:
+    // una decision sobre uno que existe:
     // desde que Telegram dejo de tener botones, el si se da aqui, de viva voz.
     if tool_name == "responder_confirmacion" {
         return responder_confirmacion(&app, &args).await;
@@ -690,7 +690,7 @@ async fn esperar_trabajo(
 /// herramienta.
 ///
 /// Antes esto arrancaba el proceso de Python y pagaba por adelantado los 3,7 s
-/// de importar llama_index y chromadb (H-12). Ahora el nucleo ya esta
+/// de importar llama_index y chromadb. Ahora el nucleo ya esta
 /// encendido —es su razon de ser— y esto solo sirve para avisar pronto si algo
 /// no esta, en vez de descubrirlo a mitad de una frase.
 ///
@@ -822,7 +822,7 @@ pub async fn biometria_borrar(app: AppHandle, nombre: String) -> Result<Value, S
 /// Devuelve SOLO el segmento, no la ruta entera: quien llama ya escribe
 /// `/biometria/perfiles/{}`. Cuando esto devolvía la ruta completa salía
 /// `/biometria/perfiles//biometria/perfiles/Desconocido%201`, y el núcleo
-/// contestaba 404 a todo borrado y a todo renombrado (H-69).
+/// contestaba 404 a todo borrado y a todo renombrado.
 fn encode_ruta(nombre: &str) -> String {
     let mut url = reqwest::Url::parse("http://localhost/")
         .expect("la URL semilla es fija y válida");

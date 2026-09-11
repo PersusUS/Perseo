@@ -8,7 +8,7 @@ acción»), y los clasificados del agente `correo` vivían solo en la cola, que 
 voz no lee. Ante un hueco así, el modelo rellena con ficción: no es maldad, es
 lo que hace un modelo al que se le pregunta algo para lo que no tiene manos.
 
-La regla de casa para esto ya estaba escrita (bitacora, N-3): lo que falta no
+La regla de casa para esto ya estaba escrita: lo que falta no
 se parchea con promesas en el prompt, se cierra con una herramienta de verdad.
 Y como Perseo ya habla MCP con medio mundo, el camino corto es este servidor.
 

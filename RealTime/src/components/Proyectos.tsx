@@ -381,7 +381,7 @@ export const Proyectos: React.FC<{
 
     // El puntero se captura **solo cuando ya se está arrastrando de verdad**, no
     // al apoyarlo: con la captura puesta desde el principio, el `click` se lo
-    // llevaba el carril y pulsar una ficha no hacía absolutamente nada (H-54).
+    // llevaba el carril y pulsar una ficha no hacía absolutamente nada.
     if (arrastre.current.movido >= PIXELES_DE_ARRASTRE && !arrastre.current.cogido) {
       nodo.setPointerCapture(e.pointerId);
       arrastre.current.cogido = true;

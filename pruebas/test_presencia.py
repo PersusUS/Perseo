@@ -1,6 +1,6 @@
 """La marca de presencia: lo que sustituyó a buscar el nombre del binario.
 
-Esta pieza rompía en silencio (H-21): el detector buscaba `temp-app.exe` en el
+Esta pieza rompía en silencio: el detector buscaba `temp-app.exe` en el
 `tasklist`, así que renombrar el paquete Rust dejaba de encontrar la aplicación
 —y cada aplauso abría una segunda instancia— sin que nada avisara. Ahora se
 pregunta por un PID, y esto lo pincha.

@@ -4,7 +4,7 @@ El 2026-08-26 había TRES detectores de aplausos sobre el mismo micrófono, y no
 por un fallo del detector: `perseo.arrancar_detector()` pregunta si hay otro con
 una consulta WMI que a veces falla, y cuando falla contesta «no está» y arranca
 uno más — cada diez minutos, que es cada cuánto lo intenta `PerseoRevivir`.
-La cerradura existe para que esa pregunta pueda fallar sin consecuencias (H-76).
+La cerradura existe para que esa pregunta pueda fallar sin consecuencias.
 """
 
 from __future__ import annotations

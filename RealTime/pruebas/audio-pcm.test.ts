@@ -3,7 +3,7 @@
  *
  * Son aritmética sobre bytes, así que un fallo aquí no revienta: suena mal, o
  * suena a medias, y cuesta relacionarlo con el código. Por eso están probadas —
- * es lo último que le faltaba a H-28.
+ * es lo último que le faltaba a.
  */
 
 import { describe, expect, it } from 'vitest';

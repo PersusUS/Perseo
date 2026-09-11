@@ -2,7 +2,7 @@
 
 Vienen de la herramienta de v1, que las llevaba dentro en un `__main__`. Al mudar
 la herramienta al núcleo se mudan también, porque son lo que impide que este
-módulo vuelva a ser lo que era antes de H-16.
+módulo vuelva a ser lo que era antes de.
 
 Cada caso es un intento de inyección que la versión de entonces habría
 ejecutado. **Ninguno debe llegar a tocar el sistema**, y ninguno de los que se

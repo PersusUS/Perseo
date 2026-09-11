@@ -28,7 +28,7 @@ Dos diferencias entre los dos modos, y las dos son a propósito:
 Este proceso **no tiene consola**: lo lanza `pythonw` desde el registro, así que
 `print` escribiría contra un `sys.stdout` que vale `None` y reventaría en la
 primera línea. Todo lo que diga va a `<datos>/arranque.log`, que además es el
-sitio donde mirar el día que el PC arranque y Perseo no. Es H-34 y H-41 otra vez:
+sitio donde mirar el día que el PC arranque y Perseo no. Es y otra vez:
 un proceso sin consola que no escribe en un fichero no está diciendo nada.
 
     python commands/arranque.py              # a mano, para verlo trabajar

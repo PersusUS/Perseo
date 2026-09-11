@@ -5,8 +5,7 @@
  * que se portó mal: el 2026-08-17 la app se quedó horas en «Conectando…»
  * abriendo una sesión por segundo. El contador de intentos se ponía a cero **al
  * abrir** el socket, no al sobrevivir con él, así que una sesión que moría un
- * segundo después de nacer dejaba la espera en `2^0 = 1 s` para siempre. Ver
- * `bitacora/08_LLAMADA.md`.
+ * segundo después de nacer dejaba la espera en `2^0 = 1 s` para siempre.
  */
 
 /** Tope de la espera normal: una caída de red se arregla sola cuando vuelve. */

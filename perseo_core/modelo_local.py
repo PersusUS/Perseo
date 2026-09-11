@@ -20,7 +20,6 @@ Lo que no es obvio, y por qué está aquí:
    esquemas de este sistema tienen una salida de "no estoy seguro": el modelo
    tiene dónde escalar en vez de inventarse una respuesta.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §3 y bitacora/06_HANDOFF.md §6, trampa 3.
 """
 
 from __future__ import annotations

@@ -19,7 +19,7 @@ Dos cosas que lo diferencian del correo:
 La regla del canal se respeta igual: por Telegram sale **cuántos y a qué hora**,
 nunca el título del evento — eso es contenido, y se lee por el tailnet.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §5 y §9 (Fase D).
+
 """
 
 from __future__ import annotations

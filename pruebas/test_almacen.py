@@ -281,7 +281,7 @@ def test_los_correos_marcados_sobreviven_al_reinicio(db, cfg) -> None:
 def test_tailscale_abre_las_dos_direcciones(monkeypatch: pytest.MonkeyPatch) -> None:
     """MagicDNS publica un registro A y otro AAAA por máquina, y un iPhone
     resuelve la IPv6 primero. Escuchando solo en la IPv4, entrar por el nombre
-    no llegaba a ninguna parte y por la dirección numérica sí (H-46)."""
+    no llegaba a ninguna parte y por la dirección numérica sí."""
     monkeypatch.setattr(
         almacen, "direcciones_tailscale", lambda: ("100.64.0.1", "fd7a:115c:a1e0::1")
     )
@@ -308,7 +308,7 @@ def test_la_direccion_de_los_enlaces_es_la_ipv4(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_el_enlace_prefiere_la_ipv4_del_tailnet() -> None:
-    """Desde H-46 se escucha también en la IPv6, y un enlace con una IPv6
+    """Desde se escucha también en la IPv6, y un enlace con una IPv6
     dentro se lee fatal —y hay que acordarse de los corchetes—."""
     hosts = ("127.0.0.1", "100.64.0.1", "fd7a:115c:a1e0::1")
     assert almacen._url_por_defecto(hosts, 8787) == "http://100.64.0.1:8787"

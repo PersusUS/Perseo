@@ -5,8 +5,7 @@ solo tiene que despertarla; si no, hay que lanzarla, que tarda. Hasta ahora se
 averiguaba buscando `temp-app.exe` en el `tasklist`, y eso ataba dos cosas que no
 deberían estarlo — **el nombre del binario y el funcionamiento del detector**.
 Renombrar el paquete Rust rompía la detección sin que nada avisara: la app
-seguía arrancando, y de pronto cada aplauso abría una segunda instancia. Ver
-H-21.
+seguía arrancando, y de pronto cada aplauso abría una segunda instancia.
 
 Ahora la aplicación deja su PID en un fichero al arrancar (`presencia.rs`) y aquí
 se pregunta al sistema si ese proceso sigue vivo. Da igual cómo se llame el
@@ -91,7 +90,7 @@ def _proceso_vivo(pid: int) -> bool:
         # Un número que no cabe en el `pid_t` del sistema no es un proceso: es
         # basura en el fichero. `os.kill` lanza `OverflowError` en Linux con
         # cualquier PID por encima de `INT_MAX`, y sin esto una marca corrupta
-        # tumbaba al que preguntara. Ver H-21.
+        # tumbaba al que preguntara.
         return False
     return True
 

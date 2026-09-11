@@ -2,7 +2,7 @@
  * La maqueta: las pantallas de verdad, con datos de mentira.
  *
  * Existe porque ver un cambio de CSS en la app cuesta dos minutos —hay que
- * reconstruir el binario, la interfaz va incrustada dentro (H-55)— y eso hace
+ * reconstruir el binario, la interfaz va incrustada dentro— y eso hace
  * que nadie itere sobre el aspecto. Aquí el cambio se ve al guardar.
  *
  *     node RealTime/node_modules/vite/bin/vite.js --config RealTime/vite.maqueta.config.ts

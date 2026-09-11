@@ -8,7 +8,7 @@ lo peor: parece que funciona.
 Este script no pregunta nada. Mira qué credenciales hay puestas y decide en
 consecuencia — si están las de Google, enciende Gmail y Calendar; si está la
 clave del plugin, pone el vault por Obsidian; si hay Tailscale, abre la interfaz
-del tailnet para que el móvil llegue y el enlace de Telegram sirva (H-35).
+del tailnet para que el móvil llegue y el enlace de Telegram sirva.
 
     python commands/configurar_arranque.py            # lo escribe
     python commands/configurar_arranque.py --ver      # solo dice qué haría
@@ -50,7 +50,7 @@ def ajustes_recomendados(datos: Path, hay_tailscale: bool) -> dict[str, str]:
 
     if hay_tailscale:
         # Sin esto el enlace de "ver detalle" de Telegram apunta al bucle local
-        # y en el móvil abre una página en blanco. Es H-35.
+        # y en el móvil abre una página en blanco. Es.
         ajustes["PERSEO_CORE_HOST"] = "tailscale"
 
     if (datos / "obsidian.txt").is_file():
@@ -93,7 +93,7 @@ def main() -> int:
 
     if not hay_tailscale:
         print("\n  [aviso] Tailscale no responde. El núcleo solo escuchará en el bucle local,")
-        print("          y el enlace de Telegram no servirá desde el móvil (H-35).")
+        print(" y el enlace de Telegram no servirá desde el móvil.")
 
     if solo_ver:
         print(f"\nNo se ha escrito nada. Quita --ver para dejarlo en {destino}.")

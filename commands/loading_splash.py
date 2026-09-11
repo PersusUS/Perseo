@@ -27,7 +27,7 @@ def check_process(root, label, dots=0, retries=0):
     try:
         # Se pregunta por el PID que deja la propia aplicacion, no por el nombre
         # del ejecutable: atarlo al nombre del binario era lo que rompia esto en
-        # silencio al renombrar el paquete Rust. Ver H-21.
+        # silencio al renombrar el paquete Rust.
         if presencia.app_viva():
             # Si lo detecta, damos 2 segundos extra para que Tauri dibuje la ventana y se cierre
             label.config(text="Interfáz gráfica lista.", fg="#3fb950")

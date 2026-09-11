@@ -28,7 +28,6 @@ del plan gratuito. Así que no se consulta — se cuenta lo que gasta este proce
 el 2026-08-16. Es un número aproximado por debajo, y la pantalla lo dice: la app
 de voz gasta por su cuenta y no pasa por aquí.
 
-Ver bitacora/06_HANDOFF.md §5 y §10, y bitacora/07_PWA.md.
 """
 
 from __future__ import annotations
@@ -632,7 +631,7 @@ async def presencia(cfg: almacen.Configuracion) -> dict[str, Any]:
                 datos["proximo_evento"] = eventos[0].a_dict()
                 # Y el resto del día, con tope: la pantalla enseña una lista
                 # corta, y traerse veinte reuniones para pintar cuatro es
-                # ancho de banda del túnel tirado (misma lección que H-36).
+                # ancho de banda del túnel tirado (misma lección que).
                 datos["eventos"] = [e.a_dict() for e in eventos[:EVENTOS_EN_PANTALLA]]
         except Exception as e:  # noqa: BLE001
             logger.warning("No se pudo mirar el calendario: %s", e)

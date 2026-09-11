@@ -76,7 +76,7 @@ def test_opencode_va_con_auto(monkeypatch) -> None:
 
 
 def test_opencode_lleva_la_carpeta_escrita(monkeypatch, tmp_path) -> None:
-    """`opencode run` levanta su propio servidor y se OLVIDA del `cwd` (H-67).
+    """`opencode run` levanta su propio servidor y se OLVIDA del `cwd`.
 
     Sin `--dir`, el fichero acababa en la carpeta que a él le pareciera. Es el
     mismo fallo que costó un fichero perdido en el agente `dev` el 2026-08-26.

@@ -400,7 +400,7 @@ def test_aplanar_convierte_las_herramientas_en_prosa() -> None:
 
 
 def test_sin_cuota_y_peticion_rechazada_no_se_cuentan_igual() -> None:
-    """Esperar arregla lo primero y no arregla lo segundo (H-73)."""
+    """Esperar arregla lo primero y no arregla lo segundo."""
     sin_cuota = chat._por_que_no_hubo_modelo(
         chat.ErrorGemini("Ningún modelo del chat tiene cuota ahora mismo: a, b")
     )

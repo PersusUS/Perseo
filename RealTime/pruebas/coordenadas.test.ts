@@ -2,7 +2,7 @@
  * La traducción de «donde señala el modelo» a «donde clica el ratón».
  *
  * Es aritmética, así que cuando falla no revienta: el clic cae en otro sitio y
- * parece que el modelo se equivoca. Pasó en una llamada del 2026-08-17 (H-50).
+ * parece que el modelo se equivoca. Pasó en una llamada del 2026-08-17.
  */
 
 import { describe, expect, it } from 'vitest';

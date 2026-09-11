@@ -1,6 +1,6 @@
 """Verificación del criterio de aceptación de la Fase A.
 
-Criterio (bitacora/05_PLAN_PERSEO_V2.md §9):
+Criterio:
   "encolas un trabajo por HTTP desde el móvil, se ejecuta, y sigue en la cola
    tras reiniciar el núcleo."
 

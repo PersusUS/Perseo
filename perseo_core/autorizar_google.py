@@ -35,7 +35,7 @@ de terceros para recibirlo. El puerto se pide libre en el momento, así que hay
 que dejar `http://127.0.0.1` como URI de redirección autorizado en la consola —
 en las aplicaciones de escritorio Google acepta cualquier puerto del bucle local.
 
-Ver bitacora/06_HANDOFF.md §7.
+
 """
 
 from __future__ import annotations
@@ -244,7 +244,7 @@ def autorizar(ruta: Path, abrir_navegador: bool = True) -> str:
     # lanzador, con la salida redirigida, Python la almacena y no la suelta hasta
     # salir. Y aquí no se sale: se espera. Sin esto, quien mire la salida no ve
     # la URL que necesita para dar permiso a mano cuando el navegador no se abre
-    # solo. Es H-34, que se anotó por el detector de aplausos y vale igual aquí.
+    # solo. Es, que se anotó por el detector de aplausos y vale igual aquí.
     print("Abriendo el navegador. Si no se abre solo, entra aquí:\n", flush=True)
     print(f"  {url}\n", flush=True)
     if abrir_navegador:

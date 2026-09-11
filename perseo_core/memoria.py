@@ -33,9 +33,9 @@ Sobre dónde está el vault: se resuelve con `OBSIDIAN_VAULT_PATH`, que es la
 variable que ya usaba el indexador de v1 (`RAG/paths.py`, hoy retirado). Se
 mantiene el nombre a propósito: quien la tuviera puesta no tiene que cambiar
 nada, y no vuelve a haber dos módulos apuntando a carpetas distintas — que es lo
-que fue H-22 y costó descubrirlo.
+que fue y costó descubrirlo.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §6 y §9 (Fase D).
+
 """
 
 from __future__ import annotations
@@ -250,7 +250,7 @@ class VaultRest:
         #: se van a ningún sitio porque el programa que las enseña no esté
         #: abierto: buscar y leer siguen funcionando por el disco, y anotar
         #: escribe el fichero que Obsidian recogerá cuando vuelva. Sin esto,
-        #: cerrar Obsidian dejaba a Perseo sin memoria entera (H-78).
+        #: cerrar Obsidian dejaba a Perseo sin memoria entera.
         self.respaldo = respaldo
         self._avisado_caido = False
         self._http: aiohttp.ClientSession | None = None
@@ -554,14 +554,14 @@ _vault: Vault | None = None
 
 
 def ruta_vault(cfg: almacen.Configuracion | None = None) -> Path:
-    """Dónde está el vault. Una sola variable para todo el sistema, ver H-22.
+    """Dónde está el vault. Una sola variable para todo el sistema
 
     El respaldo —`<repositorio>/../obsidian_vault`— es para un clon recién
     hecho, sin configurar: se crea al primer apunte y sirve para probar. **El
-    vault de verdad se dice en `OBSIDIAN_VAULT_PATH`** (en esta máquina,
-    `Documents/Persus`), y desde el 2026-08-24 Perseo escribe dentro de su
+    vault de verdad se dice en `OBSIDIAN_VAULT_PATH`**, y Perseo escribe
+    siempre dentro de su
     propia carpeta, `10_PERSEO/`. La carpeta de pruebas que había en el
-    repositorio se vació ese día: sus notas están en el vault grande (H-65).
+    repositorio se vació ese día: sus notas están en el vault grande.
     """
     if cfg is not None and cfg.vault:
         return Path(cfg.vault)

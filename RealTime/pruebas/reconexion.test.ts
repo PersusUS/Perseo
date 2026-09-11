@@ -2,7 +2,7 @@
  * La aritmética de los reintentos.
  *
  * Es la pieza que dejó la app horas en «Conectando…» el 2026-08-17 abriendo una
- * sesión por segundo (H-49). Un fallo aquí no revienta nada: se ve como «no
+ * sesión por segundo. Un fallo aquí no revienta nada: se ve como «no
  * conecta», que es lo más caro de diagnosticar.
  */
 

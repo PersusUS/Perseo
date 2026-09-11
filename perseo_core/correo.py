@@ -24,7 +24,7 @@ Dos reglas que gobiernan el módulo:
    así que releer el buzón tiene que poder repetirse sin consecuencias (lo es:
    leer no cambia nada).
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §5 y §9 (Fase D).
+
 """
 
 from __future__ import annotations

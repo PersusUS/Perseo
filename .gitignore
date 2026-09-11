@@ -1,57 +1,88 @@
-# =========================
-# General / OS
-# =========================
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# .gitignore de Perseo
+#
+# Perseo lee correo, escucha por el micrófono, mira la pantalla y guarda
+# memoria. Casi todo lo que produce mientras funciona es privado de quien lo
+# usa, así que este fichero no es papeleo: es la frontera entre lo que se
+# publica y lo que no sale nunca de tu disco.
+#
+# La regla al añadir algo: si el fichero lo ESCRIBE Perseo mientras trabaja, o
+# lo escribes tú con una credencial dentro, va aquí. Si lo escribe una persona
+# para que otra lo lea, no.
 
-# =========================
-# Environment Variables / Secrets
-# =========================
+# ==========================================================================
+# 1 · Credenciales. Nada de esto se sube, nunca
+# ==========================================================================
 .env
 .env.*
 !.env.example
 *.pem
 *.key
 *.cert
+*.crt
 *.pfx
+*.p12
 *.jks
 *.keystore
+
+# Los testigos de OAuth de Google: `client_id`, `client_secret` y, sobre todo,
+# el `refresh_token`, que abre el buzón y el calendario sin pedir contraseña.
 tokens.json
 credentials.json
 client_secret.json
 service-account.json
+google.json
 
-# =========================
-# Node / Frontend / Vite
-# =========================
-node_modules/
-dist/
-dist-ssr/
-build/
-.npm/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-.eslintcache
-.vite/
+# Las claves sueltas que el núcleo acepta en fichero cuando no hay variable de
+# entorno: Gemini, el bot de Telegram y el plugin de Obsidian.
+gemini.txt
+telegram.txt
+telegram_chat.txt
+obsidian.txt
+token.txt
 
-# =========================
-# Rust / Tauri
-# =========================
-/RealTime/src-tauri/target/
-/RealTime/src-tauri/gen/schemas/
-target/
-**/*.rs.bk
+# ==========================================================================
+# 2 · Lo que Perseo escribe mientras trabaja
+# ==========================================================================
+# La carpeta de datos del núcleo. Dentro hay tres cosas que no deben salir del
+# disco ni por accidente:
+#   · `estado.sqlite3`  la cola, con el TEXTO LITERAL de lo que le pides
+#   · `token.txt`       la credencial que abre la API del núcleo
+#   · `perfiles.json`   los vectores de voz y cara de las personas reconocidas
+# Los dos últimos son datos biométricos de gente real. Ver `docs/PRIVACIDAD.md`.
+perseo_core/datos/
 
-# =========================
-# Python / RAG
-# =========================
+# El vault de Obsidian es la memoria de Perseo: notas, conversaciones y fichas
+# de personas con nombre y apellidos. Vive FUERA del repositorio, y esta regla
+# es la red por si alguien vuelve a dejar uno aquí dentro.
+obsidian_vault/
+vault/
+
+# Registros: el del núcleo, el de su vigilante y el cuaderno de la llamada.
+# Llevan dentro lo que se dijo y lo que se hizo.
+*.log
+nucleo.log
+vigilante.log
+llamada.log
+
+# Bases de datos de estado, allá donde caigan.
+*.sqlite
+*.sqlite3
+*.db
+
+# ==========================================================================
+# 3 · Señales de ejecución que la app deja en la raíz
+# ==========================================================================
+# Ficheros de un byte con los que las piezas se hablan entre sí: si la app está
+# abierta, si hay que entrar en llamada, si hay que sacar la ventana de la
+# bandeja. Son estado de esta máquina y de este momento.
+*.pid
+.perseo-app.pid
+.perseo-autollamada
+.perseo-mostrar
+
+# ==========================================================================
+# 4 · Python
+# ==========================================================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -59,62 +90,105 @@ __pycache__/
 .Python
 .eggs/
 *.egg-info/
-.installed.cfg
 *.egg
+.installed.cfg
 MANIFEST
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
-# NOTA: aquí NO van las reglas genéricas de empaquetado de Python
-# (lib/, lib64/, build/, dist/, parts/, var/, downloads/, sdist/, wheels/).
+# OJO: aquí NO van las reglas genéricas de empaquetado de Python — `lib/`,
+# `lib64/`, `build/`, `parts/`, `var/`, `downloads/`, `sdist/`, `wheels/`.
 # Git las aplica a CUALQUIER carpeta con ese nombre en todo el árbol, y `lib/`
-# se estaba tragando RealTime/src/lib/ — el núcleo de la aplicación. Ver H-01.
-# Este proyecto no genera distribuciones de Python, así que no hacen falta.
+# se tragaba `RealTime/src/lib/`, que es el núcleo de la aplicación. Este
+# proyecto no genera distribuciones de Python, así que no hacen falta.
 
-# =========================
-# Datos personales / privados
-# =========================
-# El vault vive fuera del repositorio desde el 2026-08-24 (en `Documents/Persus`,
-# carpeta `10_PERSEO/`), así que esta regla ya no tapa nada. Se queda como red:
-# contiene nombres reales y descripciones de personas identificables, y el día
-# que alguien vuelva a dejar un vault aquí dentro no debe salir del disco (H-04).
-obsidian_vault/
-
-# =========================
-# Restos del RAG de v1
-# =========================
-# La base vectorial se retiro con el paso a v2: la memoria la lleva el agente
-# `memoria` del nucleo, sobre el mismo vault y sin embeddings. La regla se queda
-# por si queda alguna carpeta en discos que vienen de antes. Ver H-03.
-RAG/
-
-# =========================
-# Grafo de conocimiento regenerable
-# =========================
-# Salida de /graphify: se reconstruye leyendo el repositorio y pesa ~1,1 MB en
-# dos ficheros (graph.html y graph.json). Además retrata la estructura del
-# proyecto en un momento concreto, así que envejece mal: lo que valga la pena
-# recordar del grafo va en la bitácora, no aquí.
-graphify-out/
-
-# =========================
-# Estado del núcleo (perseo-core)
-# =========================
-# Cola de trabajos y token de acceso. La cola guarda el texto literal de lo que
-# le pides a Perseo, y el token es la credencial que abre la API. Ninguno de los
-# dos debe salir del disco local.
-perseo_core/datos/
-
-# Environments
-.env/
+# Entornos virtuales
 .venv/
-env/
 venv/
+env/
 ENV/
 env.bak/
 venv.bak/
 
-# =========================
-# IDEs
-# =========================
+# ==========================================================================
+# 5 · Node, Vite y la app de escritorio
+# ==========================================================================
+node_modules/
+dist/
+dist-ssr/
+.vite/
+.npm/
+.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==========================================================================
+# 6 · Rust y Tauri
+# ==========================================================================
+/RealTime/src-tauri/target/
+/RealTime/src-tauri/gen/
+target/
+**/*.rs.bk
+
+# ==========================================================================
+# 7 · Artefactos que se regeneran
+# ==========================================================================
+# Salida del grafo de conocimiento: se reconstruye leyendo el repositorio, pesa
+# más de un mega y retrata la estructura de un momento concreto, así que
+# envejece mal.
+graphify-out/
+
+# Restos de la base vectorial de la v1. La memoria de la v2 la lleva el agente
+# `memoria` sobre el vault, sin embeddings; la regla se queda por los discos
+# que vienen de antes.
+RAG/
+
+# Restos de sesión del servidor Playwright MCP: consolas y capturas de página.
+.playwright-mcp/
+
+# ==========================================================================
+# 8 · Cuaderno de trabajo, que no es documentación
+# ==========================================================================
+# La bitácora es el diario interno del proyecto: sesión a sesión, con nombres,
+# rutas de la máquina donde se desarrolla y decisiones a medio cocer. Lo que
+# vale para quien llega de fuera está en `docs/`, escrito para ser leído.
+bitacora/
+
+# ==========================================================================
+# 9 · Medios pesados
+# ==========================================================================
+# Las capturas del README sí entran (`docs/imagenes/`): son PNG pequeños y son
+# la cara del proyecto. Lo que se queda fuera es el audio y el vídeo, que aquí
+# solo aparece como grabación de una sesión real.
+*.mp3
+*.wav
+*.mp4
+*.mkv
+*.mov
+
+# ==========================================================================
+# 10 · Sistema operativo
+# ==========================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Carpeta que el controlador de NVIDIA deja caer en el directorio de trabajo.
+NVIDIA Corporation/
+
+# ==========================================================================
+# 11 · Editores y herramientas de agentes
+# ==========================================================================
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
@@ -127,26 +201,7 @@ venv.bak/
 *.sln
 *.sw?
 
-# =========================
-# Media / Custom Assets
-# =========================
-*.mp3
-*.wav
-*.mp4
-*.mkv
-
-# Senal efimera de auto-llamada que deja el detector de aplausos (H-09)
-.perseo-autollamada
-
-# La otra senal: `perseo` pide que la ventana vuelva de la bandeja, sin llamada.
-.perseo-mostrar
-
-# PID que deja la app para que el detector sepa si esta abierta (presencia.rs).
-# Estado de ejecucion en la raiz del repo: mismo caso que H-09.
-.perseo-app.pid
-
-# Configuracion local de Codex CLI: herramienta del equipo, no del proyecto.
+# Configuración local de las herramientas del equipo, que no es del proyecto.
 .codex/
-
-# Restos de sesion del servidor Playwright MCP (consolas y capturas de pagina).
-.playwright-mcp/
+.claude/settings.local.json
+CLAUDE.local.md

@@ -18,7 +18,7 @@ Tres decisiones que conviene no deshacer:
    tú. Un disparador que hiciera el trabajo por su cuenta sería un segundo
    sistema con sus propias reglas.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §2 y §9 (Fase D).
+
 """
 
 from __future__ import annotations

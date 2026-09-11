@@ -25,7 +25,6 @@ que la alternativa habitual es meter el token en la URL. No se hace: las URLs
 acaban en historiales y registros. En su lugar `POST /sesion` canjea el token por
 una cookie HttpOnly y el flujo SSE se autentica con ella.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §5 y §7, y bitacora/03_ROADMAP.md (Fase 3).
 """
 
 from __future__ import annotations

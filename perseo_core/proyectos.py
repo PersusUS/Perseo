@@ -7,7 +7,7 @@ panel ya está delante.
 REGLA DE SEGURIDAD DE ESTE MÓDULO
 ---------------------------------
 Esto ejecuta cosas, y el panel se alcanza **desde el tailnet**. Así que aquí
-dentro se aplica lo mismo que en el agente `pc` (H-16), y una condición más que
+dentro se aplica lo mismo que en el agente `pc`, y una condición más que
 es la que de verdad sostiene todo:
 
   1. **Lo que se puede abrir sale de un fichero del disco**, `<datos>/proyectos.json`,

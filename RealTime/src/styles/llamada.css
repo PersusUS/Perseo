@@ -218,7 +218,7 @@
 
 /* Lo que Perseo ha pedido hacer y espera un sí, encima de la transcripción y
    debajo de los controles. Va aquí y no solo en el panel: durante una llamada
-   nadie mira el panel, y la acción se quedaba parada sin que se notara (H-51). */
+   nadie mira el panel, y la acción se quedaba parada sin que se notara. */
 .pendientes {
   position: absolute;
   bottom: 230px;
@@ -271,7 +271,7 @@
    Son lecturas, así que van al borde en caja recta con las esquinas marcadas y
    etiqueta en monoespaciada — la misma voz que los instrumentos del panel.
    Hasta hoy no tenían ni una regla: caían en el flujo central a tamaño natural,
-   empujaban la cara y se pisaban la escenografía (H-57). Cada aspecto ajusta
+   empujaban la cara y se pisaban la escenografía. Cada aspecto ajusta
    dónde cuelgan; ver aspectos.css. */
 
 .pip-container {

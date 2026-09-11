@@ -27,7 +27,7 @@ Dos decisiones que conviene entender:
    Que caduque no es un detalle — un interruptor que se queda encendido para
    siempre es exactamente lo que esta política quiere evitar.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §7 (R15).
+
 """
 
 from __future__ import annotations

@@ -252,7 +252,7 @@ export const Settings: React.FC<Props> = ({
   };
 
   // Todo se persiste en el almacén local que gestiona Rust: antes esto solo
-  // mutaba un objeto en memoria y se perdía al cerrar la app. Ver H-08.
+  // mutaba un objeto en memoria y se perdía al cerrar la app.
   const handleSave = async () => {
     setGuardando(true);
     setError('');

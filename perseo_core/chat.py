@@ -1222,8 +1222,7 @@ def _por_que_no_hubo_modelo(e: Exception) -> str:
     rechazada y sin red—, y desde fuera de casa la diferencia lo es todo: la
     primera se arregla esperando, la segunda no se arregla sola y la tercera es
     del túnel. El 2026-08-25 el señor Persus leyó «el modelo grande no
-    contesta» y esperó un rato para nada: era un 400 que iba a repetirse igual
-    (H-73).
+    contesta» y esperó un rato para nada: era un 400 que iba a repetirse igual.
     """
     texto = str(e)
     if "429" in texto or "cuota" in texto.lower():

@@ -18,13 +18,13 @@ Cuatro reglas:
    alguien lo paró a propósito; el vigilante se va detrás. Solo se reinicia lo
    que se muere mal.
 3. **Se deja escrito.** Todo va a `<datos>/vigilante.log`, con fecha, porque
-   este proceso no tiene consola: lo lanza `pythonw` desde el registro. Es H-34
+   este proceso no tiene consola: lo lanza `pythonw` desde el registro. Es
    aplicado antes de que muerda.
 4. **Lo que diga el núcleo también se guarda**, en `<datos>/nucleo.log`. El
    vigilante arranca sin consola, así que el núcleo hereda un `sys.stderr` que
    vale `None`: su registro se lo traga `logging` sin quejarse y sus trazas no
    aparecen en ninguna parte. Sin esto, `vigilante.log` apunta *que* se murió y
-   nadie apunta *por qué* (H-41).
+   nadie apunta *por qué*.
 
     python commands/vigilante.py           # a mano, para verlo trabajar
     python commands/manage_startup.py install PerseoNucleo
@@ -120,7 +120,7 @@ def vigilar() -> int:
     # 8787: el segundo muere con `OSError 10048`, el segundo vigilante lo toma
     # por una muerte anormal y lo vuelve a arrancar, y así para siempre. La
     # cerradura la suelta el sistema cuando el proceso muere, así que un
-    # vigilante colgado no deja a Perseo sin poder arrancar nunca más (H-76).
+    # vigilante colgado no deja a Perseo sin poder arrancar nunca más.
     cerrojo = unico.tomar(CERROJO)
     if cerrojo is None:
         _apuntar(registro, "Ya hay otro vigilante en marcha; este se retira.")

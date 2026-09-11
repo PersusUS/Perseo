@@ -1228,7 +1228,7 @@ function pintarTrabajo(t) {
     } else if (typeof t.resultado?.contenido === "string") {
       // Leer una nota devuelve la nota entera. Volcarla aquí llena la cola con
       // doce mil caracteres de Markdown para decir que se leyó un fichero: es el
-      // mismo error que H-36, con otro agente. El contenido se lee en Memoria.
+      // mismo error que, con otro agente. El contenido se lee en Memoria.
       extra.textContent =
         `Leída ${t.resultado.ruta ?? ""} — ${t.resultado.contenido.length} caracteres`;
     } else {

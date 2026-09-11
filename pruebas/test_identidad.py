@@ -65,8 +65,12 @@ def test_el_triaje_NO_hereda_la_identidad() -> None:
 
 
 def test_el_triaje_sabe_de_quien_es_el_buzon() -> None:
-    """Lo que sí cabe: una línea, sin tapar la tarea."""
-    assert "Persus" in triaje._INSTRUCCIONES
+    """Lo que sí cabe: una línea, sin tapar la tarea.
+
+    Y va por `identidad.USUARIO`, no por el nombre literal: quien clone el
+    repositorio pone el suyo con `PERSEO_TRATO` y el triaje debe seguirle.
+    """
+    assert identidad.USUARIO in triaje._INSTRUCCIONES
 
 
 def test_el_triaje_conserva_sus_cuatro_cajones() -> None:

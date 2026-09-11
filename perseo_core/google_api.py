@@ -21,7 +21,7 @@ sigue siendo cosa tuya.
 Nada de esto hace nada irreversible: solo lee. Mandar correo y mover eventos es
 de la política de §7 y de otro día.
 
-Ver bitacora/06_HANDOFF.md §7, Fase D.
+
 """
 
 from __future__ import annotations

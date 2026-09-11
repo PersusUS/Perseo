@@ -503,7 +503,7 @@ const TarjetaTrabajo: React.FC<{
             </>
           ) : typeof t.resultado?.contenido === 'string' ? (
             // Leer una nota devuelve la nota entera: doce mil caracteres de
-            // Markdown para decir que se leyó un fichero. Ver H-36.
+            // Markdown para decir que se leyó un fichero.
             `Leída ${t.resultado.ruta ?? ''} — ${t.resultado.contenido.length} caracteres`
           ) : (
             resumirResultado(t.resultado)

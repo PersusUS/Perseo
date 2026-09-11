@@ -11,7 +11,7 @@ encender el PC es justo lo que no quiere. Este script queda para dos cosas:
 * **Poner y quitar la tarea programada** `PerseoRevivir`, que cada diez minutos
   llama a `commands/arranque.py --revivir` para levantar el núcleo o el detector
   si se han caído. Es lo único que mira desde fuera de cualquier sesión, y es lo
-  que de verdad evita otro H-53: el 2026-08-18 el núcleo murió a las 16:42, el
+  que de verdad evita otro: el 2026-08-18 el núcleo murió a las 16:42, el
   vigilante se fue detrás y Perseo estuvo tres días apagado sin que nada lo
   dijera. Un vigilante no puede vigilar su propia muerte.
 
@@ -45,7 +45,7 @@ MINUTOS_ENTRE_REVISIONES = 10
 
 #: Que `schtasks` no abra ventana. Toda llamada de aquí lleva `capture_output`,
 #: así que esa consola no la lee nadie: solo parpadea encima de lo que esté
-#: haciendo el señor Persus (H-75).
+#: haciendo el señor Persus.
 SIN_VENTANA = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
 
 

@@ -19,9 +19,9 @@ tanto, aquí dentro:
   3. **Solo objetivos de una lista blanca explícita.** Si no está en la lista, no
      se ejecuta: no hay ruta de escape "por si acaso".
 
-Ver bitacora/02_HALLAZGOS.md H-16, y §7 del plan para la política por niveles que
-traerá el resto de la Fase E — hoy este agente se comporta igual que se comportaba
-la herramienta: sin pedir confirmación.
+La política por niveles que gobierna al resto del sistema todavía no llega
+aquí: hoy este agente se comporta igual que se comportaba la herramienta que
+lo precedió, sin pedir confirmación.
 """
 
 from __future__ import annotations

@@ -11,7 +11,7 @@ el bucle de asyncio vía `asyncio.to_thread`, que reparte entre varios hilos, y
 sistema personal, serializar los accesos no cuesta nada medible y evita toda una
 clase de errores.
 
-Ver bitacora/05_PLAN_PERSEO_V2.md §2 y §9 (Fase A).
+
 """
 
 from __future__ import annotations
@@ -212,7 +212,7 @@ class Configuracion:
     #: Raíz del vault de Obsidian. Se sigue leyendo de `OBSIDIAN_VAULT_PATH`,
     #: que es la variable que ya usaba el indexador de v1: quien la tuviera
     #: puesta no tiene que cambiar nada. Que las rutas del vault no coincidieran
-    #: entre módulos fue H-22.
+    #: entre módulos fue.
     vault: str
     #: Qué hay detrás del puerto del vault: vacío (ficheros, como hasta ahora) o
     #: `rest`, el plugin Local REST API de Obsidian. Con `rest` la ruta del
@@ -289,7 +289,7 @@ LOCALES = ("127.0.0.1", "localhost", "::1")
 #: Que preguntarle su IP a Tailscale no abra una consola. El núcleo arranca sin
 #: ventana —lo lanza `pythonw` desde el vigilante—, y `tailscale.exe` es un
 #: programa de consola: sin esto parpadeaba una caja negra en cada arranque
-#: (H-75). La salida se captura, así que nadie se pierde nada.
+#: La salida se captura, así que nadie se pierde nada.
 _SIN_VENTANA = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
 
 
@@ -386,7 +386,7 @@ def _resolver_hosts(crudo: str) -> tuple[str, ...]:
         resueltos.append("127.0.0.1")
         # Las dos del tailnet, IPv4 e IPv6: MagicDNS publica un registro de cada
         # tipo y un iPhone resuelve la IPv6 primero. Con solo la IPv4, entrar
-        # por el nombre no llegaba a ninguna parte (H-46).
+        # por el nombre no llegaba a ninguna parte.
         resueltos.extend(direcciones)
 
     if not resueltos:
@@ -553,7 +553,7 @@ def _url_por_defecto(hosts: tuple[str, ...], puerto: int) -> str:
     tailnet, y `127.0.0.1` allí apunta al propio teléfono.
 
     Y entre las no locales, **la IPv4 antes que la IPv6**. Desde que se escucha
-    también en la `fd7a:…` (H-46), la primera de la lista podría ser una IPv6, y
+    también en la `fd7a:…`, la primera de la lista podría ser una IPv6, y
     un enlace con una IPv6 dentro se lee fatal y encima hay que acordarse de los
     corchetes. Si solo hubiera IPv6, se pone con sus corchetes y se manda.
     """

@@ -78,7 +78,7 @@ def comprobar_en_proceso() -> None:
     )
     comprobar("Hay tope de vueltas", dev.MAX_VUELTAS > 0, str(dev.MAX_VUELTAS))
     # La lista ancha es para lo que pide el señor Persus con el dedo; sin ella,
-    # "abre la app de armario" acaba en verde sin abrir nada (H-74).
+    # "abre la app de armario" acaba en verde sin abrir nada.
     comprobar(
         "La lista ancha puede arrancar procesos",
         "Bash" in dev.HERRAMIENTAS_PERMITIDAS_AMPLIAS
@@ -175,7 +175,7 @@ def comprobar_de_punta_a_punta() -> None:
     comprobar("Trae titular para el canal", bool(resultado.get("titular")), str(resultado.get("titular")))
 
     # 6 bis. Y la bitacora se puede leer por la API DESPUES de terminar, que es
-    #        cuando uno se pregunta que hizo de verdad (H-74).
+    # cuando uno se pregunta que hizo de verdad.
     codigo_bitacora, bitacora = nucleo.pedir(f"/trabajos/{encargo['id']}/actividad", token)
     comprobar(
         "La actividad del encargo se lee por la API",
