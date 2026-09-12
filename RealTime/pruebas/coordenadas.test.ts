@@ -12,7 +12,7 @@ import {
   GeometriaPantalla,
   aPixeles,
   traducirParametroDeRaton,
-} from '../src/lib/coordenadas';
+} from '../src/lib/llamada/coordenadas';
 
 const PANTALLA: GeometriaPantalla = {
   ancho_imagen: 1280,

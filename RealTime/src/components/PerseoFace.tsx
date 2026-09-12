@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AspectoLive } from '../lib/config';
+import type { AspectoLive } from '../lib/datos/config';
 
 interface Props {
   isSpeaking: boolean;

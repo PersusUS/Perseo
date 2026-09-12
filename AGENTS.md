@@ -28,10 +28,11 @@ la web del móvil). No es una costumbre: lo comprueba `pruebas/test_arquitectura
 | Un agente concreto | `perseo_core/agentes/<nombre>.py` — se llaman como el agente |
 | Qué necesita confirmación | `perseo_core/infra/politica.py` |
 | El prompt compartido | `perseo_core/infra/identidad.py` |
-| La llamada de voz | `RealTime/src/lib/gemini-live.ts` y `RealTime/src/App.tsx` |
+| La llamada de voz | `RealTime/src/lib/llamada/gemini-live.ts` y `RealTime/src/App.tsx` |
 | El panel | `RealTime/src/components/Panel.tsx` |
 | Los puentes a Rust | `RealTime/src-tauri/src/commands.rs` y `nucleo.rs` |
 | La web del móvil | `perseo_core/caras/interfaz/index.html` — un solo fichero, sin build |
+| Las piezas de la app | `RealTime/src/lib/` en cuatro carpetas: `audio/`, `llamada/`, `datos/`, `identidad/` |
 | Configuración | [`docs/CONFIGURACION.md`](docs/CONFIGURACION.md) |
 
 Hay un **techo de tamaño**: blando a 600 líneas, duro a 900, con una lista de

@@ -1,4 +1,4 @@
-import { geminiClient } from './gemini-live';
+import { geminiClient } from '../llamada/gemini-live';
 
 class AudioManager {
   private captureContext: AudioContext | null = null;

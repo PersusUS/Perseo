@@ -3,7 +3,7 @@
 Lo que se prueba aquí es lo poco que el núcleo hace con las tareas, que es a
 propósito muy poco: guardar la copia que le manda la ventana, devolverla, y
 avisar cuando la copia está pasada. Contar notas no se prueba aquí porque no se
-hace aquí — se hace una sola vez, en `RealTime/src/lib/tareas.ts`, y de eso
+hace aquí — se hace una sola vez, en `RealTime/src/lib/datos/tareas.ts`, y de eso
 responden `RealTime/pruebas/tareas.test.ts`.
 
 Los dos casos que de verdad importan son el del almacén vacío y el de la copia

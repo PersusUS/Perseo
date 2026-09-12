@@ -15,7 +15,7 @@ antes de hacer algo que no tenga vuelta atrás.
 [![Licencia MIT](https://img.shields.io/badge/licencia-MIT-black.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-black.svg)](https://www.python.org/)
 [![Tauri 2](https://img.shields.io/badge/tauri-2-black.svg)](https://tauri.app/)
-[![897 pruebas](https://img.shields.io/badge/pruebas-897-black.svg)](#verificación)
+[![899 pruebas](https://img.shields.io/badge/pruebas-899-black.svg)](#verificación)
 
 [Qué es](#qué-es) · [Cómo se ve](#cómo-se-ve) · [Cómo funciona](#cómo-funciona) ·
 [Instalación](#instalación) · [Privacidad](#privacidad) · [English](README.en.md)
@@ -361,12 +361,12 @@ y las rutas de la API en [`docs/API.md`](docs/API.md).
 Nada de esto se comprueba a ojo, y se comprueba de dos maneras.
 
 **Pruebas unitarias** — cada pieza por separado, sin red y sin subprocesos.
-Dicen *qué* se ha roto: **897** en total.
+Dicen *qué* se ha roto: **899** en total.
 
 ```bash
 python commands/perseo.py comprobar    # todo, en orden de coste
 
-python -m pytest                       # 754, el núcleo y los comandos
+python -m pytest                       # 756, el núcleo y los comandos
 cd RealTime && npm test                # 143, la interfaz
 cd RealTime/src-tauri && cargo check   # y que el Rust compila
 ```
@@ -429,7 +429,7 @@ El detalle, en [`docs/PRIVACIDAD.md`](docs/PRIVACIDAD.md).
 
 Perseo funciona y se usa a diario, pero es un proyecto personal: está pensado
 para **una** persona, en **un** ordenador con Windows, y se nota. Lo que hay
-detrás son unas 49.100 líneas, 897 pruebas y 17 verificadores.
+detrás son unas 49.100 líneas, 899 pruebas y 17 verificadores.
 
 Si lo clonas y algo no arranca, abre un
 [issue](https://github.com/PersusUS/Perseo/issues) — y si lo arreglas, mejor

@@ -15,7 +15,7 @@ import {
   entregaEnVivo,
   etiquetaEncargosResueltos,
   etiquetaOrigen,
-} from '../src/lib/aviso-llamada';
+} from '../src/lib/llamada/aviso-llamada';
 
 describe('etiquetaOrigen', () => {
   it('la llamada entrante dice QUIÉN llama y quita el motivo inventado', () => {

@@ -13,7 +13,7 @@ guarda. Las tres decisiones son las de los hábitos, y tampoco conviene
 deshacerlas sin pensarlo:
 
 1. **Esto es un buzón, no un segundo tablero.** No cuenta notas ni decide qué
-   está atascado: recibe el texto YA redactado por `RealTime/src/lib/tareas.ts`
+   está atascado: recibe el texto YA redactado por `RealTime/src/lib/datos/tareas.ts`
    y lo devuelve. Contar en los dos lados es la forma segura de que un día el
    chat diga cuatro pendientes y la pantalla enseñe cinco, y entonces las dos
    cifras dejan de valer.
@@ -59,7 +59,7 @@ NOMBRE_ORDENES = "tareas_ordenes.json"
 TOPE_ORDENES = 50
 
 #: Las columnas del tablero. Repetidas aquí y no importadas de ningún sitio
-#: porque el que manda es `RealTime/src/lib/tareas.ts` y esto es un portero: si
+#: porque el que manda es `RealTime/src/lib/datos/tareas.ts` y esto es un portero: si
 #: algún día se añade una columna, esta lista se queda corta y la orden se
 #: rechaza, que es lo que tiene que pasar.
 COLUMNAS = ("sin_hacer", "en_proceso", "completadas", "papelera")

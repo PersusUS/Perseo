@@ -28,7 +28,7 @@ import {
   type AspectoLive,
   type EstiloHabitos,
   type ModoMicro,
-} from '../lib/config';
+} from '../lib/datos/config';
 import {
   borrarPerfil,
   capturarCara,
@@ -37,8 +37,8 @@ import {
   grabarMuestra,
   renombrarPerfil,
   type EstadoBiometria,
-} from '../lib/identidad';
-import { esElSenor } from '../lib/quien-hay';
+} from '../lib/identidad/identidad';
+import { esElSenor } from '../lib/identidad/quien-hay';
 
 interface Props {
   onClose: () => void;

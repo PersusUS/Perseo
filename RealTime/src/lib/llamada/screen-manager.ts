@@ -12,7 +12,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { geminiClient } from './gemini-live';
-import { defaultConfig } from './config';
+import { defaultConfig } from '../datos/config';
 import { apuntar } from './diagnostico';
 
 class ScreenManager {

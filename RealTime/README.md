@@ -96,10 +96,10 @@ Para compilar: `npm run tauri build`.
 
 | Fichero | Qué hace |
 |---|---|
-| `src/lib/gemini-live.ts` | La sesión con Gemini: conexión, reanudación, transcripciones y llamadas a herramientas |
-| `src/lib/audio-manager.ts` | El micrófono: captura y encolado |
-| `src/lib/audio-player.ts` | La reproducción. **No juntar los dos `AudioContext`** (16 y 24 kHz): está en la lista de intocables |
-| `src/lib/camera-manager.ts`, `screen-manager.ts` | Los fotogramas de cámara y pantalla |
+| `src/lib/llamada/gemini-live.ts` | La sesión con Gemini: conexión, reanudación, transcripciones y llamadas a herramientas |
+| `src/lib/audio/audio-manager.ts` | El micrófono: captura y encolado |
+| `src/lib/audio/audio-player.ts` | La reproducción. **No juntar los dos `AudioContext`** (16 y 24 kHz): está en la lista de intocables |
+| `src/lib/llamada/camera-manager.ts`, `screen-manager.ts` | Los fotogramas de cámara y pantalla |
 | `src/App.tsx` | Orquesta la interfaz, la transcripción y la autollamada |
 | `src-tauri/src/nucleo.rs` | El cliente del núcleo |
 | `src-tauri/src/bandeja.rs` | El icono de la bandeja y el esconder en vez de cerrar |

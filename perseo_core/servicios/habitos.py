@@ -11,7 +11,7 @@ Así que la ventana manda aquí una copia cada vez que algo cambia, y esto la
 guarda. Tres decisiones que conviene no deshacer sin pensarlo:
 
 1. **Esto es un buzón, no una segunda contabilidad.** No cuenta casillas ni
-   calcula rachas: recibe el texto YA redactado por `RealTime/src/lib/habitos.ts`
+   calcula rachas: recibe el texto YA redactado por `RealTime/src/lib/datos/habitos.ts`
    y lo devuelve. Contar en los dos lados es la forma segura de que un día el
    chat diga 14 y la pantalla diga 15, y entonces las dos cifras dejan de valer.
 2. **La copia se fecha y la fecha se cuenta.** Si la app lleva tres días

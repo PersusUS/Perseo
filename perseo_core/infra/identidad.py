@@ -1,7 +1,7 @@
 """Quién es Perseo, en una sola pieza y para todos los modelos.
 
 Hasta ahora la identidad vivía en un solo sitio —el prompt del modelo de voz, en
-`RealTime/src/lib/config.ts`— y los demás modelos no sabían para quién
+`RealTime/src/lib/datos/config.ts`— y los demás modelos no sabían para quién
 trabajaban. El router contestaba como un enrutador anónimo y el triaje clasificaba
 sin saber de quién es el buzón. Funcionaba, pero las respuestas que se cuelan en
 la conversación (`respuesta` del router, `motivo` del triaje) sonaban a otra cosa.
@@ -114,7 +114,7 @@ def con_identidad(instrucciones: str) -> str:
 #
 # El reconocimiento de personas etiqueta cada voz y cada cara con el nombre de
 # un perfil («Persus», «Javi», «Desconocido 3»). La cara de la llamada ya sabía
-# traducir eso a trato —`RealTime/src/lib/quien-hay.ts`—, pero esa decisión se
+# traducir eso a trato —`RealTime/src/lib/identidad/quien-hay.ts`—, pero esa decisión se
 # quedaba en el prompt: la política del núcleo no se enteraba de quién había
 # pedido un trabajo, así que una orden de una visita y una del señor Persus
 # valían exactamente lo mismo. Aquí está la misma regla, del lado que decide.

@@ -73,7 +73,7 @@ TECHO_DURO = 900
 EXCEPCIONES_DE_TAMANO: dict[str, int] = {
     # Una clase, `GeminiLiveClient`. Ya bajó de 1443 al sacarle el catálogo de
     # herramientas; lo que queda es el socket, y no se sostiene en dos mitades.
-    "RealTime/src/lib/gemini-live.ts": 1163,
+    "RealTime/src/lib/llamada/gemini-live.ts": 1163,
     # Un componente, `App`, con diecisiete efectos que comparten estado. La
     # partición buena es sacar ganchos (`useLlamada`, `useIdentidad`,
     # `useConfianza`), y eso cambia comportamiento: pendiente de hacerse con la
@@ -151,6 +151,59 @@ def excepciones_muertas() -> list[str]:
     return sorted(
         nombre for nombre in EXCEPCIONES_DE_TAMANO if actuales.get(nombre, 0) <= TECHO_DURO
     )
+
+
+# ==========================================================================
+# La frontera de la cara
+# ==========================================================================
+#: Cómo se habla con Rust —y, a través suyo, con el núcleo—. Es la única puerta
+#: que tiene la app de escritorio hacia fuera de sí misma.
+PUERTA_AL_NUCLEO = "@tauri-apps/api/core"
+
+#: Los componentes de React que todavía la abren ellos mismos.
+#:
+#: «Las caras no piensan» lleva escrito en `AGENTS.md` desde el principio, y
+#: hasta hoy no lo comprobaba nadie. Un componente que llama al núcleo mezcla
+#: dos trabajos —pintar y decidir qué pedir— y además no se puede probar sin
+#: Rust delante. Lo que debe hacer es pedirle los datos a un gancho de
+#: `lib/datos/`, que sí puede probarse solo.
+#:
+#: Esta lista es la deuda de ese principio, con nombre y apellidos. **Solo puede
+#: encoger**: un componente nuevo no entra, y cada uno que se arregla sale. No
+#: se vació de golpe a propósito: son catorce sitios en el camino de la llamada
+#: y del panel, y reescribirlos a la vez sin la app delante es la clase de
+#: cambio que rompe algo que nadie mira hasta la semana siguiente.
+COMPONENTES_QUE_LLAMAN_AL_NUCLEO: frozenset[str] = frozenset(
+    {
+        "RealTime/src/App.tsx",
+        "RealTime/src/components/Corteza.tsx",
+        "RealTime/src/components/Escenografia.tsx",
+        "RealTime/src/components/Habitos.tsx",
+        "RealTime/src/components/Panel.tsx",
+        "RealTime/src/components/Proyectos.tsx",
+        "RealTime/src/components/panel/AgentesTab.tsx",
+        "RealTime/src/components/panel/ChatTab.tsx",
+        "RealTime/src/components/panel/comun.ts",
+        "RealTime/src/components/panel/piezas.tsx",
+    }
+)
+
+
+def componentes_con_puerta_propia() -> set[str]:
+    """Componentes que importan la puerta al núcleo, estén o no perdonados."""
+    base = RAIZ / "RealTime" / "src" / "components"
+    encontrados: set[str] = set()
+    for ruta in sorted(base.rglob("*")):
+        if ruta.suffix not in (".ts", ".tsx") or not ruta.is_file():
+            continue
+        if PUERTA_AL_NUCLEO in ruta.read_text(encoding="utf-8-sig", errors="replace"):
+            encontrados.add(relativo(ruta))
+    # `App.tsx` no está en `components/` pero es un componente igual: es **el**
+    # componente, y dejarlo fuera de la regla la dejaría sin el peor caso.
+    app = RAIZ / "RealTime" / "src" / "App.tsx"
+    if app.exists() and PUERTA_AL_NUCLEO in app.read_text(encoding="utf-8-sig", errors="replace"):
+        encontrados.add(relativo(app))
+    return encontrados
 
 
 # ==========================================================================

@@ -10,7 +10,7 @@
 
 import React, { useLayoutEffect } from 'react';
 
-import { acotar, porcentaje } from '../lib/habitos';
+import { acotar, porcentaje } from '../lib/datos/habitos';
 
 const FILA_MINIMA = 14;
 

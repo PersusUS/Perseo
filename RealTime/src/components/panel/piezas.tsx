@@ -9,7 +9,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import React, { useCallback, useEffect, useState } from 'react';
 
-import { CONSTRUCCION, EN_DESARROLLO } from '../../lib/version';
+import { CONSTRUCCION, EN_DESARROLLO } from '../../lib/datos/version';
 
 import {
   CLASES_CORREO,

@@ -30,8 +30,8 @@ import {
 } from '@google/genai';
 import { invoke } from '@tauri-apps/api/core';
 import { aDeclaraciones, catalogoDeHerramientas } from './catalogo';
-import { defaultConfig } from './config';
-import { audioPlayer } from './audio-player';
+import { defaultConfig } from '../datos/config';
+import { audioPlayer } from '../audio/audio-player';
 import { apuntar, hablaElUsuario, respondePerseo } from './diagnostico';
 import {
   ACCIONES_DE_RATON,
@@ -52,15 +52,15 @@ import {
   etiquetaOrigen,
   type OrigenLlamada,
 } from './aviso-llamada';
-import { bloqueCenso, type PerfilConocido } from './quien-hay';
-import { resumenGuardado } from './habitos';
+import { bloqueCenso, type PerfilConocido } from '../identidad/quien-hay';
+import { resumenGuardado } from '../datos/habitos';
 import {
   COLUMNAS as COLUMNAS_TAREAS,
   crearDeFuera as crearTarea,
   moverDeFuera as moverTarea,
   resumenGuardado as resumenTareas,
   type Columna as ColumnaTarea,
-} from './tareas';
+} from '../datos/tareas';
 
 /**
  * Modelo de la Fase C. Se baja del 3.1 a propósito: el 3.1 **no soporta audio

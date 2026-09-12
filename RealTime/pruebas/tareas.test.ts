@@ -19,7 +19,7 @@ import {
   diasDesde, editar, foto, guardar, haceCuanto, leer, mover, moverDeFuera,
   porTitulo, restaurar, resumen, tirar, vaciarPapelera,
   type Columna, type Datos,
-} from '../src/lib/tareas';
+} from '../src/lib/datos/tareas';
 
 /** Un tablero a medida: títulos por columna, en orden. */
 function tablero(porColumna: Record<string, string[]>): Datos {

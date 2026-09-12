@@ -34,7 +34,7 @@ Sin clave configurada no hay drama: el turno contesta diciendo qué falta, igual
 que el resto del sistema convierte una capacidad ausente en información y no en
 un error rojo.
 
-Ver RealTime/src/lib/gemini-live.ts para las mismas herramientas en la voz.
+Ver RealTime/src/lib/llamada/gemini-live.ts para las mismas herramientas en la voz.
 """
 
 from __future__ import annotations

@@ -27,10 +27,10 @@ Dos sitios más donde vive la identidad, y que no son variables de entorno:
 
 - **El personaje largo de la voz** —el mayordomo, la casa, las mascotas, el
   tono— se edita en la propia aplicación: **Ajustes → Instrucciones del
-  sistema**. Su valor de fábrica está en `RealTime/src/lib/config.ts`.
+  sistema**. Su valor de fábrica está en `RealTime/src/lib/datos/config.ts`.
 - **Los avisos de identidad durante la llamada** («quien habla ahora NO es…»)
   salen de una sola constante, `TRATO_DUENO`, en
-  `RealTime/src/lib/quien-hay.ts`.
+  `RealTime/src/lib/identidad/quien-hay.ts`.
 
 ---
 

@@ -15,7 +15,7 @@ import {
   latenciaDeRespuesta,
   olvidarLatencias,
   respondePerseo,
-} from '../src/lib/diagnostico';
+} from '../src/lib/llamada/diagnostico';
 
 /** Una respuesta entera: habla, pasan `ms`, contesta. */
 function unaRespuesta(ms: number, reloj: { ahora: number }): void {

@@ -278,7 +278,7 @@ def imprimir_cuentas(argumentos: list[str] | None = None) -> int:
 #: conectar, pero arranca sin él más veces de las que parece —abrir la app antes
 #: de que el núcleo termine de levantarse es lo normal— y una llamada sin
 #: herramientas sería peor que una llamada con las de ayer.
-COPIA_DEL_CATALOGO = RAIZ / "RealTime" / "src" / "lib" / "catalogo-incrustado.ts"
+COPIA_DEL_CATALOGO = RAIZ / "RealTime" / "src" / "lib" / "llamada" / "catalogo-incrustado.ts"
 
 _CABECERA_COPIA = """\
 /**

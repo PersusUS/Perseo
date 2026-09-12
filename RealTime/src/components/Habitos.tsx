@@ -67,12 +67,12 @@ import React, {
 
 import { invoke } from '@tauri-apps/api/core';
 
-import type { EstiloHabitos } from '../lib/config';
+import type { EstiloHabitos } from '../lib/datos/config';
 import {
   DIAS_SEMANA, DIAS_SEMANA_LARGO, MESES, MES_VACIO,
   acotar, clave, diasDelMes, foto, guardar, leer, porcentaje, racha, resumen, semanaDe,
   type Datos, type Mes,
-} from '../lib/habitos';
+} from '../lib/datos/habitos';
 import '../styles/habitos.css';
 import { Barra, Rosco, useEncaje } from './habitos-piezas';
 

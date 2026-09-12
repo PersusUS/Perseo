@@ -1,5 +1,5 @@
 import { geminiClient } from './gemini-live';
-import { defaultConfig } from './config';
+import { defaultConfig } from '../datos/config';
 
 class CameraManager {
   private stream: MediaStream | null = null;

@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import { PERFIL_PERSUS_POR_DEFECTO } from './quien-hay';
+import { PERFIL_PERSUS_POR_DEFECTO } from '../identidad/quien-hay';
 
 /**
  * El aspecto de la pantalla de la llamada. Los tres dibujan lo mismo —la cara,

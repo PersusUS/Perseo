@@ -30,34 +30,34 @@ import {
   foto as fotoTareas,
   leer as leerTareas,
   resumen as resumenTareas,
-} from './lib/tareas';
+} from './lib/datos/tareas';
 import { Proyectos } from './components/Proyectos';
 import { Escenografia, comoReloj, type Fase } from './components/Escenografia';
 import { Marco } from './components/Marco';
 import {
   IconCamera, IconCameraOff, IconMic, IconMicOff, IconPhone, IconPhoneOff,
 } from './components/Iconos';
-import { geminiClient } from './lib/gemini-live';
-import { sonar, callar } from './lib/timbre';
-import { audioManager } from './lib/audio-manager';
-import { audioPlayer } from './lib/audio-player';
+import { geminiClient } from './lib/llamada/gemini-live';
+import { sonar, callar } from './lib/audio/timbre';
+import { audioManager } from './lib/audio/audio-manager';
+import { audioPlayer } from './lib/audio/audio-player';
 import {
   iniciarDiagnostico,
   latenciaDeRespuesta,
   olvidarLatencias,
   pararDiagnostico,
-} from './lib/diagnostico';
-import { cameraManager } from './lib/camera-manager';
-import { screenManager } from './lib/screen-manager';
-import { vigilante, type CaraDetectada } from './lib/identidad';
-import { avisoCaras, avisoHablante, esElSenor, sinAvisoDeIdentidad } from './lib/quien-hay';
+} from './lib/llamada/diagnostico';
+import { cameraManager } from './lib/llamada/camera-manager';
+import { screenManager } from './lib/llamada/screen-manager';
+import { vigilante, type CaraDetectada } from './lib/identidad/identidad';
+import { avisoCaras, avisoHablante, esElSenor, sinAvisoDeIdentidad } from './lib/identidad/quien-hay';
 import {
   defaultConfig,
   cargarAjustesPersistidos,
   type AspectoLive,
   type EstiloHabitos,
   type ModoMicro,
-} from './lib/config';
+} from './lib/datos/config';
 
 // ── Types ──
 // `abierto` marca un mensaje que aún está recibiendo fragmentos de transcripción.
