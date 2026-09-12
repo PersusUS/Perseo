@@ -56,13 +56,29 @@ CICLOS_CONOCIDOS: tuple[tuple[str, ...], ...] = ()
 TECHO_BLANDO = 600
 TECHO_DURO = 900
 
-# Los que hoy pasan del techo duro, con el tamaño que tenían cuando se escribió
-# la regla. La prueba comprueba dos cosas: que no aparece ninguno nuevo, y que
+# Los que pasan del techo duro, con el tamaño que tenían el día que se les
+# perdonó. La prueba comprueba dos cosas: que no aparece ninguno nuevo, y que
 # ninguno de estos **crece**. La lista solo puede encoger.
+#
+# Los dos que quedan tienen el mismo motivo, y merece la pena escribirlo porque
+# es el que decide cuándo NO se parte un fichero: los demás eran varias cosas
+# viviendo juntas —un agente y sus motores, seis pestañas, dos transportes— y
+# repartirlas fue mover líneas sin tocar ninguna. Estos dos son **una sola
+# cosa**: una clase y un componente. Sacarles trozos no es moverlos, es
+# rediseñarlos, y los dos están en el camino de la llamada de voz, que es lo
+# único de este repositorio que no se puede probar sin hablar por el micrófono.
+#
+# Partir por cuota lo que no tiene costura es cómo se rompe algo de verdad. Ver
+# `bitacora/adr/0002-por-que-no-se-parten-la-llamada-y-la-ventana.md`.
 EXCEPCIONES_DE_TAMANO: dict[str, int] = {
+    # Una clase, `GeminiLiveClient`. Ya bajó de 1443 al sacarle el catálogo de
+    # herramientas; lo que queda es el socket, y no se sostiene en dos mitades.
     "RealTime/src/lib/gemini-live.ts": 1163,
+    # Un componente, `App`, con diecisiete efectos que comparten estado. La
+    # partición buena es sacar ganchos (`useLlamada`, `useIdentidad`,
+    # `useConfianza`), y eso cambia comportamiento: pendiente de hacerse con la
+    # app delante.
     "RealTime/src/App.tsx": 1162,
-    "RealTime/src/components/Habitos.tsx": 1056,
 }
 
 # Dónde se mide. La bitácora, el vault y lo que no escribimos se quedan fuera.
