@@ -5,7 +5,7 @@
  * viajan a Gemini —PCM del micrófono y JPEG de la cámara—, los manda al núcleo
  * por los comandos `biometria_*` de Rust, y reparte las etiquetas que vuelven
  * («Javi», «Desconocido 1»…) a quien quiera pintarlas. Los vectores, los
- * umbrales y los perfiles viven en perseo_core/biometria.py.
+ * umbrales y los perfiles viven en perseo_core/servicios/biometria.py.
  *
  * Dos detalles que importan:
  *

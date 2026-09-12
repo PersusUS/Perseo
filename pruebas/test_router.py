@@ -1,4 +1,4 @@
-"""El trabajador: la política antes de ejecutar, y el registro de agentes."""
+"""El trabajador: la política antes de ejecutar, y el registro de router."""
 
 from __future__ import annotations
 
@@ -6,35 +6,35 @@ import asyncio
 
 import pytest
 
-from perseo_core import agentes, almacen, politica
-from perseo_core.bus import Bus
+from perseo_core.infra import almacen, politica, router
+from perseo_core.infra.bus import Bus
 
 
 def test_los_agentes_del_sistema_estan_registrados() -> None:
     # Importar el arranque es lo que los da de alta.
     from perseo_core import __main__  # noqa: F401
 
-    assert {"correo", "agenda", "memoria", "pc", "dev", "web"} <= set(agentes.REGISTRO)
+    assert {"correo", "agenda", "memoria", "pc", "dev", "web"} <= set(router.REGISTRO)
 
 
 def test_registrar_dos_veces_el_mismo_nombre_es_un_error() -> None:
     with pytest.raises(ValueError):
 
-        @agentes.registrar("eco")
+        @router.registrar("eco")
         async def _otro(trabajo):  # pragma: no cover - no llega a ejecutarse
             ...
 
 
 def test_aprobado_solo_cuando_hay_un_si() -> None:
-    assert agentes.aprobado({"confirmacion": {"decision": "aprobado"}})
-    assert not agentes.aprobado({"confirmacion": {"decision": "rechazado"}})
-    assert not agentes.aprobado({"confirmacion": None})
-    assert not agentes.aprobado({})
+    assert router.aprobado({"confirmacion": {"decision": "aprobado"}})
+    assert not router.aprobado({"confirmacion": {"decision": "rechazado"}})
+    assert not router.aprobado({"confirmacion": None})
+    assert not router.aprobado({})
 
 
 def _ejecutar_uno(trabajo: dict) -> Bus:
     bus = Bus()
-    trabajador = agentes.Trabajador(bus)
+    trabajador = router.Trabajador(bus)
     asyncio.run(trabajador._ejecutar_uno(trabajo))
     return bus
 
@@ -75,7 +75,7 @@ def test_con_confianza_lo_irreversible_pasa(db, monkeypatch) -> None:
         ejecutado.append(trabajo["id"])
         return {"texto": "hecho"}
 
-    monkeypatch.setitem(agentes.REGISTRO, "pc", falso)
+    monkeypatch.setitem(router.REGISTRO, "pc", falso)
     almacen.encolar("pc", {"accion": "escribir_teclado", "parametro": "hola"})
     _ejecutar_uno(almacen.reclamar())
 
@@ -90,7 +90,7 @@ def test_tras_aprobar_el_trabajo_pasa_la_politica(db, monkeypatch) -> None:
         ejecutado.append(trabajo["id"])
         return {"texto": "hecho"}
 
-    monkeypatch.setitem(agentes.REGISTRO, "pc", falso)
+    monkeypatch.setitem(router.REGISTRO, "pc", falso)
     trabajo = almacen.encolar("pc", {"accion": "escribir_teclado", "parametro": "x"})
     _ejecutar_uno(almacen.reclamar())
     almacen.resolver_confirmacion(trabajo["id"], True)
@@ -115,7 +115,7 @@ def test_un_agente_que_lanza_falla_el_trabajo(db, monkeypatch) -> None:
     async def falso(trabajo):
         raise RuntimeError("se rompió")
 
-    monkeypatch.setitem(agentes.REGISTRO, "eco", falso)
+    monkeypatch.setitem(router.REGISTRO, "eco", falso)
     trabajo = almacen.encolar("eco", {})
     _ejecutar_uno(almacen.reclamar())
 
@@ -135,11 +135,11 @@ def test_necesita_confirmacion_deja_el_trabajo_esperando(db) -> None:
 
 def test_la_ruta_del_router_encola_ante_la_duda() -> None:
     """`no_seguro` se trata como encolar: que quede registrado y visible."""
-    assert agentes.Ruta(destino="no_seguro", agente="eco", motivo="").hay_que_encolar
-    assert agentes.Ruta(destino="encolar", agente="eco", motivo="").hay_que_encolar
-    assert not agentes.Ruta(destino="responder", agente="eco", motivo="").hay_que_encolar
+    assert router.Ruta(destino="no_seguro", agente="eco", motivo="").hay_que_encolar
+    assert router.Ruta(destino="encolar", agente="eco", motivo="").hay_que_encolar
+    assert not router.Ruta(destino="responder", agente="eco", motivo="").hay_que_encolar
 
 
 def test_el_esquema_del_router_deja_dudar() -> None:
-    destinos = agentes.ESQUEMA_RUTA["properties"]["destino"]["enum"]
+    destinos = router.ESQUEMA_RUTA["properties"]["destino"]["enum"]
     assert "no_seguro" in destinos

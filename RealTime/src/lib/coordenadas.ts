@@ -4,7 +4,7 @@
  * El modelo no ve la pantalla: ve un JPEG de 1280×720 que le manda
  * `screen-manager.ts`, y señala sobre **esa** imagen con las coordenadas
  * normalizadas de 0 a 1000 con las que Gemini está entrenado para apuntar.
- * `perseo_core/pc.py`, en cambio, clica en píxeles de la pantalla real. Nadie
+ * `perseo_core/agentes/pc.py`, en cambio, clica en píxeles de la pantalla real. Nadie
  * traducía entre las dos cosas, así que un «clica el primer resultado» acababa
  * en cualquier parte — normalmente arriba a la izquierda, porque 0-1000 sobre
  * una pantalla de 1920 se queda a la mitad.

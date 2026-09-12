@@ -726,7 +726,7 @@ pub async fn precalentar_herramientas(app: AppHandle) -> Result<(), String> {
 // Biometría
 //
 // El reconocimiento de quién habla y quién sale por la cámara vive en el núcleo
-// (perseo_core/biometria.py); la llamada solo transporta los mismos trozos que
+// (perseo_core/servicios/biometria.py); la llamada solo transporta los mismos trozos que
 // ya le manda a Gemini y pinta la etiqueta que vuelve. Estos comandos son rutas
 // CONCRETAS y no un proxy genérico a /{ruta}, por el mismo motivo que panel.rs:
 // si el frontend elige la ruta entera, la ruta la escribe el frontend.

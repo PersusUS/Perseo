@@ -10,7 +10,8 @@ import sys
 
 import pytest
 
-from perseo_core import aplicaciones, pc
+from perseo_core.agentes import pc
+from perseo_core.servicios import aplicaciones
 
 
 @pytest.mark.parametrize(

@@ -17,7 +17,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from perseo_core import habitos
+from perseo_core.servicios import habitos
 
 
 def test_lo_guardado_vuelve_tal_cual(tmp_path: Path) -> None:

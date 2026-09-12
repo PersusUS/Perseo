@@ -30,7 +30,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from perseo_core import almacen, mcp  # noqa: E402
+from perseo_core.infra import almacen  # noqa: E402
+from perseo_core.servicios import mcp  # noqa: E402
 from verificadores.arnes_pruebas import comprobar, resumir  # noqa: E402
 
 SERVIDOR = Path(__file__).resolve().parent.parent / "commands" / "correo_mcp.py"

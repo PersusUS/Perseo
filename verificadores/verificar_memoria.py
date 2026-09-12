@@ -31,7 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from perseo_core import memoria  # noqa: E402
+from perseo_core.agentes import memoria  # noqa: E402
 from verificadores.arnes_pruebas import (  # noqa: E402
     ManejadorFalso,
     Nucleo,

@@ -40,9 +40,12 @@ from typing import Any
 
 from aiohttp import web
 
-from . import almacen, biometria, dev, estado, grafo, habitos, politica, proyectos, tareas
-from .agentes import REGISTRO, Router
-from .bus import Bus
+from . import estado
+from ..agentes import dev
+from ..infra import almacen, politica
+from ..servicios import biometria, grafo, habitos, proyectos, tareas
+from ..infra.router import REGISTRO, Router
+from ..infra.bus import Bus
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +202,7 @@ async def _pagina_grafo(peticion: web.Request) -> web.FileResponse:
 
 async def _datos_grafo(peticion: web.Request) -> web.Response:
     """El grafo del vault: notas como nodos, enlaces `[[...]]` como aristas."""
-    from . import memoria  # perezoso, como en `estado`: nada de cargarlo por defecto
+    from ..agentes import memoria  # perezoso, como en `estado`: nada de cargarlo por defecto
 
     cfg = peticion.app[CLAVE_CFG]
     datos = await asyncio.to_thread(grafo.construir, memoria.ruta_vault(cfg))
@@ -219,7 +222,7 @@ async def _abrir_nota_grafo(peticion: web.Request) -> web.Response:
     except (json.JSONDecodeError, TypeError, AttributeError):
         raise _fallo(web.HTTPBadRequest, "Cuerpo inválido")
 
-    from . import memoria
+    from ..agentes import memoria
 
     cfg = peticion.app[CLAVE_CFG]
     resultado = await asyncio.to_thread(
@@ -808,7 +811,7 @@ async def _biometria_renombrar(peticion: web.Request) -> web.Response:
 
 async def _anotar_persona(antes: str, ahora: str) -> None:
     """Deja en `10_PERSEO/Personas/` que esta voz o esta cara ya tiene nombre."""
-    from . import memoria
+    from ..agentes import memoria
 
     try:
         await memoria.anotar_persona(antes, ahora)

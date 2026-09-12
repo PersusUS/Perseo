@@ -18,7 +18,8 @@ from typing import Any
 import aiohttp
 import pytest
 
-from perseo_core import almacen, estado, politica
+from perseo_core.caras import estado
+from perseo_core.infra import almacen, politica
 
 
 @pytest.fixture(autouse=True)

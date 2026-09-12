@@ -338,7 +338,7 @@ pub async fn panel_mensaje(app: AppHandle, texto: String) -> Result<Value, Strin
 /// escrito y los agentes son Python y no ven dentro de un navegador.
 ///
 /// Lo que viaja es el texto ya redactado, no las casillas: quien cuenta es
-/// `src/lib/habitos.ts` y nadie mas (ver `perseo_core/habitos.py`).
+/// `src/lib/habitos.ts` y nadie mas (ver `perseo_core/servicios/habitos.py`).
 ///
 /// Un fallo aqui no es un fallo de la pantalla: si el nucleo esta apagado, el
 /// señor Persus sigue marcando sus habitos igual y la copia se manda con el
@@ -356,7 +356,7 @@ pub async fn habitos_espejo(app: AppHandle, texto: String, foto: Value) -> Resul
 /// Python y no ven dentro de un navegador.
 ///
 /// Lo que viaja es el texto ya redactado, no las notas: quien cuenta es
-/// `src/lib/tareas.ts` y nadie mas (ver `perseo_core/tareas.py`).
+/// `src/lib/tareas.ts` y nadie mas (ver `perseo_core/servicios/tareas.py`).
 ///
 /// Un fallo aqui tampoco es un fallo de la pantalla: con el nucleo apagado el
 /// señor Persus sigue moviendo sus notas y la copia sale con el cambio

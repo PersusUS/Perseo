@@ -27,10 +27,12 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from perseo_core import almacen, correo, disparadores, triaje  # noqa: E402
+from perseo_core.agentes import correo  # noqa: E402
+from perseo_core.infra import almacen, disparadores  # noqa: E402
+from perseo_core.servicios import triaje  # noqa: E402
 from perseo_core.dominio.clasificacion import CLASES, Clasificacion, IGNORAR, NO_SEGURO, REQUIERE_ACCION  # noqa: E402
 from verificadores.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
-from perseo_core.bus import Bus  # noqa: E402
+from perseo_core.infra.bus import Bus  # noqa: E402
 from verificadores.verificar_telegram import CHAT, TOKEN_FALSO, FalsoTelegram  # noqa: E402
 
 #: Cada cuánto mira el buzón durante la prueba. En producción son 300 segundos.

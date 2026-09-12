@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from perseo_core import modelo_local, triaje
+from perseo_core.servicios import modelo_local, triaje
 from perseo_core.dominio.clasificacion import CLASES, Clasificacion, IGNORAR, NO_SEGURO, RELEVANTES, REQUIERE_ACCION
 
 

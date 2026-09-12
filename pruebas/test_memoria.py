@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from perseo_core import memoria
+from perseo_core.agentes import memoria
 
 #: Una ruta absoluta que existe fuera del vault, sea cual sea el sistema. Las
 #: pruebas corren en Windows y en el CI de Linux, y `C:\Windows` en Linux no es

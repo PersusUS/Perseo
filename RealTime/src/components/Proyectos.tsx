@@ -26,7 +26,7 @@
  *
  * Y la regla de seguridad de siempre: **por aquí viaja el `id` y nada más**.
  * Qué se ejecuta lo decide `<datos>/proyectos.json` en el disco, lo valida el
- * núcleo (`perseo_core/proyectos.py`) y Rust solo hace de puente.
+ * núcleo (`perseo_core/servicios/proyectos.py`) y Rust solo hace de puente.
  */
 
 import { invoke } from '@tauri-apps/api/core';

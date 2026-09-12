@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 #: Cuántos trabajos de correo hechos se miran hacia atrás como mucho. Un lote
-#: son 20 mensajes (TOPE_LOTE en perseo_core/correo.py); con 40 trabajos hay
+#: son 20 mensajes (TOPE_LOTE en perseo_core/agentes/correo.py); con 40 trabajos hay
 #: correo de sobra y la consulta sigue siendo instantánea.
 TOPE_TRABAJOS = 40
 

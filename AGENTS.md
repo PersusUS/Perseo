@@ -16,22 +16,28 @@ componente de React, estás en el sitio equivocado.
 
 ## Dónde está cada cosa
 
+El núcleo va en cinco capas, de abajo arriba, y **nadie importa hacia arriba**:
+`dominio/` (los tipos), `infra/` (cola, bus, política, router), `servicios/` (la
+maquinaria), `agentes/` (los que atienden un trabajo) y `caras/` (API, Telegram,
+la web del móvil). No es una costumbre: lo comprueba `pruebas/test_arquitectura.py`.
+
 | Vas a tocar | Mira primero |
 |---|---|
-| La cola, el bus, la API | `perseo_core/api.py`, `bus.py`, `almacen.py` |
-| A qué agente va cada cosa | `perseo_core/agentes.py` (el router) |
-| Un agente concreto | `perseo_core/<nombre>.py` — se llaman como el agente |
-| Qué necesita confirmación | `perseo_core/politica.py` |
-| El prompt compartido | `perseo_core/identidad.py` |
+| La cola, el bus, la API | `perseo_core/caras/api.py`, `infra/bus.py`, `infra/almacen.py` |
+| A qué agente va cada cosa | `perseo_core/infra/router.py` (el router) |
+| Un agente concreto | `perseo_core/agentes/<nombre>.py` — se llaman como el agente |
+| Qué necesita confirmación | `perseo_core/infra/politica.py` |
+| El prompt compartido | `perseo_core/infra/identidad.py` |
 | La llamada de voz | `RealTime/src/lib/gemini-live.ts` y `RealTime/src/App.tsx` |
 | El panel | `RealTime/src/components/Panel.tsx` |
 | Los puentes a Rust | `RealTime/src-tauri/src/commands.rs` y `nucleo.rs` |
-| La web del móvil | `perseo_core/interfaz/index.html` — un solo fichero, sin build |
+| La web del móvil | `perseo_core/caras/interfaz/index.html` — un solo fichero, sin build |
 | Configuración | [`docs/CONFIGURACION.md`](docs/CONFIGURACION.md) |
 
-Los ficheros que pasan de mil líneas —`Panel.tsx`, `dev.py`, `chat.py`,
-`almacen.py`, `gemini-live.ts`, `mcp.py`, `api.py`— se leen **por rangos tras
-un `grep -n`**, no de una sentada.
+Hay un **techo de tamaño**: blando a 600 líneas, duro a 900, con una lista de
+excepciones en `commands/arquitectura.py` que solo puede encoger. Los que hoy
+siguen por encima se leen **por rangos tras un `grep -n`**, no de una sentada.
+`python commands/perseo.py comprobar --arquitectura` dice cuáles son.
 
 ## Ver lo que has cambiado
 
@@ -39,7 +45,7 @@ un `grep -n`**, no de una sentada.
 |---|---|---|
 | `RealTime/src/**` | `python commands/perseo.py actualizar` | **No** — la interfaz va incrustada dentro del binario |
 | `perseo_core/*.py`, `commands/*.py` | Reiniciar el núcleo: `perseo parar` y luego `perseo on` | **No** — el proceso viejo se queda con el código viejo |
-| `perseo_core/interfaz/index.html` | Recargar el navegador | Sí: el núcleo lo sirve del disco |
+| `perseo_core/caras/interfaz/index.html` | Recargar el navegador | Sí: el núcleo lo sirve del disco |
 
 Para el **aspecto** del panel no hace falta pagar los dos minutos de
 reconstrucción: la maqueta sirve las pantallas de verdad con datos de mentira

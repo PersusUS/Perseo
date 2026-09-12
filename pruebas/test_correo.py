@@ -8,7 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from perseo_core import correo, triaje
+from perseo_core.agentes import correo
+from perseo_core.servicios import triaje
 from perseo_core.dominio.clasificacion import CLASES, Clasificacion, IGNORAR, NO_SEGURO, REQUIERE_ACCION
 
 

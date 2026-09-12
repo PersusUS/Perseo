@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from perseo_core import identidad, politica
+from perseo_core.infra import identidad, politica
 
 
 def test_leer_es_libre() -> None:

@@ -7,7 +7,7 @@ Telegram, detalle por Tailscale"— se comprueba de punta a punta en
 
 from __future__ import annotations
 
-from perseo_core import telegram
+from perseo_core.caras import telegram
 
 
 def actualizacion(chat: dict, envoltorio: str = "message") -> dict:

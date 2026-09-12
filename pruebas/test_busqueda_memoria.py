@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 
-from perseo_core.memoria import Nota, buscar_con_reintentos, _terminos
+from perseo_core.agentes.memoria import Nota, buscar_con_reintentos, _terminos
 
 
 class VaultFalso:

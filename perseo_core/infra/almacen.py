@@ -33,7 +33,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-RAIZ = Path(__file__).resolve().parent
+#: La raíz del paquete: un escalón por encima de `infra/`. De aquí cuelgan
+#: `datos/` y, un escalón más arriba, el vault por defecto.
+RAIZ = Path(__file__).resolve().parent.parent
 
 # Estados de un trabajo.
 PENDIENTE = "pendiente"

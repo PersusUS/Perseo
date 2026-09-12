@@ -17,7 +17,7 @@
  * Lo lee Rust del disco, como para las herramientas de voz.
  *
  * El precio, y hay que pagarlo a conciencia: lo que se cambie en
- * `perseo_core/interfaz/index.html` hay que traerlo aquí. Son dos pantallas con
+ * `perseo_core/caras/interfaz/index.html` hay que traerlo aquí. Son dos pantallas con
  * el mismo trabajo. La del móvil manda: es la que se usa a diario.
  */
 
@@ -883,7 +883,7 @@ const SISTEMAS_AGENTE: [string, string][] = [
  *  da error: se cuelga hasta el tope de 900 s. Desde esta pantalla eso se veía
  *  como un encargo que no termina nunca, que es justo lo que pasaba.
  *
- *  Es la MISMA lista que `perseo_core/dev.py`, `perseo_core/interfaz/index.html`
+ *  Es la MISMA lista que `perseo_core/agentes/dev.py`, `perseo_core/caras/interfaz/index.html`
  *  y `commands/subagentes_mcp.py`. Si cambia una, cambian todas: se vuelven a
  *  sacar del mismo comando y se vuelven a probar. */
 const MODELOS_OPENCODE: [string, string][] = [
@@ -893,7 +893,7 @@ const MODELOS_OPENCODE: [string, string][] = [
   ['opencode/ling-3.0-flash-fin-free', 'ling-3.0-flash'],
   ['opencode/mimo-v2.5-free', 'mimo-v2.5 · 200k (lento)'],
   // No contestaban el 2026-08-28: cien segundos sin una línea. Al final, para
-  // que nadie los coja sin pedirlos. Ver `perseo_core/dev.py`.
+  // que nadie los coja sin pedirlos. Ver `perseo_core/agentes/dev.py`.
   ['opencode/nemotron-3-ultra-free', 'nemotron-3-ultra · 1M (no contestaba)'],
   ['opencode/nemotron-3.5-lightning-free', 'nemotron-3.5-lightning (no contestaba)'],
   ['', 'El que tenga configurado opencode'],

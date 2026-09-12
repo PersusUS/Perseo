@@ -33,8 +33,8 @@ from typing import Any
 
 import aiohttp
 
-from . import almacen
-from .bus import Bus, Evento
+from ..infra import almacen
+from ..infra.bus import Bus, Evento
 
 logger = logging.getLogger(__name__)
 
@@ -316,7 +316,7 @@ async def _pedir(cfg: almacen.Configuracion, metodo: str, **carga: Any) -> dict[
 
 
 def _sincrono() -> None:  # pragma: no cover - atajo para la línea de comandos
-    """`python -m perseo_core.telegram`: descubre el `chat_id` y lo deja puesto.
+    """`python -m perseo_core.caras.telegram`: descubre el `chat_id` y lo deja puesto.
 
     **Con el núcleo parado** para que nada más esté leyendo. Sin `chat_id` no hay
     a quién enviar los avisos, y este dato no se puede consultar en ninguna

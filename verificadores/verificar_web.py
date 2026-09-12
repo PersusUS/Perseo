@@ -22,7 +22,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from perseo_core import almacen, web  # noqa: E402
+from perseo_core.agentes import web  # noqa: E402
+from perseo_core.infra import almacen  # noqa: E402
 from verificadores.arnes_pruebas import (  # noqa: E402
     ManejadorFalso,
     ServidorFalso,

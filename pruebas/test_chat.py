@@ -14,7 +14,8 @@ import json
 
 import pytest
 
-from perseo_core import almacen, chat
+from perseo_core.agentes import chat
+from perseo_core.infra import almacen
 
 
 # --------------------------------------------------------------------------- #
@@ -49,7 +50,7 @@ def test_el_prompt_trae_las_reglas_que_no_se_negocian() -> None:
 
 
 def test_la_politica_deja_pasar_el_turno(db: almacen.Configuracion) -> None:
-    from perseo_core import politica
+    from perseo_core.infra import politica
 
     # Sin esta entrada en la tabla, cada turno de chat pediría un sí y la
     # conversación entera moriría de pie.

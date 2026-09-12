@@ -16,7 +16,9 @@ from typing import Any
 
 import pytest
 
-from perseo_core import autorizar_google, correo, google_api, politica
+from perseo_core.agentes import correo
+from perseo_core.infra import politica
+from perseo_core.servicios import autorizar_google, google_api
 
 
 # --------------------------------------------------------------------------- #

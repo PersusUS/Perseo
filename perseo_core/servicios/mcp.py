@@ -40,8 +40,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from . import almacen, politica
-from .agentes import registrar
+from ..infra import almacen, politica
+from ..infra.router import registrar
 
 logger = logging.getLogger(__name__)
 

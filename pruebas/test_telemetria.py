@@ -13,7 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from perseo_core import almacen, estado
+from perseo_core.caras import estado
+from perseo_core.infra import almacen
 
 
 def test_sin_psutil_la_telemetria_lo_dice_y_no_lanza(monkeypatch: pytest.MonkeyPatch) -> None:

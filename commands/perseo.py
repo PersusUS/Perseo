@@ -395,7 +395,7 @@ def arrancar_app() -> bool:
 #      la del móvil—, para que «qué versión estoy viendo» se conteste mirando.
 
 #: Lo que, al cambiar, obliga a volver a construir. El móvil no está aquí a
-#: propósito: `perseo_core/interfaz/index.html` lo sirve el núcleo tal cual está
+#: propósito: `perseo_core/caras/interfaz/index.html` lo sirve el núcleo tal cual está
 #: en el disco, y por eso el móvil siempre va al día y la app no.
 FUENTES_APP = (
     RAIZ / "RealTime" / "src",

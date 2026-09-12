@@ -33,7 +33,7 @@ from typing import Any
 
 import aiohttp
 
-from . import almacen
+from ..infra import almacen
 
 logger = logging.getLogger(__name__)
 

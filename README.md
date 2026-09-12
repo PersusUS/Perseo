@@ -317,8 +317,8 @@ lleva un `refresh_token`:
 ```
 
 ```bash
-python -m perseo_core.autorizar_google     # abre el consentimiento y guarda el testigo
-python -m perseo_core.google_api           # comprueba que las credenciales valen
+python -m perseo_core.servicios.autorizar_google     # abre el consentimiento y guarda el testigo
+python -m perseo_core.servicios.google_api           # comprueba que las credenciales valen
 PERSEO_CORREO=gmail PERSEO_AGENDA=google python -m perseo_core
 ```
 

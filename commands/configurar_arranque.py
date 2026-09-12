@@ -23,7 +23,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
-from perseo_core import almacen  # noqa: E402
+from perseo_core.infra import almacen  # noqa: E402
 
 
 def _vault_de_verdad() -> Path | None:

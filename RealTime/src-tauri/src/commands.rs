@@ -26,7 +26,7 @@ const ALTO_CAPTURA: u32 = 720;
 /// Antes se cogia `monitors.first()`, que en un equipo con dos pantallas puede
 /// ser cualquiera de las dos: el modelo veia una pantalla y el clic caia en la
 /// otra. `pyautogui` mide en la principal (ver `_dentro_de_la_pantalla` en
-/// `perseo_core/pc.py`), asi que se comparte esa y no otra.
+/// `perseo_core/agentes/pc.py`), asi que se comparte esa y no otra.
 fn pantalla_principal() -> Result<Monitor, String> {
     let monitores = Monitor::all().map_err(|e| e.to_string())?;
     monitores

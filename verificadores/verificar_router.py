@@ -33,8 +33,8 @@ os.environ.setdefault(
     "PERSEO_CORE_DATOS", str(Path(tempfile.gettempdir()) / "perseo_verificar_router")
 )
 
-from perseo_core import almacen  # noqa: E402
-from perseo_core.agentes import REGISTRO, Router  # noqa: E402
+from perseo_core.infra import almacen  # noqa: E402
+from perseo_core.infra.router import REGISTRO, Router  # noqa: E402
 from verificadores.arnes_pruebas import comprobar, resumir  # noqa: E402
 
 #: Casos y el destino que se espera. `None` = cualquiera vale; lo que se

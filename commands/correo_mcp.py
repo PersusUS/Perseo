@@ -12,7 +12,7 @@ La regla de casa para esto ya estaba escrita: lo que falta no
 se parchea con promesas en el prompt, se cierra con una herramienta de verdad.
 Y como Perseo ya habla MCP con medio mundo, el camino corto es este servidor.
 
-**La lógica vive en el núcleo** (`perseo_core/correo_lectura.py`) y no aquí:
+**La lógica vive en el núcleo** (`perseo_core/servicios/correo_lectura.py`) y no aquí:
 el chat escrito necesita leer exactamente lo mismo, y dos copias de una lectura
 acaban discrepando. Este fichero es la cáscara que habla el protocolo.
 
@@ -55,7 +55,7 @@ RUTA_DB = DATOS / "estado.sqlite3"
 # antes de esta línea no hay nada que lo necesite.
 sys.path.insert(0, str(RAIZ))
 
-from perseo_core import correo_lectura  # noqa: E402
+from perseo_core.servicios import correo_lectura  # noqa: E402
 
 
 def correos_triados(limite: int = 15, clase: str = "") -> str:

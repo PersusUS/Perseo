@@ -40,9 +40,9 @@ from typing import Any
 
 import aiohttp
 
-from . import almacen
-from .dominio.evento import Evento
-from .dominio.mensaje import Mensaje
+from ..infra import almacen
+from ..dominio.evento import Evento
+from ..dominio.mensaje import Mensaje
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +186,7 @@ class Sesion:
                         raise RuntimeError(
                             f"Google respondió 403: {mensaje}. Si habla de permisos, el "
                             "testigo es de antes de gmail.compose: vuelve a ejecutar "
-                            "`python -m perseo_core.autorizar_google`."
+                            "`python -m perseo_core.servicios.autorizar_google`."
                         )
                     raise RuntimeError(f"Google respondió {respuesta.status}: {mensaje}")
                 return datos

@@ -70,8 +70,9 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any, Protocol
 
-from . import almacen, proyectos
-from .agentes import registrar
+from ..infra import almacen
+from ..servicios import proyectos
+from ..infra.router import registrar
 
 logger = logging.getLogger(__name__)
 
@@ -336,7 +337,7 @@ def fracaso_encubierto(texto: str) -> str:
 #: se ve como un encargo que no termina nunca.
 #:
 #: Es la MISMA lista que ofrecen la pestaña de encargos del panel
-#: (`RealTime/src/components/Panel.tsx`, `perseo_core/interfaz/index.html`) y el
+#: (`RealTime/src/components/Panel.tsx`, `perseo_core/caras/interfaz/index.html`) y el
 #: servidor MCP de subagentes (`commands/subagentes_mcp.py`). Si cambia una,
 #: cambian todas: se vuelven a sacar del mismo comando y se vuelven a probar.
 MODELOS_GRATIS_OPENCODE = (

@@ -20,7 +20,7 @@ sys.path.insert(0, str(RAIZ / "commands"))
 import configurar_arranque  # noqa: E402
 import vigilante  # noqa: E402
 
-from perseo_core import almacen  # noqa: E402
+from perseo_core.infra import almacen  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #

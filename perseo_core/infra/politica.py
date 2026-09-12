@@ -52,7 +52,7 @@ from pathlib import Path
 from typing import Any
 
 from . import identidad
-from .dominio.niveles import CRITICO, IRREVERSIBLE, LIBRE, NIVELES, REVERSIBLE
+from ..dominio.niveles import CRITICO, IRREVERSIBLE, LIBRE, NIVELES, REVERSIBLE
 
 logger = logging.getLogger(__name__)
 

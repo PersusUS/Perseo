@@ -35,10 +35,11 @@ import logging
 from pathlib import Path
 from typing import Any, Protocol
 
-from . import almacen, disparadores, google_api, triaje
-from .agentes import registrar
-from .dominio.clasificacion import Clasificacion, IGNORAR, INTERESANTE, NO_SEGURO, REQUIERE_ACCION
-from .dominio.mensaje import Mensaje
+from ..infra import almacen, disparadores
+from ..servicios import google_api, triaje
+from ..infra.router import registrar
+from ..dominio.clasificacion import Clasificacion, IGNORAR, INTERESANTE, NO_SEGURO, REQUIERE_ACCION
+from ..dominio.mensaje import Mensaje
 
 logger = logging.getLogger(__name__)
 
@@ -211,7 +212,7 @@ async def _redactar(peticion: dict[str, Any]) -> dict[str, Any]:
     if redactor is None:
         raise RuntimeError(
             "Este buzón no sabe escribir borradores. Hace falta PERSEO_CORREO=gmail "
-            "y un testigo con gmail.compose: `python -m perseo_core.autorizar_google`."
+            "y un testigo con gmail.compose: `python -m perseo_core.servicios.autorizar_google`."
         )
 
     creado = await redactor(para, asunto, cuerpo, str(peticion.get("hilo", "")))

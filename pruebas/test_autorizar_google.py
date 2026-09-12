@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from perseo_core import autorizar_google, google_api
+from perseo_core.servicios import autorizar_google, google_api
 
 
 def escribir(ruta: Path, datos: dict) -> Path:

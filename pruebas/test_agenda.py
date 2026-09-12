@@ -9,7 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from perseo_core import agenda, almacen
+from perseo_core.agentes import agenda
+from perseo_core.infra import almacen
 
 
 def dentro_de(minutos: float) -> str:

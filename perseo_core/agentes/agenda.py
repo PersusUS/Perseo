@@ -31,9 +31,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
-from . import almacen, disparadores, google_api
-from .agentes import registrar
-from .dominio.evento import Evento
+from ..infra import almacen, disparadores
+from ..servicios import google_api
+from ..infra.router import registrar
+from ..dominio.evento import Evento
 
 logger = logging.getLogger(__name__)
 

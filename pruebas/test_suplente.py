@@ -7,7 +7,7 @@ porque sin gramática la respuesta puede llegar de cualquier forma.
 
 from __future__ import annotations
 
-from perseo_core import modelo_local
+from perseo_core.servicios import modelo_local
 
 
 def test_sin_clave_no_hay_suplente() -> None:

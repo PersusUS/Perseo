@@ -21,11 +21,14 @@ import sys
 # tapa al otro. El sintoma es un AttributeError en `web.AppRunner` al arrancar.
 from aiohttp import web as servidor
 
-from . import agenda, almacen, api, chat, correo, dev, mcp, memoria, pc, politica, web
-from .agentes import Router, Trabajador
-from .bus import Bus
-from .disparadores import Planificador
-from .telegram import Telegram
+from .agentes import agenda, chat, correo, dev, memoria, pc, web
+from .caras import api
+from .infra import almacen, politica
+from .servicios import mcp
+from .infra.router import Router, Trabajador
+from .infra.bus import Bus
+from .infra.disparadores import Planificador
+from .caras.telegram import Telegram
 
 # Estos siete se importan por sus efectos: al cargarse registran sus agentes —y
 # `correo` y `agenda`, además, sus disparadores—. Sin el import el registro está

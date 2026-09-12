@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from perseo_core import almacen, disparadores
-from perseo_core.bus import Bus
+from perseo_core.infra import almacen, disparadores
+from perseo_core.infra.bus import Bus
 
 
 def test_la_marca_de_agua_empieza_estrenando(tmp_path: Path) -> None:

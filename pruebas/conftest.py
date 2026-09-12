@@ -22,7 +22,7 @@ import pytest
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
-from perseo_core import almacen, politica  # noqa: E402
+from perseo_core.infra import almacen, politica  # noqa: E402
 
 
 @pytest.fixture()

@@ -34,8 +34,8 @@ import urllib.parse
 import webbrowser
 from typing import Any
 
-from . import aplicaciones
-from .agentes import registrar
+from ..servicios import aplicaciones
+from ..infra.router import registrar
 
 logger = logging.getLogger(__name__)
 

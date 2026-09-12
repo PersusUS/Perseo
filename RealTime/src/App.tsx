@@ -83,7 +83,7 @@ const MAX_MENSAJES = 400;   // tope de memoria de una sesión
  *  el núcleo y esto la recoge. Ocho segundos porque la conversación escrita
  *  suele pasar con la app delante y esperar medio minuto a ver aparecer la nota
  *  que acabas de pedir se siente roto; y es una petición a localhost, no a
- *  internet. Ver `perseo_core/tareas.py`. */
+ *  internet. Ver `perseo_core/servicios/tareas.py`. */
 const ESPERA_ORDENES_TAREAS = 8000;
 
 /** Cuánto se espera, sin que nadie toque nada, antes de mandarle al núcleo la
@@ -997,7 +997,7 @@ function App() {
         onAjustes={() => setShowSettings(true)}
         // La pestaña vuelve a estar viva (encargo del señor Persus, 2026-08-24):
         // pulsar una ficha arranca los servidores del proyecto — modo
-        // `servicio` en perseo_core/proyectos.py — y la pestaña del navegador
+        // `servicio` en perseo_core/servicios/proyectos.py — y la pestaña del navegador
         // se abre sola cuando el puerto contesta.
         onProyectos={() => setShowProyectos(v => !v)}
         proyectosAbiertos={showProyectos}

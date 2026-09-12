@@ -4,7 +4,7 @@
 `refresh_token`. Conseguir ese testigo es lo único que no puede hacer solo: hay
 que abrir un navegador, iniciar sesión y dar permiso. Este módulo es ese paso.
 
-    python -m perseo_core.autorizar_google
+    python -m perseo_core.servicios.autorizar_google
 
 Lo que hace: levanta un servidor en el bucle local, abre el navegador en la
 pantalla de consentimiento de Google, recoge el código que Google devuelve a esa
@@ -51,7 +51,8 @@ from typing import Any
 
 import aiohttp
 
-from . import almacen, google_api
+from . import google_api
+from ..infra import almacen
 
 #: Lo que se pide. Ver la cabecera: `compose` escribe borradores y **no** envía.
 AMBITOS = (
@@ -269,7 +270,7 @@ def _sincrono() -> None:  # pragma: no cover - atajo para la línea de comandos
         sys.exit(1)
 
     print(f"\nHecho: el refresh_token está en {ruta}.")
-    print("Compruébalo con:  python -m perseo_core.google_api")
+    print("Compruébalo con:  python -m perseo_core.servicios.google_api")
     print("Y arranca así:    PERSEO_CORREO=gmail PERSEO_AGENDA=google python -m perseo_core")
 
 

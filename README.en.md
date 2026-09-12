@@ -322,8 +322,8 @@ goes in `perseo_core/datos/`, outside git, because it carries a
 ```
 
 ```bash
-python -m perseo_core.autorizar_google     # opens consent and stores the token
-python -m perseo_core.google_api           # checks the credentials work
+python -m perseo_core.servicios.autorizar_google     # opens consent and stores the token
+python -m perseo_core.servicios.google_api           # checks the credentials work
 PERSEO_CORREO=gmail PERSEO_AGENDA=google python -m perseo_core
 ```
 

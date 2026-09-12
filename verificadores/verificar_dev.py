@@ -25,7 +25,8 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from perseo_core import almacen, dev  # noqa: E402
+from perseo_core.agentes import dev  # noqa: E402
+from perseo_core.infra import almacen  # noqa: E402
 from verificadores.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
 
 #: Lo que tarda el encargo simulado. Suficiente para que el trabajo corto que se

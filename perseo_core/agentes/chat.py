@@ -48,8 +48,9 @@ from typing import Any, AsyncGenerator
 
 import aiohttp
 
-from . import almacen, correo_lectura, habitos, identidad, politica, tareas, triaje
-from .agentes import registrar
+from ..infra import almacen, identidad, politica
+from ..servicios import correo_lectura, habitos, tareas, triaje
+from ..infra.router import registrar
 
 logger = logging.getLogger(__name__)
 

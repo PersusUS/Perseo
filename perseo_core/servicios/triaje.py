@@ -34,8 +34,9 @@ from typing import Any
 
 import aiohttp
 
-from . import almacen, identidad, modelo_local
-from .dominio.clasificacion import CLASES, IGNORAR, NO_SEGURO, Clasificacion
+from . import modelo_local
+from ..infra import almacen, identidad
+from ..dominio.clasificacion import CLASES, IGNORAR, NO_SEGURO, Clasificacion
 
 logger = logging.getLogger(__name__)
 

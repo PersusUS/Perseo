@@ -21,7 +21,7 @@ sys.path.insert(0, str(RAIZ))
 sys.path.insert(0, str(RAIZ / "commands"))
 
 import correo_mcp  # noqa: E402
-from perseo_core import correo_lectura  # noqa: E402
+from perseo_core.servicios import correo_lectura  # noqa: E402
 
 
 @pytest.fixture()

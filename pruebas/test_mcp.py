@@ -14,7 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from perseo_core import mcp, politica
+from perseo_core.infra import politica
+from perseo_core.servicios import mcp
 
 MENTIRA = Path(__file__).resolve().parent / "servidor_mcp_mentira.py"
 

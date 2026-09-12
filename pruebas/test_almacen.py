@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from perseo_core import almacen
+from perseo_core.infra import almacen
 
 
 def test_encolar_nace_pendiente(db) -> None:

@@ -11,7 +11,8 @@ import pytest
 
 from dataclasses import replace
 
-from perseo_core import almacen, dev
+from perseo_core.agentes import dev
+from perseo_core.infra import almacen
 
 #: Ruta absoluta fuera de la raíz permitida, en cualquiera de los dos sistemas
 #: donde corren las pruebas. Ver la nota de `pruebas/test_memoria.py`.
@@ -678,7 +679,7 @@ def test_las_cuatro_listas_de_modelos_dicen_lo_mismo() -> None:
     raiz = Path(__file__).resolve().parent.parent
     ficheros = (
         raiz / "commands" / "subagentes_mcp.py",
-        raiz / "perseo_core" / "interfaz" / "index.html",
+        raiz / "perseo_core" / "caras" / "interfaz" / "index.html",
         raiz / "RealTime" / "src" / "components" / "Panel.tsx",
     )
     for fichero in ficheros:

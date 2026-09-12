@@ -38,7 +38,7 @@ from verificadores.arnes_pruebas import (  # noqa: E402
     comprobar,
     resumir,
 )
-from perseo_core.chat import MODELO_POR_DEFECTO  # noqa: E402
+from perseo_core.agentes.chat import MODELO_POR_DEFECTO  # noqa: E402
 
 TEXTO_FINAL = "Mañana tienes la revisión del proyecto a las 10:00. Nada más en 24 horas."
 TITULO_EVENTO = "Revisión del proyecto"

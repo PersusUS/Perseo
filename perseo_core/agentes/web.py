@@ -52,8 +52,8 @@ from typing import Any, Protocol
 
 import aiohttp
 
-from . import almacen
-from .agentes import registrar
+from ..infra import almacen
+from ..infra.router import registrar
 
 logger = logging.getLogger(__name__)
 

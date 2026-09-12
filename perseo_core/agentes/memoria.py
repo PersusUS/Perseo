@@ -54,8 +54,8 @@ from typing import Any, Protocol
 
 import aiohttp
 
-from . import almacen
-from .agentes import registrar
+from ..infra import almacen
+from ..infra.router import registrar
 
 logger = logging.getLogger(__name__)
 
@@ -832,9 +832,9 @@ async def _memoria(trabajo: dict[str, Any]) -> dict[str, Any]:
 
 
 def _sincrono() -> None:  # pragma: no cover - atajo para la línea de comandos
-    """`python -m perseo_core.memoria`: ¿contesta el plugin, y con la clave buena?
+    """`python -m perseo_core.agentes.memoria`: ¿contesta el plugin, y con la clave buena?
 
-    El equivalente de `python -m perseo_core.google_api`: comprobar lo que hay
+    El equivalente de `python -m perseo_core.servicios.google_api`: comprobar lo que hay
     que configurar a mano sin levantar el núcleo entero.
     """
     import sys

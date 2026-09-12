@@ -86,7 +86,7 @@ MARCA_AUTOLLAMADA = RAIZ / ".perseo-autollamada"
 #: en cien segundos. Un modelo que no contesta no falla: se cuelga hasta el
 #: tope, y desde fuera eso es un encargo que no termina nunca.
 #:
-#: Es la MISMA lista que `perseo_core/dev.py` y las dos pantallas. Si cambia
+#: Es la MISMA lista que `perseo_core/agentes/dev.py` y las dos pantallas. Si cambia
 #: una, cambian todas.
 MODELOS_GRATIS = (
     "opencode/big-pickle",
@@ -135,7 +135,7 @@ def _motor(pedido: str = "") -> str:
 
 
 #: Lo que un subagente no ejecuta ni aunque se lo pidan. Copia deliberada de
-#: `perseo_core/dev.py`: los dos reparten trabajo a un CLI de agente, y el cerco
+#: `perseo_core/agentes/dev.py`: los dos reparten trabajo a un CLI de agente, y el cerco
 #: tiene que ser el mismo se entre por donde se entre.
 DENEGADAS = (
     "Bash(git push*)",

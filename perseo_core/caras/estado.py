@@ -44,9 +44,11 @@ from typing import Any, Awaitable, Callable
 
 import aiohttp
 
-from . import agenda, almacen, politica, triaje
-from .agentes import REGISTRO, Router
-from .disparadores import REGISTRO as DISPARADORES
+from ..agentes import agenda
+from ..infra import almacen, politica
+from ..servicios import triaje
+from ..infra.router import REGISTRO, Router
+from ..infra.disparadores import REGISTRO as DISPARADORES
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +66,7 @@ APAGADO = "apagado"
 TOPE_SONDEO = 4
 
 #: La raíz del repositorio, para mirar el disco donde vive Perseo.
-RAIZ = Path(__file__).resolve().parent.parent
+RAIZ = Path(__file__).resolve().parent.parent.parent
 
 #: Cuánto se recuerda cada sondeo. Ollama y Obsidian son locales y baratos;
 #: Google pide un testigo nuevo a un servidor de fuera, así que se pregunta una
@@ -223,7 +225,7 @@ def _suplente(cfg: almacen.Configuracion) -> Pieza:
 
 async def _vault(cfg: almacen.Configuracion) -> Pieza:
     """La memoria. Dos respaldos, y solo uno depende de que algo esté abierto."""
-    from . import memoria
+    from ..agentes import memoria
 
     if cfg.vault_respaldo != "rest":
         return Pieza("vault", "Memoria", OK, f"En ficheros: {memoria.ruta_vault(cfg)}")
@@ -264,7 +266,7 @@ async def _vault(cfg: almacen.Configuracion) -> Pieza:
 
 async def _google(cfg: almacen.Configuracion) -> Pieza:
     """Gmail y Calendar. Se sondea pidiendo un testigo, que es lo que caduca."""
-    from . import google_api
+    from ..servicios import google_api
 
     pedidos = [
         nombre
@@ -287,7 +289,7 @@ async def _google(cfg: almacen.Configuracion) -> Pieza:
         await asyncio.wait_for(google_api.comprobar(cfg), timeout=TOPE_SONDEO * 3)
     except google_api.SinCredenciales as e:
         return Pieza(
-            "google", "Google", MALO, str(e), "python -m perseo_core.autorizar_google"
+            "google", "Google", MALO, str(e), "python -m perseo_core.servicios.autorizar_google"
         )
     except (RuntimeError, aiohttp.ClientError, asyncio.TimeoutError) as e:
         return Pieza("google", "Google", MALO, f"Google no contesta ({e}).")
@@ -302,7 +304,7 @@ def _telegram(cfg: almacen.Configuracion) -> Pieza:
             "Telegram",
             APAGADO,
             "Sin bot: no sale ningún aviso al móvil.",
-            "python -m perseo_core.telegram, con el núcleo parado.",
+            "python -m perseo_core.caras.telegram, con el núcleo parado.",
         )
     if not cfg.url_base_alcanzable:
         # Pasa siempre que se arranca sin Tailscale, y el síntoma —un enlace que
@@ -319,7 +321,7 @@ def _telegram(cfg: almacen.Configuracion) -> Pieza:
 
 
 def _mcp(cfg: almacen.Configuracion) -> Pieza:
-    from . import mcp as modulo_mcp
+    from ..servicios import mcp as modulo_mcp
 
     if not modulo_mcp.definiciones:
         return Pieza("mcp", "MCP", APAGADO, "Sin servidores configurados.", f"Crea {cfg.directorio_datos / 'mcp.json'}.")
@@ -369,7 +371,7 @@ def _web(cfg: almacen.Configuracion) -> Pieza:
 def _chat(cfg: almacen.Configuracion) -> Pieza:
     """El chat escrito vive de la misma clave que el suplente: sin ella no
     hay cabeza para los turnos, y es un «apagado» y no un rojo a propósito."""
-    from . import chat as modulo_chat
+    from ..agentes import chat as modulo_chat
 
     if not cfg.gemini_clave:
         return Pieza(
