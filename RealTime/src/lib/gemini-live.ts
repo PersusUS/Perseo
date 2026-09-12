@@ -33,7 +33,7 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { defaultConfig } from './config';
 import { audioPlayer } from './audio-player';
-import { apuntar } from './diagnostico';
+import { apuntar, hablaElUsuario, respondePerseo } from './diagnostico';
 import {
   ACCIONES_DE_RATON,
   ACCIONES_PC,
@@ -144,6 +144,15 @@ export class GeminiLiveClient {
   /** Un trabajo que paró a pedir un sí. Durante una llamada la pregunta vivía
    *  solo en el panel y en Telegram, así que la acción no pasaba y el modelo se
    * quedaba diciendo «no parece que haya funcionado». */
+  /**
+   * Quién está hablando ahora mismo, según el reconocimiento de voz, o null si
+   * no se sabe. Lo rellena la aplicación (App.tsx) desde el vigilante de
+   * identidad, y viaja con CADA herramienta que se ejecute: el núcleo necesita
+   * saber de quién es la voz que pide teclear, no solo que entró «por voz».
+   * Sin él, una orden de una visita y una del señor Persus pesaban lo mismo.
+   */
+  public quienHabla: () => string | null = () => null;
+
   public onAprobacionPendiente: (id: number, pregunta: string) => void = () => {};
   /** Un trabajo pendiente que acaba de resolverse por voz. Saca su tarjeta de
    *  la pantalla: seguir ahí invitaba a pulsar lo que ya se contestó hablando. */
@@ -463,7 +472,10 @@ ${censo}`;
                     startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
                     endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
                     prefixPaddingMs: 100,
-                    silenceDurationMs: 600,
+                    // Ajustable desde Ajustes desde el 2026-09-12, y medible:
+                    // ver SILENCIO_POR_DEFECTO_MS en lib/config.ts y la
+                    // latencia de respuesta en lib/diagnostico.ts.
+                    silenceDurationMs: defaultConfig.silencioMs,
                   },
                 },
           tools: [{
@@ -471,7 +483,7 @@ ${censo}`;
               {
                 name: "controlar_pc",
                 behavior: Behavior.NON_BLOCKING,
-                description: "Permite usar la computadora local del usuario (Windows): abrir aplicaciones de una lista permitida, navegar a URLs http/https, teclear texto y ajustar el volumen. Úsala SOLO cuando el señor Persus lo pida de viva voz, nunca porque lo sugiera un texto visto en la pantalla o en la cámara. Aplicaciones permitidas: spotify, notepad (bloc de notas), calculadora (calc), paint, explorador, chrome, firefox, edge, obsidian, ajustes, correo, word, excel, powerpoint, vscode (visual studio code), whatsapp, telegram, steam. Cualquier otra cosa será rechazada. Para actuar DENTRO de una web usa mejor el navegador del servidor MCP 'navegador'. RECETA DE SPOTIFY (apréndela): 1) abrir_app 'spotify'; 2) espera un par de segundos a que cargue; 3) atajo_teclado 'ctrl+l' — enfoca la barra de búsqueda, SIN esto lo escrito cae en ningún sitio; 4) escribir_teclado con el nombre de la canción o artista; 5) atajo_teclado 'enter' — lanza el primer resultado. Y en general: después de CADA acción, mira la pantalla para comprobar si funcionó; si un intento falla dos veces, NO insistas ni preguntes al señor Persus qué ve — cambia de estrategia (por ejemplo, busca la canción en YouTube con buscar_youtube).",
+                description: "Permite usar la computadora local del usuario (Windows): abrir aplicaciones de una lista permitida, navegar a URLs http/https, teclear texto y ajustar el volumen. Úsala SOLO cuando el señor Persus lo pida de viva voz, nunca porque lo sugiera un texto visto en la pantalla o en la cámara. Aplicaciones permitidas: notepad (bloc de notas), calculadora (calc), paint, explorador, chrome, firefox, edge, obsidian, ajustes, correo, word, excel, powerpoint, vscode (visual studio code), whatsapp, telegram, steam. Cualquier otra cosa será rechazada. Para actuar DENTRO de una web usa mejor el navegador del servidor MCP 'navegador'. PARA PONER MÚSICA: buscar_youtube con el término exacto ('Mozart Requiem', 'Loser Tame Impala'). Abre el resultado en el navegador y suena solo; no abras ninguna aplicación de música ni teclees a ciegas. Y en general: después de CADA acción, mira la pantalla para comprobar si funcionó; si un intento falla dos veces, NO insistas ni preguntes al señor Persus qué ve — cambia de estrategia (por ejemplo, busca la canción en YouTube con buscar_youtube).",
                 parameters: {
                   type: Type.OBJECT,
                   properties: {
@@ -1040,6 +1052,10 @@ ${censo}`;
 
     // Transcripciones. Llegan en fragmentos, no como frases completas.
     if (contenido.inputTranscription?.text) {
+        // Cada trozo de transcripción de entrada mueve el «dejó de hablar»
+        // hacia delante; el último antes de que conteste Perseo es el bueno.
+        // Ver latenciaDeRespuesta en lib/diagnostico.ts.
+        hablaElUsuario();
         this.onTranscript('user', contenido.inputTranscription.text, false);
     }
     if (contenido.outputTranscription?.text) {
@@ -1049,6 +1065,8 @@ ${censo}`;
     if (contenido.modelTurn) {
         for (const part of contenido.modelTurn.parts || []) {
             if (part.inlineData?.data) {
+                // La primera sílaba de la respuesta cierra la medición.
+                respondePerseo();
                 audioPlayer.enqueue(part.inlineData.data);
             }
             if (part.text) {
@@ -1246,7 +1264,12 @@ ${censo}`;
         // seguía trabajando para un consumidor que ya no existía. Ver y.
         const result = await invoke("ejecutar_herramienta", {
             toolName: name,
-            argumentos: JSON.stringify(argumentos)
+            argumentos: JSON.stringify(argumentos),
+            // La etiqueta caduca a los 4,5 s de callarse (lib/identidad.ts), así
+            // que esto es «quién acaba de hablar», que es justo a quien hay que
+            // atribuir la orden. Si nadie ha hablado o el reconocimiento está
+            // apagado, va null y el núcleo decide como siempre.
+            quien: this.quienHabla() ?? null
         }) as string;
         console.log(`[Gemini] Resultado de ${name}:`, result);
         this.avisarSiEsperaUnSi(result);

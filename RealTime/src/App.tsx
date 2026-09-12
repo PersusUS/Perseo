@@ -41,7 +41,12 @@ import { geminiClient } from './lib/gemini-live';
 import { sonar, callar } from './lib/timbre';
 import { audioManager } from './lib/audio-manager';
 import { audioPlayer } from './lib/audio-player';
-import { iniciarDiagnostico, pararDiagnostico } from './lib/diagnostico';
+import {
+  iniciarDiagnostico,
+  latenciaDeRespuesta,
+  olvidarLatencias,
+  pararDiagnostico,
+} from './lib/diagnostico';
 import { cameraManager } from './lib/camera-manager';
 import { screenManager } from './lib/screen-manager';
 import { vigilante, type CaraDetectada } from './lib/identidad';
@@ -202,6 +207,39 @@ function App() {
   // desincronizaban: el ref se vaciaba en 'disconnected', que es justo el evento
   // que emite handleReconnect antes de reconectar, así que el historial que se
   // inyectaba al reconectar siempre estaba vacío.
+  // Quién habla, para las herramientas. El estado se pinta; este espejo es el
+  // que viaja al núcleo con cada llamada a una herramienta, porque el callback
+  // que la ejecuta se registra una sola vez y no vería el estado nuevo.
+  const hablanteRef = useRef<string | null>(null);
+  // Hasta cuándo dura la confianza que ha pedido esta llamada, en ms de reloj.
+  // Sirve para renovarla mientras él siga hablando, en vez de pedir una hora
+  // entera de golpe. Ver `renovarConfianza`.
+  const confianzaHasta = useRef(0);
+  /**
+   * Enciende —o alarga— el modo confianza mientras dure la llamada.
+   *
+   * Hasta el 2026-09-12 esto era una sola llamada de 60 minutos al conectar: si
+   * el señor Persus se levantaba y dejaba la llamada abierta con alguien
+   * delante, lo irreversible seguía sin preguntar durante una hora. Ahora la
+   * ventana es corta y se rearma cada vez que se le oye, así que se apaga sola
+   * cuando el que habla deja de ser él.
+   *
+   * Con el reconocimiento apagado no hay forma de saber quién habla, y entonces
+   * se mantiene el comportamiento de antes: una ventana larga, que es lo que
+   * hacía falta para dictar sin que cada frase pidiera permiso.
+   */
+  const renovarConfianza = (minutos: number) => {
+    const hasta = Date.now() + minutos * 60_000;
+    // No se martillea al núcleo: solo se pide cuando queda menos de la mitad.
+    if (hasta - confianzaHasta.current < (minutos * 60_000) / 2) return;
+    confianzaHasta.current = hasta;
+    invoke('panel_confianza', { minutos }).catch(e =>
+      console.warn('[Confianza] No se pudo activar:', e)
+    );
+  };
+  /** Minutos de confianza por llamada. Cortos si se sabe quién habla. */
+  const MINUTOS_CONFIANZA_CON_IDENTIDAD = 10;
+  const MINUTOS_CONFIANZA_SIN_IDENTIDAD = 60;
   const conversacionRef = useRef<TranscriptMsg[]>([]);
   // Dónde empieza el episodio en curso: la transcripción anterior a esa marca
   // no viaja al prompt ni en reconexión. Lo pide el arreglo del 2026-08-24 —
@@ -250,10 +288,13 @@ function App() {
         }
         // Confianza automática en llamada (N-3): si hay enlace de voz hay una
         // persona delante, y lo irreversible deja de pedir un sí que ya está
-        // oyendo. El techo de 60 min es red de seguridad por si la app muere
-        // sin pasar por el colgado; cada reconexión lo rearma.
-        invoke('panel_confianza', { minutos: 60 }).catch(e =>
-          console.warn('[Confianza] No se pudo activar:', e)
+        // oyendo. La ventana es corta cuando el reconocimiento puede decir
+        // quién habla —se renueva sola con su voz— y larga cuando no.
+        confianzaHasta.current = 0;
+        renovarConfianza(
+          defaultConfig.identidadActivada
+            ? MINUTOS_CONFIANZA_CON_IDENTIDAD
+            : MINUTOS_CONFIANZA_SIN_IDENTIDAD
         );
         addTranscript('system', 'Conectado.');
         conectadoRef.current = true;
@@ -316,6 +357,10 @@ function App() {
     };
     // La herramienta `ver_pantalla`: enciende o apaga la captura aquí, que es
     // donde vive. La frase que devuelve es la que Perseo cuenta por voz.
+    // Cada herramienta viaja con quién acaba de hablar. La etiqueta caduca sola
+    // a los 4,5 s de silencio (lib/identidad.ts), así que esto no es «quién
+    // estuvo en la llamada» sino «de quién es la voz que acaba de pedir esto».
+    geminiClient.quienHabla = () => hablanteRef.current;
     geminiClient.onVerPantalla = (activar) => {
       if (activar) { screenManager.start(); return 'Empiezo a ver su pantalla.'; }
       screenManager.stop();
@@ -331,6 +376,13 @@ function App() {
     cameraManager.onFotograma = (base64) => vigilante.consumirFotograma(base64);
     vigilante.onHablante = (nombre) => {
       setHablante(nombre);
+      hablanteRef.current = nombre;
+      // Su voz es lo que sostiene la confianza. Si el que habla es otro, la
+      // ventana abierta se acaba sola en unos minutos y lo irreversible
+      // vuelve a preguntar sin que nadie tenga que acordarse de apagar nada.
+      if (esElSenor(nombre, defaultConfig.perfilPersus)) {
+        renovarConfianza(MINUTOS_CONFIANZA_CON_IDENTIDAD);
+      }
       if (nombre) {
         addTranscript('system', `Habla ${nombre}.`);
         // El aviso dice quién habla Y qué trato le toca. Un nombre a secas
@@ -691,7 +743,8 @@ function App() {
     inicioEpisodio.current = conversacionRef.current.length;
     // El cuaderno de la llamada, para poder mirar después por qué se oyó como
     // se oyó. Ver lib/diagnostico.ts.
-    iniciarDiagnostico(`micrófono ${defaultConfig.modoMicro}, pantalla ${defaultConfig.pantallaAuto ? 'automática' : 'apagada'}`);
+    olvidarLatencias();
+    iniciarDiagnostico(`micrófono ${defaultConfig.modoMicro}, silencio ${defaultConfig.silencioMs} ms, pantalla ${defaultConfig.pantallaAuto ? 'automática' : 'apagada'}`);
     audioPlayer.initialize();
     audioManager.start();
     armarMicro();
@@ -739,7 +792,12 @@ function App() {
   };
 
   const handleHangup = async () => {
-    pararDiagnostico(`${audioPlayer.diagnostico().vecesSeca} veces seca la cola`);
+    const tardanza = latenciaDeRespuesta();
+    pararDiagnostico(
+      `${audioPlayer.diagnostico().vecesSeca} veces seca la cola; ` +
+        `respuesta mediana ${tardanza.mediana} ms, peor ${tardanza.peor} ms ` +
+        `(${tardanza.veces} medidas)`
+    );
     dejarDeHablar();
     geminiClient.disconnect();
     audioManager.stop();
@@ -752,6 +810,7 @@ function App() {
     setPendientes([]);
     // Y se apaga la confianza que encendió la llamada (N-3): sin persona
     // delante, lo irreversible vuelve a preguntar.
+    confianzaHasta.current = 0;
     try {
       await invoke('panel_confianza', {});
     } catch (e) {

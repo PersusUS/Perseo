@@ -591,6 +591,26 @@
 .ajustes-ficha-que { font-size: 12px; line-height: 1.45; color: var(--fg-dim); }
 .ajustes-ficha.elegida .ajustes-ficha-que { color: var(--fg-muted); }
 
+/* La etiqueta y el deslizador del silencio del micrófono. `accent-color` va al
+   blanco de la casa: el deslizador nativo se pinta azul de Windows dentro del
+   WebView y canta muchísimo sobre este fondo. */
+.ajustes-etiqueta {
+  display: block;
+  margin-top: 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.ajustes input[type='range'] {
+  width: 100%;
+  margin-top: 8px;
+  accent-color: var(--fg);
+  background: transparent;
+}
+
 .ajustes-nota { font-size: 12px; color: var(--fg-dim); line-height: 1.6; margin-top: 10px; }
 .ajustes-nota code {
   font-family: var(--mono);
