@@ -74,16 +74,19 @@ EXCEPCIONES_DE_TAMANO: dict[str, int] = {
     # Una clase, `GeminiLiveClient`. Ya bajó de 1443 al sacarle el catálogo de
     # herramientas; lo que queda es el socket, y no se sostiene en dos mitades.
     "RealTime/src/lib/llamada/gemini-live.ts": 1163,
-    # Un componente, `App`, con diecisiete efectos que comparten estado. La
-    # partición buena es sacar ganchos. `useConfianza` salió el 2026-09-12 —era
-    # un reloj y una petición, sin socket ni micrófono de por medio, y ahora se
-    # prueba sin React—. Los otros dos, `useLlamada` y `useIdentidad`, están
-    # enredados con el ciclo de vida de la conexión: la identidad se toca en el
-    # efecto que conecta, en el que registra los callbacks y en el que pinta la
-    # transcripción. Sacarlos cambia comportamiento en el único camino de este
-    # repositorio que no se puede probar sin hablar por el micrófono, así que
-    # salen con la app delante y no antes.
-    "RealTime/src/App.tsx": 1122,
+    # Un componente, `App`, y lo que queda tras sacarle tres ganchos el
+    # 2026-09-12: `useConfianza`, `useIdentidad` y `useMicrofono`, cada uno con
+    # sus reglas ya probadas sin React. Bajó de 1162 a 1015.
+    #
+    # El cuarto que figuraba en el plan, `useLlamada`, NO se hace, y conviene
+    # que esté escrito para que nadie lo intente pensando que se olvidó: no es
+    # un gancho, es «lo que queda de App.tsx» —el socket, el audio, la cámara,
+    # la pantalla, la transcripción y los avisos, todos atados al mismo ciclo de
+    # vida—. Sacarlo a un fichero movería líneas sin separar nada, y un fichero
+    # llamado `useLlamada` que contiene el componente entero miente más que la
+    # línea que ahorra. Lo que sí puede encogerlo de verdad es seguir sacando
+    # piezas con costura propia, como estas tres.
+    "RealTime/src/App.tsx": 1015,
     # La PWA entera: una página sin build, con su CSS y su JS dentro. Es el
     # fichero más grande del repositorio y entra aquí el mismo día que empieza
     # a medirse, no como perdón sino como línea de salida: a partir de hoy solo

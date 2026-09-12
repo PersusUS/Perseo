@@ -19,6 +19,8 @@
 import { useEffect, useState, useRef } from 'react';
 import * as nucleo from './lib/datos/panel';
 import { MINUTOS_CON_IDENTIDAD, MINUTOS_SIN_IDENTIDAD, useConfianza } from './lib/llamada/confianza';
+import { useIdentidad } from './lib/llamada/identidad-llamada';
+import { useMicrofono } from './lib/llamada/microfono';
 import * as puente from './lib/datos/llamada';
 import { listen } from '@tauri-apps/api/event';
 import { PerseoFace } from './components/PerseoFace';
@@ -51,14 +53,13 @@ import {
 } from './lib/llamada/diagnostico';
 import { cameraManager } from './lib/llamada/camera-manager';
 import { screenManager } from './lib/llamada/screen-manager';
-import { vigilante, type CaraDetectada } from './lib/identidad/identidad';
-import { avisoCaras, avisoHablante, esElSenor, sinAvisoDeIdentidad } from './lib/identidad/quien-hay';
+import { vigilante } from './lib/identidad/identidad';
+import { esElSenor, sinAvisoDeIdentidad } from './lib/identidad/quien-hay';
 import {
   defaultConfig,
   cargarAjustesPersistidos,
   type AspectoLive,
   type EstiloHabitos,
-  type ModoMicro,
 } from './lib/datos/config';
 
 // ── Types ──
@@ -119,20 +120,6 @@ function App() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
-  // Manos libres o pulsar para hablar (ModoMicro en lib/config.ts). Vive aquí
-  // y no dentro de Ajustes porque manda sobre la barra de controles: en
-  // «pulsar» el botón de silenciar deja el sitio al de hablar.
-  const [modoMicro, setModoMicro] = useState<ModoMicro>(defaultConfig.modoMicro);
-  // El modo con el que se ABRIÓ la sesión en curso. El ajuste puede cambiar a
-  // mitad de llamada y esa llamada sigue siendo la que era: el servidor solo
-  // acepta señales de turno si se le pidió con la detección apagada, así que
-  // sin esto la barra espaciadora hablaría con una sesión que no escucha.
-  const modoMicroRef = useRef<ModoMicro>(defaultConfig.modoMicro);
-  // Si el botón de hablar está pulsado AHORA MISMO. Se duplica en una
-  // referencia porque los atajos de teclado se registran una sola vez y
-  // leerían el valor del cierre — el de cuando se montaron.
-  const [pulsando, setPulsando] = useState(false);
-  const pulsandoRef = useRef(false);
   const [showSettings, setShowSettings] = useState(false);
   // El volumen NO es estado de React. Llega a 60 por segundo desde el
   // reproductor (`audio-player.ts` lo mide con un rAF), y con `useState` eso
@@ -172,8 +159,6 @@ function App() {
   // Reconocimiento de personas (biometría local): quién habla ahora y qué
   // caras hay en el último fotograma analizado. Ambas cosas las decide el
   // núcleo; aquí solo se pintan. Ver lib/identidad.ts.
-  const [hablante, setHablante] = useState<string | null>(null);
-  const [caras, setCaras] = useState<CaraDetectada[]>([]);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -184,39 +169,36 @@ function App() {
   // Y solo con sesión viva: si llega un resultado cuando el socket ya cayó, se
   // descarta — encolarlo era que saliera horas después en otra llamada.
   const conectadoRef = useRef(false);
-  const ultimaIdentidad = useRef<{ texto: string; cuando: number }>({ texto: '', cuando: 0 });
-  // Los últimos avisos mandados, para reconocerlos si el modelo los lee en voz
-  // alta y quitarlos de la transcripción. Tres bastan: un aviso viejo ya no
-  // puede estar saliendo por la boca de Perseo.
-  const avisosRecientes = useRef<string[]>([]);
-  const carasVistas = useRef('');
-  const avisarIdentidad = (texto: string) => {
-    if (!conectadoRef.current) return;
-    const ahora = Date.now();
-    if (
-      ultimaIdentidad.current.texto === texto &&
-      ahora - ultimaIdentidad.current.cuando < 60_000
-    ) {
-      return;
-    }
-    ultimaIdentidad.current = { texto, cuando: ahora };
-    avisosRecientes.current = [texto, ...avisosRecientes.current].slice(0, 3);
-    geminiClient.informarIdentidad(texto);
-  };
-
   // Espejo del estado para poder leerlo desde callbacks sin recrearlos.
   // Antes había dos almacenes en paralelo (un ref y un estado) y se
   // desincronizaban: el ref se vaciaba en 'disconnected', que es justo el evento
   // que emite handleReconnect antes de reconectar, así que el historial que se
   // inyectaba al reconectar siempre estaba vacío.
-  // Quién habla, para las herramientas. El estado se pinta; este espejo es el
-  // que viaja al núcleo con cada llamada a una herramienta, porque el callback
-  // que la ejecuta se registra una sola vez y no vería el estado nuevo.
-  const hablanteRef = useRef<string | null>(null);
   // El modo confianza de esta llamada. Lo de dentro —el reloj, la ventana, la
   // regla de no martillear al núcleo— vive en `lib/llamada/confianza.ts`, que
   // se prueba sin React.
   const confianza = useConfianza();
+  // Quién habla y quién se ve. Las tres reglas que había sueltas por aquí
+  // —no repetir un aviso, no mandarlo sin socket, no avisar de las mismas
+  // caras cada cuatro segundos— viven en `lib/llamada/identidad-llamada.ts`,
+  // donde dos de ellas se prueban sin React.
+  const identidad = useIdentidad({
+    perfilDueno: () => defaultConfig.perfilPersus,
+    informar: texto => geminiClient.informarIdentidad(texto),
+    anotar: texto => addTranscript('system', texto),
+    alOirAlDueno: () => confianza.renovar(MINUTOS_CON_IDENTIDAD),
+    haySocket: () => conectadoRef.current,
+  });
+  // El micrófono: en qué modo está y si el paso está abierto. Sus cuatro
+  // reglas —rearmar al reconectar, no abrir sin socket, no cerrar lo que no
+  // estaba abierto, y quitarle el foco a los botones— viven en
+  // `lib/llamada/microfono.ts`.
+  const micro = useMicrofono({
+    transmitir: abierto => audioManager.transmitir(abierto),
+    haySocket: () => conectadoRef.current,
+    abrirTurno: () => geminiClient.abrirTurno(),
+    cerrarTurno: () => geminiClient.cerrarTurno(),
+  });
   const conversacionRef = useRef<TranscriptMsg[]>([]);
   // Dónde empieza el episodio en curso: la transcripción anterior a esa marca
   // no viaja al prompt ni en reconexión. Lo pide el arreglo del 2026-08-24 —
@@ -247,7 +229,7 @@ function App() {
       if (state === 'connected') {
         if (sesionDesde.current === null) sesionDesde.current = Date.now();
         audioManager.start(); // Reactivar el micrófono al reconectar
-        armarMicro();
+        micro.armar();
         if (defaultConfig.cameraEnabled) cameraManager.start();
         // Reconocimiento de personas: solo si está encendido en Ajustes. Se
         // rearma en cada reconexión porque 'disconnected' lo apaga siempre.
@@ -269,19 +251,13 @@ function App() {
       } else if (state === 'disconnected' || state === 'error') {
         // Un turno abierto que se queda a medias no se cierra solo: sin esto,
         // el botón de hablar seguiría encendido sobre una llamada muerta.
-        pulsandoRef.current = false;
-        setPulsando(false);
+        micro.soltarTurno();
         audioManager.stop();
         cameraManager.stop();
         screenManager.stop();
         vigilante.desactivar();
         conectadoRef.current = false;
-        setHablante(null);
-        setCaras([]);
-        // Nueva llamada, presentación nueva: sin esto, si la misma cara sigue
-        // delante al reconectar nadie se lo diría otra vez al modelo.
-        carasVistas.current = '';
-        ultimaIdentidad.current = { texto: '', cuando: 0 };
+        identidad.olvidar();
         setCameraStream(null);
         setIsSpeaking(false);
         // La conversación NO se borra aquí: 'disconnected' también se emite en
@@ -305,14 +281,7 @@ function App() {
           ? `«${etiqueta}» era usted: perfil guardado como ${nombre}.`
           : `«${etiqueta}» ya tiene nombre: ${nombre}.`,
       );
-      setHablante(previo => (previo === etiqueta ? nombre : previo));
-      setCaras(previas =>
-        previas.map(c => (c.nombre === etiqueta ? { ...c, nombre } : c)),
-      );
-      // El aviso de caras solo sale cuando cambia quién está delante: sin
-      // limpiar la huella, el nombre nuevo no llegaría al modelo hasta que
-      // alguien entrara o saliera del encuadre.
-      carasVistas.current = '';
+      identidad.renombrar(etiqueta, nombre);
     };
 
     geminiClient.onAprobacionPendiente = (id, pregunta) => {
@@ -328,7 +297,7 @@ function App() {
     // Cada herramienta viaja con quién acaba de hablar. La etiqueta caduca sola
     // a los 4,5 s de silencio (lib/identidad.ts), así que esto no es «quién
     // estuvo en la llamada» sino «de quién es la voz que acaba de pedir esto».
-    geminiClient.quienHabla = () => hablanteRef.current;
+    geminiClient.quienHabla = () => identidad.hablanteRef.current;
     geminiClient.onVerPantalla = (activar) => {
       if (activar) { screenManager.start(); return 'Empiezo a ver su pantalla.'; }
       screenManager.stop();
@@ -342,44 +311,8 @@ function App() {
     // dijo qué cuando lo lea alguien dentro de un rato.
     audioManager.onTrozoPCM = (trozo) => vigilante.consumirAudio(trozo);
     cameraManager.onFotograma = (base64) => vigilante.consumirFotograma(base64);
-    vigilante.onHablante = (nombre) => {
-      setHablante(nombre);
-      hablanteRef.current = nombre;
-      // Su voz es lo que sostiene la confianza. Si el que habla es otro, la
-      // ventana abierta se acaba sola en unos minutos y lo irreversible
-      // vuelve a preguntar sin que nadie tenga que acordarse de apagar nada.
-      if (esElSenor(nombre, defaultConfig.perfilPersus)) {
-        confianza.renovar(MINUTOS_CON_IDENTIDAD);
-      }
-      if (nombre) {
-        addTranscript('system', `Habla ${nombre}.`);
-        // El aviso dice quién habla Y qué trato le toca. Un nombre a secas
-        // dejaba al modelo llamando «señor Persus» a cualquiera que pasara por
-        // delante de la cámara. Ver lib/quien-hay.ts.
-        avisarIdentidad(avisoHablante(nombre, defaultConfig.perfilPersus));
-      }
-    };
-    vigilante.onCaras = (lista) => {
-      setCaras(lista);
-      // Solo cuando cambia QUIÉN está delante, no cada fotograma: el modelo
-      // no necesita el mismo aviso cada cuatro segundos. Las caras sin nombre
-      // se descartan del aviso: sin el filtro saldría un literal «null».
-      const nombres = lista
-        .map(c => c.nombre)
-        .filter((n): n is string => !!n)
-        .sort();
-      const clave = nombres.join(', ');
-      if (clave) {
-        if (clave !== carasVistas.current) {
-          carasVistas.current = clave;
-          const aviso = avisoCaras(nombres, defaultConfig.perfilPersus);
-          if (aviso) avisarIdentidad(aviso);
-        }
-      } else {
-        carasVistas.current = '';
-      }
-    };
-  
+    identidad.enganchar();
+
     audioPlayer.onVolumeChange = (v) => {
       volumenCrudo.current = v;
       ultimaMedida.current = Date.now();
@@ -611,14 +544,14 @@ function App() {
       // trozo: la marca llega partida entre fragmentos. Ver lib/quien-hay.ts.
       const ultimo = prev[prev.length - 1];
       if (ultimo && ultimo.type === rol && ultimo.abierto) {
-        const texto = sinAvisoDeIdentidad(ultimo.text + delta, avisosRecientes.current);
+        const texto = sinAvisoDeIdentidad(ultimo.text + delta, identidad.avisos.current);
         return [...prev.slice(0, -1), { ...ultimo, text: texto }];
       }
       return [
         ...prev,
         {
           id: `${Date.now()}-${Math.random()}`,
-          text: sinAvisoDeIdentidad(delta, avisosRecientes.current),
+          text: sinAvisoDeIdentidad(delta, identidad.avisos.current),
           type: rol,
           abierto: true,
           hora: ahoraCorta(),
@@ -708,48 +641,8 @@ function App() {
     iniciarDiagnostico(`micrófono ${defaultConfig.modoMicro}, silencio ${defaultConfig.silencioMs} ms, pantalla ${defaultConfig.pantallaAuto ? 'automática' : 'apagada'}`);
     audioPlayer.initialize();
     audioManager.start();
-    armarMicro();
+    micro.armar();
     geminiClient.connect();
-  };
-
-  /**
-   * Deja el micrófono como pide el modo: de par en par en manos libres, mudo
-   * hasta que se pulse en «pulsar para hablar». Se llama al llamar y en cada
-   * reconexión, porque `audioManager.stop()` devuelve el paso abierto.
-   */
-  const armarMicro = () => {
-    const modo = defaultConfig.modoMicro;
-    modoMicroRef.current = modo;
-    setModoMicro(modo);
-    audioManager.transmitir(modo !== 'pulsar');
-    pulsandoRef.current = false;
-    setPulsando(false);
-  };
-
-  /** Se aprieta el botón de hablar: se avisa al modelo y se abre el paso. */
-  const empezarAHablar = () => {
-    if (modoMicroRef.current !== 'pulsar') return;
-    if (!conectadoRef.current || pulsandoRef.current) return;
-    pulsandoRef.current = true;
-    setPulsando(true);
-    // Y que ningún botón se quede con el foco mientras se habla: pulsar
-    // «Llamar» se lo deja al de colgar, y la barra espaciadora lo activaría
-    // por su cuenta. Cinturón además del `preventDefault` de las dos teclas.
-    const enfocado = document.activeElement as HTMLElement | null;
-    if (enfocado && enfocado.tagName === 'BUTTON') enfocado.blur();
-    // El aviso primero y el audio después: con la detección automática
-    // apagada, un trozo que llegue antes del `activityStart` se tira.
-    geminiClient.abrirTurno();
-    audioManager.transmitir(true);
-  };
-
-  /** Se suelta: se cierra el paso y se le dice al modelo que conteste. */
-  const dejarDeHablar = () => {
-    if (!pulsandoRef.current) return;
-    pulsandoRef.current = false;
-    setPulsando(false);
-    audioManager.transmitir(false);
-    geminiClient.cerrarTurno();
   };
 
   const handleHangup = async () => {
@@ -759,7 +652,7 @@ function App() {
         `respuesta mediana ${tardanza.mediana} ms, peor ${tardanza.peor} ms ` +
         `(${tardanza.veces} medidas)`
     );
-    dejarDeHablar();
+    micro.dejar();
     geminiClient.disconnect();
     audioManager.stop();
     audioPlayer.clearQueue();
@@ -795,7 +688,7 @@ function App() {
       // Sin esto la barra además pulsa el botón que tenga el foco, y el
       // teclado colgaba la llamada mientras se hablaba.
       e.preventDefault();
-      empezarAHablar();
+      micro.empezar();
     };
     const arriba = (e: KeyboardEvent) => {
       if (e.code !== 'Space') return;
@@ -804,11 +697,11 @@ function App() {
       // solo el keydown dejaba el click vivo — se hablaba, se soltaba y el
       // teclado pulsaba «Colgar». Ver también el desenfoque de `empezarAHablar`.
       if (!escribiendo(e.target)) e.preventDefault();
-      dejarDeHablar();
+      micro.dejar();
     };
     // Cambiar de ventana con la barra apretada dejaba el turno abierto para
     // siempre: la tecla se suelta donde ya no lo oye nadie.
-    const fuera = () => dejarDeHablar();
+    const fuera = () => micro.dejar();
     window.addEventListener('keydown', abajo);
     window.addEventListener('keyup', arriba);
     window.addEventListener('blur', fuera);
@@ -852,7 +745,7 @@ function App() {
   // «Escuchando» solo cuando el micrófono está abierto de verdad: pulsando
   // para hablar y con el botón suelto, el paso está cerrado y la pantalla se
   // quedaba clavada en «Escuchando» mientras no oía nada (2026-09-09).
-  const microAbierto = modoMicro !== 'pulsar' || pulsando;
+  const microAbierto = micro.abierto;
   const fase: Fase = !isActive ? 'reposo'
     : connectionState === 'connecting' ? 'conectando'
     : isSpeaking ? 'hablando'
@@ -871,7 +764,7 @@ function App() {
     : isSpeaking ? 'Hablando'
     // Pulsando, «Escuchando» sería mentira la mayor parte del tiempo: el
     // micrófono está cerrado hasta que se aprieta, y la pantalla lo dice.
-    : isConnected && modoMicro === 'pulsar' ? (pulsando ? 'Le escucho' : 'Pulse para hablar')
+    : isConnected && micro.modo === 'pulsar' ? (micro.pulsando ? 'Le escucho' : 'Pulse para hablar')
     : isConnected ? 'Escuchando'
     : '';
 
@@ -973,7 +866,7 @@ function App() {
             {/* Etiquetas de reconocimiento: la caja la da YuNet sobre 640x480,
                 que es exactamente lo que captura camera-manager, así que los
                 porcentajes caen donde toca sin medir el vídeo real. */}
-            {caras.map((cara, i) => (
+            {identidad.caras.map((cara, i) => (
               <div
                 key={`${cara.nombre}-${i}`}
                 className={`cara-marco ${cara.aprendiendo ? 'cara-aprendiendo' : ''}`}
@@ -993,10 +886,10 @@ function App() {
 
       {/* Quién habla ahora mismo, según su voz. El núcleo lo decide; este chip
           se apaga solo a los pocos segundos de silencio. */}
-      {hablante && isActive && (
+      {identidad.hablante && isActive && (
         <div className="hablante-chip">
           <span className="hablante-punto" />
-          {hablante}
+          {identidad.hablante}
         </div>
       )}
 
@@ -1067,20 +960,20 @@ function App() {
             {/* En «pulsar para hablar» el botón de silenciar no pinta nada: el
                 micrófono ya está cerrado de serie. Su sitio lo ocupa el de
                 hablar, que se mantiene apretado —o la barra espaciadora—. */}
-            {modoMicro === 'pulsar' ? (
+            {micro.modo === 'pulsar' ? (
               <button
-                className={`ctrl-btn hablar ${pulsando ? 'pulsando' : ''}`}
-                onPointerDown={empezarAHablar}
-                onPointerUp={dejarDeHablar}
-                onPointerLeave={dejarDeHablar}
-                onPointerCancel={dejarDeHablar}
+                className={`ctrl-btn hablar ${micro.pulsando ? 'pulsando' : ''}`}
+                onPointerDown={micro.empezar}
+                onPointerUp={micro.dejar}
+                onPointerLeave={micro.dejar}
+                onPointerCancel={micro.dejar}
                 // El botón no es un botón de pulsar y soltar del teclado: la
                 // barra ya la escucha la ventana entera, y dejarle su
                 // comportamiento de siempre abría dos turnos por pulsación.
                 onKeyDown={e => e.preventDefault()}
                 title="Mantén pulsado para hablar (o la barra espaciadora)"
               >
-                {pulsando ? <IconMic /> : <IconMicOff />}
+                {micro.pulsando ? <IconMic /> : <IconMicOff />}
               </button>
             ) : (
               <button className={`ctrl-btn ${isMuted ? 'muted' : ''}`} onClick={toggleMute} title={isMuted ? 'Activar micro' : 'Silenciar'}>
@@ -1112,7 +1005,7 @@ function App() {
           onEstiloHabitos={setEstiloHabitos}
           // Fuera de llamada el cambio se ve al momento; dentro no se toca la
           // sesión viva — la abrió el modo anterior y así se queda.
-          onModoMicro={(modo) => { if (!isActive) { modoMicroRef.current = modo; setModoMicro(modo); } }}
+          onModoMicro={(modo) => { if (!isActive) micro.cambiarModo(modo); }}
         />
       )}
     </div>
