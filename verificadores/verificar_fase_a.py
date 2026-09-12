@@ -4,6 +4,13 @@ Criterio:
   "encolas un trabajo por HTTP desde el móvil, se ejecuta, y sigue en la cola
    tras reiniciar el núcleo."
 
+Y, desde el 2026-09-12, también `/herramientas`. No es de la Fase A, pero vive
+aquí por lo mismo que el resto: es una ruta de la API que se pide de verdad
+—la app de voz la llama al conectar— y no la recorría ningún verificador. Lo
+que ya estaba probado era `catalogo.para()` por dentro; lo que faltaba era
+que la ruta que lo sirve conteste, pida token y sepa decir que no a una cara
+inventada.
+
 Arranca el núcleo como proceso hijo sobre un directorio de datos temporal, así
 que no toca el estado real ni el puerto por defecto. Ejecutar desde la raíz:
 
@@ -18,6 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from perseo_core.servicios import catalogo  # noqa: E402
 from verificadores.arnes_pruebas import Escucha, Nucleo, comprobar, resumir  # noqa: E402
 
 
@@ -110,6 +118,53 @@ def main() -> None:
     comprobar("El flujo SSE entrega eventos", len(tipos) >= 1, f"{len(tipos)} evento(s)")
     if tipos:
         comprobar("Los eventos llevan tipo reconocible", all(tipos), ", ".join(tipos))
+
+    # 10. `/herramientas`: el catálogo que la app de voz pide al conectar.
+    #
+    # Se compara contra `catalogo.para()` leído en ESTE proceso, no contra un
+    # número escrito a mano: el núcleo es un proceso hijo aparte, así que la
+    # comparación prueba que la ruta sirve el catálogo de verdad, y añadir una
+    # herramienta nueva no deja esta comprobación en rojo por un descuido.
+    estado, _ = nucleo.pedir("/herramientas")
+    comprobar("/herramientas sin token devuelve 401", estado == 401, f"HTTP {estado}")
+
+    for cara in catalogo.CARAS:
+        esperadas = [h["name"] for h in catalogo.para(cara)]
+        estado, cuerpo = nucleo.pedir(f"/herramientas?cara={cara}", token)
+        servidas = [h.get("name") for h in (cuerpo.get("herramientas") or [])]
+        comprobar(
+            f"/herramientas?cara={cara} responde 200",
+            estado == 200,
+            f"HTTP {estado}",
+        )
+        comprobar(
+            f"Y sirve el catalogo entero de '{cara}', en su orden",
+            servidas == esperadas,
+            f"{len(servidas)} de {len(esperadas)}",
+        )
+        comprobar(
+            f"Con la cara dentro de la respuesta ('{cara}')",
+            cuerpo.get("cara") == cara,
+            str(cuerpo.get("cara")),
+        )
+
+    # Cada herramienta tiene que llegar utilizable: sin descripcion o sin
+    # esquema, el modelo la ve pero no sabe llamarla.
+    _, voz = nucleo.pedir("/herramientas?cara=voz", token)
+    completas = [
+        h
+        for h in (voz.get("herramientas") or [])
+        if h.get("description") and isinstance(h.get("parameters"), dict)
+    ]
+    comprobar(
+        "Todas llegan con descripcion y esquema",
+        len(completas) == len(voz.get("herramientas") or []),
+        f"{len(completas)} de {len(voz.get('herramientas') or [])}",
+    )
+
+    # Una cara que no existe se para en la puerta, como un agente inventado.
+    estado, _ = nucleo.pedir("/herramientas?cara=telepatia", token)
+    comprobar("Una cara inventada devuelve 400", estado == 400, f"HTTP {estado}")
 
     nucleo.limpiar()
     resumir()

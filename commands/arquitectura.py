@@ -79,11 +79,34 @@ EXCEPCIONES_DE_TAMANO: dict[str, int] = {
     # `useConfianza`), y eso cambia comportamiento: pendiente de hacerse con la
     # app delante.
     "RealTime/src/App.tsx": 1162,
+    # La PWA entera: una página sin build, con su CSS y su JS dentro. Es el
+    # fichero más grande del repositorio y entra aquí el mismo día que empieza
+    # a medirse, no como perdón sino como línea de salida: a partir de hoy solo
+    # puede encoger.
+    #
+    # Lo que lo mantiene junto es que **se sirve tal cual**: un solo fichero que
+    # el móvil pide una vez por la VPN, sin empaquetador, sin red de terceros y
+    # sin una segunda petición que pueda fallar a medias. Partirlo en módulos
+    # pide un build, y un build para la cara de repuesto es exactamente la
+    # complejidad que esta cara existe para no tener. Si algún día se parte, lo
+    # natural es por secciones de la página y con el build dentro del núcleo.
+    "perseo_core/caras/interfaz/index.html": 2271,
 }
 
 # Dónde se mide. La bitácora, el vault y lo que no escribimos se quedan fuera.
+#
+# El `.html` entró el 2026-09-12, y con él el fichero más grande del
+# repositorio. Estuvo fuera casi un año por descuido, no por decisión: la
+# regla existe para encontrar ficheros grandes y el mayor de todos era
+# invisible para ella. La PWA de `caras/interfaz/` es una sola página sin
+# build —HTML, CSS y JS en el mismo fichero—, así que se mide como lo que es:
+# código nuestro.
+#
+# `RealTime/maquetas/` se queda fuera a propósito: son bancos de pruebas
+# visuales que no se envían con la aplicación, y medirlos sería pedirle
+# disciplina de producción a un borrador.
 CARPETAS_MEDIDAS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("perseo_core", (".py",)),
+    ("perseo_core", (".py", ".html")),
     ("commands", (".py",)),
     ("pruebas", (".py",)),
     ("verificadores", (".py",)),

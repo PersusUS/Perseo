@@ -736,7 +736,12 @@ pub async fn precalentar_herramientas(app: AppHandle) -> Result<(), String> {
 // móvil con un trabajo cada dos segundos la haría ilegible.
 // --------------------------------------------------------------------------- //
 
-async fn traer_biometria(app: &AppHandle, ruta: &str) -> Result<Value, String> {
+/// Un GET con token a una ruta concreta del nucleo.
+///
+/// Se llamaba traer_biometria y desde el 2026-09-12 tambien la usa el
+/// catalogo de herramientas, que no es biometria de nada. El nombre describe
+/// lo que hace -traer JSON del nucleo- y no a su primer cliente.
+async fn traer_del_nucleo(app: &AppHandle, ruta: &str) -> Result<Value, String> {
     let token = token(app)?;
     let cliente = reqwest::Client::new();
     pedir_json(
@@ -772,13 +777,13 @@ async fn mandar_biometria(
 /// se separen es una prueba que las compara, no esta peticion.
 #[tauri::command]
 pub async fn catalogo_herramientas(app: AppHandle) -> Result<Value, String> {
-    traer_biometria(&app, "/herramientas?cara=voz").await
+    traer_del_nucleo(&app, "/herramientas?cara=voz").await
 }
 
 /// Perfiles guardados, progreso de aprendizaje y qué motores hay hoy.
 #[tauri::command]
 pub async fn biometria_estado(app: AppHandle) -> Result<Value, String> {
-    traer_biometria(&app, "/biometria").await
+    traer_del_nucleo(&app, "/biometria").await
 }
 
 /// Un trozo de PCM 16k mono (base64): ¿de quién es la voz?
