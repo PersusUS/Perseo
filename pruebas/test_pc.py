@@ -10,7 +10,7 @@ import sys
 
 import pytest
 
-from perseo_core import pc
+from perseo_core import aplicaciones, pc
 
 
 @pytest.mark.parametrize(
@@ -39,8 +39,8 @@ def test_las_inyecciones_se_bloquean(accion: str, parametro: str, motivo: str) -
 
 def test_una_url_http_no_es_una_inyeccion() -> None:
     """El rechazo tiene que ser por el esquema, no por ser una URL."""
-    assert pc._abrir_url.__doc__ is not None  # la función existe y está documentada
-    partes = pc._es_url("https://example.com")
+    assert aplicaciones.abrir_url.__doc__ is not None  # la función existe y está documentada
+    partes = aplicaciones.es_url("https://example.com")
     assert partes is True
 
 
@@ -62,7 +62,7 @@ def test_un_texto_solo_de_controles_se_rechaza() -> None:
 def test_la_lista_blanca_no_lleva_interpretes() -> None:
     """Poder abrir un shell haría inútil todo lo demás del módulo."""
     prohibidos = {"cmd", "powershell", "wt", "terminal", "regedit", "bash"}
-    assert not (prohibidos & set(pc.APLICACIONES_PERMITIDAS))
+    assert not (prohibidos & set(aplicaciones.APLICACIONES_PERMITIDAS))
 
 
 def test_las_teclas_permitidas_no_llevan_teclas_de_sistema() -> None:
@@ -71,15 +71,15 @@ def test_las_teclas_permitidas_no_llevan_teclas_de_sistema() -> None:
 
 
 def test_los_esquemas_de_url_permitidos_son_dos() -> None:
-    assert pc.ESQUEMAS_URL_PERMITIDOS == {"http", "https"}
+    assert aplicaciones.ESQUEMAS_URL_PERMITIDOS == {"http", "https"}
 
 
 def test_una_url_con_esquema_raro_se_rechaza() -> None:
-    assert pc._abrir_url("ftp://archivos.example/x").startswith("Error:")
+    assert aplicaciones.abrir_url("ftp://archivos.example/x").startswith("Error:")
 
 
 def test_una_url_sin_dominio_se_rechaza() -> None:
-    assert pc._abrir_url("http:///sin-dominio").startswith("Error:")
+    assert aplicaciones.abrir_url("http:///sin-dominio").startswith("Error:")
 
 
 def test_buscar_en_youtube_sin_termino_se_rechaza() -> None:
@@ -184,7 +184,7 @@ def test_unas_coordenadas_rotas_no_clican(raton: _RatonFalso) -> None:
 @pytest.mark.skipif(sys.platform != "win32", reason="App Paths es del registro de Windows")
 def test_el_bloc_de_notas_se_encuentra() -> None:
     """Lo que sí está en el PATH tiene que seguir encontrándose."""
-    assert pc.resolver_ejecutable("notepad.exe")
+    assert aplicaciones.resolver_ejecutable("notepad.exe")
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="App Paths es del registro de Windows")
@@ -195,18 +195,18 @@ def test_chrome_se_encuentra_aunque_no_este_en_el_path() -> None:
 
     Si esta máquina no tiene Chrome, la prueba no tiene nada que decir.
     """
-    if not pc._en_app_paths("chrome.exe"):
+    if not aplicaciones._en_app_paths("chrome.exe"):
         pytest.skip("Chrome no está instalado en esta máquina")
-    assert pc.resolver_ejecutable("chrome.exe")
+    assert aplicaciones.resolver_ejecutable("chrome.exe")
 
 
 def test_un_ejecutable_inventado_no_se_encuentra() -> None:
-    assert pc.resolver_ejecutable("no-existe-de-verdad.exe") is None
+    assert aplicaciones.resolver_ejecutable("no-existe-de-verdad.exe") is None
 
 
 def test_una_app_permitida_pero_no_instalada_lo_dice(monkeypatch: pytest.MonkeyPatch) -> None:
     """«No está instalada» es lo único que el usuario puede arreglar; «error del
     sistema al ejecutar la acción» no le dice nada."""
-    monkeypatch.setattr(pc, "resolver_ejecutable", lambda _: None)
+    monkeypatch.setattr(aplicaciones, "resolver_ejecutable", lambda _: None)
     respuesta = pc.controlar("abrir_app", "chrome")
     assert respuesta.startswith("Error:") and "no se encuentra instalada" in respuesta

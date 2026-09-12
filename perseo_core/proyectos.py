@@ -86,7 +86,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from . import pc
+from . import aplicaciones
 
 logger = logging.getLogger(__name__)
 
@@ -161,12 +161,12 @@ def _valido(crudo: dict[str, Any]) -> Proyecto | None:
     if modo != "arranque" and not destino:
         logger.warning("Proyecto %r sin destino; se ignora.", id_proyecto)
         return None
-    if modo in ("url", "servicio") and not pc._es_url(destino):
+    if modo in ("url", "servicio") and not aplicaciones.es_url(destino):
         logger.warning("Proyecto %r: %r no es una URL http/https.", id_proyecto, destino)
         return None
-    if modo == "programa" and destino.lower() not in pc.APLICACIONES_PERMITIDAS:
+    if modo == "programa" and destino.lower() not in aplicaciones.APLICACIONES_PERMITIDAS:
         logger.warning(
-            "Proyecto %r: %r no está en la lista blanca del agente pc.", id_proyecto, destino
+            "Proyecto %r: %r no está en la lista blanca de aplicaciones.", id_proyecto, destino
         )
         return None
 
@@ -345,14 +345,14 @@ def abrir(directorio_datos: Path, id_proyecto: str) -> str:
         if proyecto.modo == "servicio":
             return _servir(proyecto, directorio_datos)
 
-        tipo, objetivo = pc.APLICACIONES_PERMITIDAS[proyecto.destino.lower()]
+        tipo, objetivo = aplicaciones.APLICACIONES_PERMITIDAS[proyecto.destino.lower()]
         if tipo != "exe":
             return f"Error: '{proyecto.destino}' no se puede abrir con una carpeta dentro."
         # Con la ruta resuelta y no el nombre desnudo: `Popen(["chrome.exe"])`
         # solo funciona si está en el PATH, y los navegadores no lo están — es
-        # exactamente lo que dice la cabecera de `pc.py`. Sin resolver, un
+        # exactamente lo que dice la cabecera de `aplicaciones.py`. Sin resolver, un
         # proyecto "programa" de Chrome o Firefox fallaba al pulsarlo.
-        ruta = pc.resolver_ejecutable(objetivo)
+        ruta = aplicaciones.resolver_ejecutable(objetivo)
         argumentos = [ruta or objetivo]
         if proyecto.carpeta:
             carpeta = Path(proyecto.carpeta)
