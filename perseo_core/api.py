@@ -119,10 +119,7 @@ async def _autenticar(peticion: web.Request, handler):
     cfg = peticion.app[CLAVE_CFG]
     # compare_digest evita filtrar el token por diferencias de tiempo.
     if not secrets.compare_digest(_token_de_peticion(peticion), cfg.token):
-        raise web.HTTPUnauthorized(
-            text=json.dumps({"error": "Token ausente o incorrecto"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPUnauthorized, "Token ausente o incorrecto")
     return await handler(peticion)
 
 
@@ -220,9 +217,7 @@ async def _abrir_nota_grafo(peticion: web.Request) -> web.Response:
         cuerpo = await peticion.json()
         id_nota = str(cuerpo.get("id", ""))
     except (json.JSONDecodeError, TypeError, AttributeError):
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "Cuerpo inválido"}), content_type="application/json"
-        )
+        raise _fallo(web.HTTPBadRequest, "Cuerpo inválido")
 
     from . import memoria
 
@@ -231,9 +226,7 @@ async def _abrir_nota_grafo(peticion: web.Request) -> web.Response:
         grafo.abrir_nota, memoria.ruta_vault(cfg), id_nota
     )
     if resultado.startswith("Error:"):
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": resultado}), content_type="application/json"
-        )
+        raise _fallo(web.HTTPBadRequest, resultado)
     return web.json_response({"resultado": resultado})
 
 
@@ -292,19 +285,25 @@ async def _manifiesto(peticion: web.Request) -> web.Response:
     return web.json_response(_MANIFIESTO, content_type="application/manifest+json")
 
 
+def _fallo(clase: type[web.HTTPException], mensaje: str) -> web.HTTPException:
+    """Un error de la API, en JSON y no en la página HTML de aiohttp.
+
+    Esto estaba escrito treinta y cuatro veces —tres líneas cada una— y el
+    tercio de las veces con el `content_type` en una línea distinta, así que
+    ningún grep encontraba las mismas. Quien consume esta API es una PWA y un
+    puente en Rust: los dos hacen `json()` con lo que reciben, y un `<html>` de
+    aiohttp ahí es un error de parseo en vez de un mensaje.
+    """
+    return clase(text=json.dumps({"error": mensaje}), content_type="application/json")
+
+
 async def _cuerpo_json(peticion: web.Request) -> dict[str, Any]:
     try:
         datos = await peticion.json()
     except json.JSONDecodeError:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "El cuerpo no es JSON válido"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPBadRequest, "El cuerpo no es JSON válido")
     if not isinstance(datos, dict):
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "Se esperaba un objeto JSON"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPBadRequest, "Se esperaba un objeto JSON")
     return datos
 
 
@@ -313,16 +312,11 @@ async def _mensaje(peticion: web.Request) -> web.Response:
     datos = await _cuerpo_json(peticion)
     texto = str(datos.get("texto", "")).strip()
     if not texto:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "Falta 'texto'"}), content_type="application/json"
-        )
+        raise _fallo(web.HTTPBadRequest, "Falta 'texto'")
 
     origen = datos.get("origen", "texto")
     if origen not in almacen.ORIGENES:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": f"Origen inválido. Válidos: {list(almacen.ORIGENES)}"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPBadRequest, f"Origen inválido. Válidos: {list(almacen.ORIGENES)}")
 
     router = peticion.app[CLAVE_ROUTER]
     bus = peticion.app[CLAVE_BUS]
@@ -350,17 +344,11 @@ async def _crear_trabajo(peticion: web.Request) -> web.Response:
     datos = await _cuerpo_json(peticion)
     agente = str(datos.get("agente", "")).strip()
     if agente not in REGISTRO:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": f"Agente desconocido. Disponibles: {sorted(REGISTRO)}"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPBadRequest, f"Agente desconocido. Disponibles: {sorted(REGISTRO)}")
 
     peticion_agente = datos.get("peticion") or {}
     if not isinstance(peticion_agente, dict):
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "'peticion' debe ser un objeto"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPBadRequest, "'peticion' debe ser un objeto")
 
     origen = datos.get("origen", "texto")
     # Quién lo pidió. Lo manda la cara de la llamada con el perfil que el
@@ -374,9 +362,7 @@ async def _crear_trabajo(peticion: web.Request) -> web.Response:
             almacen.encolar, agente, peticion_agente, origen, quien
         )
     except ValueError as e:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": str(e)}), content_type="application/json"
-        )
+        raise _fallo(web.HTTPBadRequest, str(e))
 
     peticion.app[CLAVE_BUS].publicar("trabajo.encolado", trabajo=trabajo)
     return web.json_response(trabajo, status=201)
@@ -408,17 +394,11 @@ async def _cambiar_confianza(peticion: web.Request) -> web.Response:
     try:
         minutos = float(datos.get("minutos", politica.MINUTOS_CONFIANZA))
     except (TypeError, ValueError):
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "'minutos' debe ser un número"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPBadRequest, "'minutos' debe ser un número")
     if not math.isfinite(minutos):
         # `NaN` e infinitos atraviesan el `float()` y, sin este guardo, el NaN
         # acababa recortado a "un minuto de confianza" en vez de rechazarse.
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "'minutos' debe ser un número finito"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPBadRequest, "'minutos' debe ser un número finito")
 
     hasta = await asyncio.to_thread(politica.activar_confianza, minutos)
     peticion.app[CLAVE_BUS].publicar("confianza.cambiada", hasta=hasta.isoformat())
@@ -439,19 +419,13 @@ def _id_de_ruta(peticion: web.Request) -> int:
     try:
         return int(peticion.match_info["id"])
     except (KeyError, ValueError):
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "Identificador inválido"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPBadRequest, "Identificador inválido")
 
 
 async def _ver_trabajo(peticion: web.Request) -> web.Response:
     trabajo = await asyncio.to_thread(almacen.obtener, _id_de_ruta(peticion))
     if trabajo is None:
-        raise web.HTTPNotFound(
-            text=json.dumps({"error": "No existe ese trabajo"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPNotFound, "No existe ese trabajo")
     return web.json_response(_con_progreso(trabajo))
 
 
@@ -466,10 +440,7 @@ async def _ver_actividad(peticion: web.Request) -> web.Response:
     id_trabajo = _id_de_ruta(peticion)
     trabajo = await asyncio.to_thread(almacen.obtener, id_trabajo)
     if trabajo is None:
-        raise web.HTTPNotFound(
-            text=json.dumps({"error": "No existe ese trabajo"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPNotFound, "No existe ese trabajo")
     actividad = await asyncio.to_thread(dev.actividad_de, id_trabajo)
     return web.json_response({**actividad, "estado": trabajo.get("estado")})
 
@@ -493,15 +464,9 @@ async def _cancelar_trabajo(peticion: web.Request) -> web.Response:
     id_trabajo = _id_de_ruta(peticion)
     actual = await asyncio.to_thread(almacen.obtener, id_trabajo)
     if actual is None:
-        raise web.HTTPNotFound(
-            text=json.dumps({"error": "No existe ese trabajo"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPNotFound, "No existe ese trabajo")
     if actual["estado"] not in almacen.ABIERTOS:
-        raise web.HTTPConflict(
-            text=json.dumps({"error": f"El trabajo ya está {actual['estado']}"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPConflict, f"El trabajo ya está {actual['estado']}")
 
     trabajo = await asyncio.to_thread(almacen.cancelar, id_trabajo)
     peticion.app[CLAVE_BUS].publicar("trabajo.cancelado", trabajo=trabajo)
@@ -523,15 +488,10 @@ async def _responder_confirmacion(peticion: web.Request) -> web.Response:
     if trabajo is None:
         actual = await asyncio.to_thread(almacen.obtener, id_trabajo)
         if actual is None:
-            raise web.HTTPNotFound(
-                text=json.dumps({"error": "No existe ese trabajo"}),
-                content_type="application/json",
-            )
-        raise web.HTTPConflict(
-            text=json.dumps(
-                {"error": f"El trabajo no está esperando confirmación (está {actual['estado']})"}
-            ),
-            content_type="application/json",
+            raise _fallo(web.HTTPNotFound, "No existe ese trabajo")
+        raise _fallo(
+            web.HTTPConflict,
+            f"El trabajo no está esperando confirmación (está {actual['estado']})",
         )
 
     peticion.app[CLAVE_BUS].publicar(
@@ -556,18 +516,13 @@ async def _marcar_correo(peticion: web.Request) -> web.Response:
     datos = await _cuerpo_json(peticion)
     estado = str(datos.get("estado", "")).strip().lower()
     if estado not in almacen.ESTADOS_CORREO:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": f"Estado inválido. Válidos: {list(almacen.ESTADOS_CORREO)}"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPBadRequest, f"Estado inválido. Válidos: {list(almacen.ESTADOS_CORREO)}")
 
     id_mensaje = peticion.match_info["id"]
     try:
         marcado = await asyncio.to_thread(almacen.marcar_correo, id_mensaje, estado)
     except ValueError as e:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": str(e)}), content_type="application/json"
-        )
+        raise _fallo(web.HTTPBadRequest, str(e))
 
     peticion.app[CLAVE_BUS].publicar("correo.marcado", correo=marcado)
     return web.json_response(marcado)
@@ -598,10 +553,7 @@ async def _ver_sesion_chat(peticion: web.Request) -> web.Response:
     id_sesion = _id_de_ruta(peticion)
     sesion = await asyncio.to_thread(almacen.obtener_sesion_chat, id_sesion)
     if sesion is None:
-        raise web.HTTPNotFound(
-            text=json.dumps({"error": "No existe esa conversación"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPNotFound, "No existe esa conversación")
     mensajes = await asyncio.to_thread(almacen.mensajes_chat, id_sesion)
     return web.json_response({**sesion, "mensajes": mensajes})
 
@@ -611,14 +563,9 @@ async def _borrar_sesion_chat(peticion: web.Request) -> web.Response:
     try:
         borrada = await asyncio.to_thread(almacen.borrar_sesion_chat, id_sesion)
     except ValueError as e:
-        raise web.HTTPConflict(
-            text=json.dumps({"error": str(e)}), content_type="application/json"
-        )
+        raise _fallo(web.HTTPConflict, str(e))
     if not borrada:
-        raise web.HTTPNotFound(
-            text=json.dumps({"error": "No existe esa conversación"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPNotFound, "No existe esa conversación")
     peticion.app[CLAVE_BUS].publicar("chat.borrado", sesion={"id": id_sesion})
     return web.json_response({"ok": True})
 
@@ -634,23 +581,16 @@ async def _hablar_chat(peticion: web.Request) -> web.Response:
     datos = await _cuerpo_json(peticion)
     texto = str(datos.get("texto", "")).strip()
     if not texto:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "Falta 'texto'"}), content_type="application/json"
-        )
+        raise _fallo(web.HTTPBadRequest, "Falta 'texto'")
 
     sesion = await asyncio.to_thread(almacen.obtener_sesion_chat, id_sesion)
     if sesion is None:
-        raise web.HTTPNotFound(
-            text=json.dumps({"error": "No existe esa conversación"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPNotFound, "No existe esa conversación")
 
     try:
         await asyncio.to_thread(almacen.marcar_turno_chat, id_sesion, "ocupado")
     except ValueError as e:
-        raise web.HTTPConflict(
-            text=json.dumps({"error": str(e)}), content_type="application/json"
-        )
+        raise _fallo(web.HTTPConflict, str(e))
 
     try:
         id_usuario = await asyncio.to_thread(almacen.anadir_mensaje_chat, id_sesion, "usuario", texto)
@@ -696,9 +636,7 @@ async def _habitos_espejo(peticion: web.Request) -> web.Response:
     cuerpo = await _cuerpo_json(peticion)
     texto = str(cuerpo.get("texto", "")).strip()
     if not texto:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "Falta 'texto'"}), content_type="application/json"
-        )
+        raise _fallo(web.HTTPBadRequest, "Falta 'texto'")
     cfg = peticion.app[CLAVE_CFG]
     foto = cuerpo.get("foto")
     copia = await asyncio.to_thread(
@@ -727,9 +665,7 @@ async def _tareas_espejo(peticion: web.Request) -> web.Response:
     cuerpo = await _cuerpo_json(peticion)
     texto = str(cuerpo.get("texto", "")).strip()
     if not texto:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "Falta 'texto'"}), content_type="application/json"
-        )
+        raise _fallo(web.HTTPBadRequest, "Falta 'texto'")
     cfg = peticion.app[CLAVE_CFG]
     foto = cuerpo.get("foto")
     copia = await asyncio.to_thread(
@@ -781,9 +717,7 @@ async def _biometria_voz(peticion: web.Request) -> web.Response:
     cuerpo = await _cuerpo_json(peticion)
     audio = str(cuerpo.get("audio", ""))
     if not audio:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "Falta 'audio'"}), content_type="application/json"
-        )
+        raise _fallo(web.HTTPBadRequest, "Falta 'audio'")
 
     cfg = peticion.app[CLAVE_CFG]
     resultado = await asyncio.to_thread(
@@ -806,9 +740,7 @@ async def _biometria_cara(peticion: web.Request) -> web.Response:
     cuerpo = await _cuerpo_json(peticion)
     imagen = str(cuerpo.get("imagen", ""))
     if not imagen:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "Falta 'imagen'"}), content_type="application/json"
-        )
+        raise _fallo(web.HTTPBadRequest, "Falta 'imagen'")
 
     cfg = peticion.app[CLAVE_CFG]
     resultado = await asyncio.to_thread(
@@ -829,14 +761,9 @@ async def _biometria_enrolar(peticion: web.Request) -> web.Response:
     audio = cuerpo.get("audio")
     imagen = cuerpo.get("imagen")
     if not nombre:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "Falta 'nombre'"}), content_type="application/json"
-        )
+        raise _fallo(web.HTTPBadRequest, "Falta 'nombre'")
     if not audio and not imagen:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "Hace falta 'audio' o 'imagen'"}),
-            content_type="application/json",
-        )
+        raise _fallo(web.HTTPBadRequest, "Hace falta 'audio' o 'imagen'")
 
     cfg = peticion.app[CLAVE_CFG]
     resultado = await asyncio.to_thread(
@@ -949,9 +876,7 @@ async def _abrir_proyecto(peticion: web.Request) -> web.Response:
         proyectos.abrir, cfg.directorio_datos, peticion.match_info["id"]
     )
     if resultado.startswith("Error:"):
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": resultado}), content_type="application/json"
-        )
+        raise _fallo(web.HTTPBadRequest, resultado)
     return web.json_response({"resultado": resultado})
 
 

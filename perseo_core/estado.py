@@ -44,7 +44,7 @@ from typing import Any, Awaitable, Callable
 
 import aiohttp
 
-from . import agenda, almacen, politica
+from . import agenda, almacen, politica, triaje
 from .agentes import REGISTRO, Router
 from .disparadores import REGISTRO as DISPARADORES
 
@@ -594,18 +594,9 @@ async def presencia(cfg: almacen.Configuracion) -> dict[str, Any]:
         datos["haciendo"] = {"id": en_curso[0]["id"], "agente": en_curso[0]["agente"]}
     datos["esperando_un_si"] = len(esperando)
 
-    # Correos triados que nadie ha resuelto todavía, por cajón. Es el mismo
-    # criterio que la pestaña de Correo: lo que no está marcado está pendiente.
-    pendientes: dict[str, int] = {}
-    for trabajo in trabajos:
-        resultado = trabajo.get("resultado")
-        if not isinstance(resultado, dict):
-            continue
-        for correo in resultado.get("clasificados") or []:
-            if correo.get("clase") == "ignorar" or marcados.get(correo.get("id")):
-                continue
-            pendientes[correo["clase"]] = pendientes.get(correo["clase"], 0) + 1
-    datos["correo"] = pendientes
+    # Correos triados que nadie ha resuelto todavía, por cajón. El criterio vive
+    # en `triaje` porque esto mismo lo pregunta la llamada.
+    datos["correo"] = triaje.pendientes_por_cajon(trabajos, marcados)
 
     # El calendario se pregunta solo si está configurado: sin esto, una pantalla
     # que se refresca sola pediría un testigo de Google cada pocos segundos.

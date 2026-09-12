@@ -66,7 +66,7 @@ export type ModoMicro = 'manos-libres' | 'pulsar';
  */
 export const SILENCIO_MIN_MS = 300;
 export const SILENCIO_MAX_MS = 1200;
-export const SILENCIO_POR_DEFECTO_MS = 600;
+const SILENCIO_POR_DEFECTO_MS = 600;
 
 export interface PerseoConfig {
   geminiApiKey: string;
@@ -202,7 +202,7 @@ export const SYSTEM_PROMPT_POR_DEFECTO = defaultConfig.systemPrompt;
  * fallado», sin un solo trabajo en la cola). Al subir la versión, un prompt
  * guardado de antes se descarta solo.
  */
-export const VERSION_PROMPT = '2026-09-12-esencial-llamada';
+const VERSION_PROMPT = '2026-09-12-esencial-llamada';
 
 /** Ajustes que se persisten en el almacén local que gestiona Rust. */
 const AJUSTES_PERSISTIDOS = ['voiceName', 'systemPrompt', 'saveHistoryEnabled', 'aspectoLive', 'pantallaAuto', 'identidadActivada', 'perfilPersus', 'posicionRiel', 'estiloHabitos', 'modoMicro', 'silencioMs'] as const;

@@ -30,7 +30,7 @@ export interface CaraDetectada {
   aprendido?: boolean;
 }
 
-export interface Progreso {
+interface Progreso {
   etiqueta: string;
   peso: number;
   objetivo: number;

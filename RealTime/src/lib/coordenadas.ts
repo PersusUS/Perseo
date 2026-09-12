@@ -18,7 +18,7 @@ export interface GeometriaPantalla {
 }
 
 /** El lado del cuadrado normalizado en el que apunta Gemini. */
-export const LADO_NORMALIZADO = 1000;
+const LADO_NORMALIZADO = 1000;
 
 /** Las acciones de `controlar_pc` cuyo parámetro lleva coordenadas. */
 export const ACCIONES_DE_RATON = new Set(['mover_raton', 'click_raton']);

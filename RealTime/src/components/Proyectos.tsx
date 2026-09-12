@@ -516,5 +516,3 @@ export const Proyectos: React.FC<{
     </div>
   );
 };
-
-export default Proyectos;

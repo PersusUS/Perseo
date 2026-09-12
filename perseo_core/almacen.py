@@ -274,10 +274,6 @@ class Configuracion:
         anfitrion = urllib.parse.urlsplit(self.url_base).hostname or ""
         return anfitrion not in LOCALES
 
-    @property
-    def correo_configurado(self) -> bool:
-        return bool(self.correo_buzon)
-
 
 #: Rango que Tailscale reparte entre los nodos del tailnet (CGNAT).
 _RED_TAILSCALE = ipaddress.ip_network("100.64.0.0/10")
@@ -780,10 +776,6 @@ def fallar(id_trabajo: int, error: str) -> dict[str, Any] | None:
 
 def cancelar(id_trabajo: int) -> dict[str, Any] | None:
     return _cerrar_trabajo(id_trabajo, CANCELADO)
-
-
-def rechazar(id_trabajo: int) -> dict[str, Any] | None:
-    return _cerrar_trabajo(id_trabajo, RECHAZADO)
 
 
 # --------------------------------------------------------------------------- #

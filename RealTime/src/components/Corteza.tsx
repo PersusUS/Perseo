@@ -167,5 +167,3 @@ export const Corteza: React.FC = () => {
     </div>
   );
 };
-
-export default Corteza;

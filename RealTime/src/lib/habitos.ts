@@ -51,7 +51,7 @@ export const DIAS_SEMANA_LARGO = [
 
 /** Los doce de la plantilla, traducidos. Es la lista con la que se estrena la
  *  pantalla; a partir de ahí manda lo que haya guardado. */
-export const HABITOS_INICIALES: Habito[] = [
+const HABITOS_INICIALES: Habito[] = [
   { id: 'h1', nombre: 'Levantarse a las 06:00' },
   { id: 'h2', nombre: 'Meditar' },
   { id: 'h3', nombre: 'Gimnasio' },

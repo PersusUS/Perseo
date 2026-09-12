@@ -18,15 +18,17 @@ import asyncio
 import os
 import sys
 import tempfile
-import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core import almacen, web  # noqa: E402
-from perseo_core.arnes_pruebas import comprobar, puerto_libre, resumir  # noqa: E402
+from perseo_core.arnes_pruebas import (  # noqa: E402
+    ManejadorFalso,
+    ServidorFalso,
+    comprobar,
+    resumir,
+)
 
 PAGINA = """<!doctype html>
 <html><head><title>La pagina de prueba</title>
@@ -39,34 +41,16 @@ PAGINA = """<!doctype html>
 </body></html>"""
 
 
-class SitioFalso:
+class SitioFalso(ServidorFalso):
     """Sirve una página, una redirección buena y una redirección a casa."""
 
     def __init__(self) -> None:
-        self.puerto = puerto_libre()
-        self._servidor = ThreadingHTTPServer(("127.0.0.1", self.puerto), self._manejador())
-        self._servidor.daemon_threads = True
-
-    @property
-    def url(self) -> str:
-        return f"http://127.0.0.1:{self.puerto}"
-
-    def arrancar(self) -> None:
-        threading.Thread(target=self._servidor.serve_forever, daemon=True).start()
-
-    def parar(self) -> None:
-        self._servidor.shutdown()
+        super().__init__()
 
     def _manejador(self):
         sitio = self
 
-        class Manejador(BaseHTTPRequestHandler):
-            def log_message(self, *_: Any) -> None:
-                pass
-
-            def handle_error(self, *_: Any) -> None:
-                pass
-
+        class Manejador(ManejadorFalso):
             def do_GET(self) -> None:  # noqa: N802
                 if self.path == "/redirige":
                     self.send_response(302)

@@ -31,14 +31,18 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core import autorizar_google, google_api  # noqa: E402
-from perseo_core.arnes_pruebas import comprobar, puerto_libre, resumir  # noqa: E402
+from perseo_core.arnes_pruebas import (  # noqa: E402
+    ManejadorFalso,
+    ServidorFalso,
+    comprobar,
+    resumir,
+)
 
 CREDENCIALES = google_api.Credenciales(
     client_id="id-de-prueba", client_secret="secreto", refresh_token="refresco"
@@ -50,11 +54,10 @@ CUERPO_SECRETO = "El cuerpo entero del correo, que no debe descargarse."
 CODIGO = "codigo-de-un-solo-uso"
 
 
-class FalsoGoogle:
+class FalsoGoogle(ServidorFalso):
     """Servidor mínimo que imita lo que se usa de Gmail y Calendar."""
 
     def __init__(self) -> None:
-        self.puerto = puerto_libre()
         self.testigos_pedidos = 0
         #: Lo que se ha mandado a `/token`, para poder mirar con qué se canjeó.
         self.canjes: list[dict[str, str]] = []
@@ -62,29 +65,12 @@ class FalsoGoogle:
         self.parametros: list[dict[str, list[str]]] = []
         #: Cuando está en alto, la siguiente petición se contesta con un 401.
         self.caducar_una_vez = False
-        self._servidor = ThreadingHTTPServer(("127.0.0.1", self.puerto), self._manejador())
-        self._servidor.daemon_threads = True
-
-    @property
-    def url(self) -> str:
-        return f"http://127.0.0.1:{self.puerto}"
-
-    def arrancar(self) -> None:
-        threading.Thread(target=self._servidor.serve_forever, daemon=True).start()
-
-    def parar(self) -> None:
-        self._servidor.shutdown()
+        super().__init__()
 
     def _manejador(self):
         falso = self
 
-        class Manejador(BaseHTTPRequestHandler):
-            def log_message(self, *_: Any) -> None:
-                pass
-
-            def handle_error(self, *_: Any) -> None:
-                pass
-
+        class Manejador(ManejadorFalso):
             def _responder(self, codigo: int, cuerpo: Any) -> None:
                 datos = json.dumps(cuerpo).encode()
                 self.send_response(codigo)

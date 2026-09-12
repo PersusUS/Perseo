@@ -22,6 +22,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,55 @@ def puerto_libre() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+class ManejadorFalso(BaseHTTPRequestHandler):
+    """Un manejador de peticiones que no ensucia la salida del script.
+
+    `BaseHTTPRequestHandler` escribe una línea por petición en stderr, y un
+    verificador que levanta un servicio de mentira acaba enterrando sus propios
+    [OK] debajo del registro de acceso de un servidor que no existe.
+    """
+
+    def log_message(self, *_: Any) -> None:
+        pass
+
+    def handle_error(self, *_: Any) -> None:
+        pass
+
+
+class ServidorFalso:
+    """Un servicio de fuera, de mentira, en un puerto que da el sistema.
+
+    Cuatro de los verificadores necesitan lo mismo —Telegram, el plugin de
+    Obsidian, Google y un sitio web—: un `ThreadingHTTPServer` en un puerto
+    libre, un hilo que lo sirve, una URL para dársela al núcleo y una forma de
+    pararlo. Eso estaba escrito cuatro veces, palabra por palabra, mientras el
+    encabezado de este fichero decía que aquí vive justo lo que no conviene
+    tener duplicado.
+
+    Lo que cambia de uno a otro —qué contesta a cada ruta— se escribe en
+    `_manejador`, que es lo único que hay que implementar.
+    """
+
+    def __init__(self) -> None:
+        self.puerto = puerto_libre()
+        self._servidor = ThreadingHTTPServer(("127.0.0.1", self.puerto), self._manejador())
+        self._servidor.daemon_threads = True
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.puerto}"
+
+    def arrancar(self) -> None:
+        threading.Thread(target=self._servidor.serve_forever, daemon=True).start()
+
+    def parar(self) -> None:
+        self._servidor.shutdown()
+
+    def _manejador(self) -> type[BaseHTTPRequestHandler]:
+        """La clase que atiende las peticiones. La pone cada servicio falso."""
+        raise NotImplementedError
 
 
 class Nucleo:

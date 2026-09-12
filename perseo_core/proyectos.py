@@ -428,11 +428,6 @@ def _puerto_abierto(url: str, plazo: float = 0.6) -> bool:
     return False
 
 
-def _abrir_navegador(url: str) -> None:
-    """Una pestaña nueva. Función aparte para que las pruebas la sustituyan."""
-    webbrowser.open_new_tab(url)
-
-
 def _ventana_valida(id_proyecto: str, crudo: Any) -> dict[str, int] | None:
     """El tamaño de ventana que el proyecto declara para sí, si es válido.
 

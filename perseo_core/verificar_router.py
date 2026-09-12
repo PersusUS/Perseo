@@ -35,6 +35,7 @@ os.environ.setdefault(
 
 from perseo_core import almacen  # noqa: E402
 from perseo_core.agentes import REGISTRO, Router  # noqa: E402
+from perseo_core.arnes_pruebas import comprobar, resumir  # noqa: E402
 
 #: Casos y el destino que se espera. `None` = cualquiera vale; lo que se
 #: comprueba entonces es solo que la respuesta salga del esquema.
@@ -46,16 +47,6 @@ CASOS: list[tuple[str, str | None]] = [
 ]
 
 DESTINOS = {"responder", "encolar", "no_seguro"}
-
-fallos: list[str] = []
-
-
-def comprobar(nombre: str, condicion: bool, detalle: str = "") -> None:
-    marca = "OK  " if condicion else "FALLO"
-    print(f"[{marca}] {nombre}" + (f" -- {detalle}" if detalle else ""))
-    if not condicion:
-        fallos.append(nombre)
-
 
 async def main() -> None:
     # El router avisa por registro cuando Ollama no responde; sin esto el aviso
@@ -102,11 +93,7 @@ async def main() -> None:
 
     comprobar("Ollama estaba levantado", router.disponible is True, str(router.disponible))
 
-    print()
-    if fallos:
-        print(f"FALLOS: {len(fallos)}")
-        raise SystemExit(1)
-    print("Router local: verificado.")
+    resumir()
 
 
 if __name__ == "__main__":

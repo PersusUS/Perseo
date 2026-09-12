@@ -19,37 +19,30 @@ import json
 import sys
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from perseo_core.arnes_pruebas import Nucleo, comprobar, puerto_libre, resumir  # noqa: E402
+from perseo_core.arnes_pruebas import (  # noqa: E402
+    Nucleo,
+    ServidorFalso,
+    comprobar,
+    resumir,
+)
 
 TOKEN_FALSO = "111:prueba"
 CHAT = "4242"
 
 
-class FalsoTelegram:
+class FalsoTelegram(ServidorFalso):
     """Servidor mínimo que imita la parte de la API que aún se usa: enviar."""
 
     def __init__(self) -> None:
         self.enviados: list[dict[str, Any]] = []
         self._cerrojo = threading.Lock()
-        self.puerto = puerto_libre()
-        self._servidor = ThreadingHTTPServer(("127.0.0.1", self.puerto), self._manejador())
-        self._servidor.daemon_threads = True
-
-    @property
-    def url(self) -> str:
-        return f"http://127.0.0.1:{self.puerto}"
-
-    def arrancar(self) -> None:
-        threading.Thread(target=self._servidor.serve_forever, daemon=True).start()
-
-    def parar(self) -> None:
-        self._servidor.shutdown()
+        super().__init__()
 
     def esperar_envio(self, contiene: str, segundos: float = 8) -> dict[str, Any] | None:
         """Espera a que llegue un `sendMessage` cuyo texto contenga eso."""

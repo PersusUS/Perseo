@@ -26,16 +26,20 @@ import os
 import shutil
 import sys
 import tempfile
-import threading
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core import memoria  # noqa: E402
-from perseo_core.arnes_pruebas import Nucleo, comprobar, puerto_libre, resumir  # noqa: E402
+from perseo_core.arnes_pruebas import (  # noqa: E402
+    ManejadorFalso,
+    Nucleo,
+    ServidorFalso,
+    comprobar,
+    puerto_libre,
+    resumir,
+)
 
 CONTENIDO_VIEJO = "Se cambia el plato de ducha del bano pequeno."
 CONTENIDO_NUEVO = "Presupuesto aceptado, empiezan el lunes."
@@ -194,7 +198,7 @@ def comprobar_de_punta_a_punta(raiz: Path) -> None:
     nucleo.limpiar()
 
 
-class PluginFalso:
+class PluginFalso(ServidorFalso):
     """Un Local REST API de Obsidian de mentira, para recorrer el camino real.
 
     Habla lo justo de lo que habla el plugin: `GET/PUT/POST /vault/<ruta>`,
@@ -206,29 +210,14 @@ class PluginFalso:
     CLAVE = "clave-de-mentira"
 
     def __init__(self) -> None:
-        self.puerto = puerto_libre()
         self.notas: dict[str, str] = {}
         self.peticiones: list[tuple[str, str]] = []
-        self._servidor = ThreadingHTTPServer(("127.0.0.1", self.puerto), self._manejador())
-        self._servidor.daemon_threads = True
-
-    @property
-    def url(self) -> str:
-        return f"http://127.0.0.1:{self.puerto}"
-
-    def arrancar(self) -> None:
-        threading.Thread(target=self._servidor.serve_forever, daemon=True).start()
-
-    def parar(self) -> None:
-        self._servidor.shutdown()
+        super().__init__()
 
     def _manejador(self):
         plugin = self
 
-        class Manejador(BaseHTTPRequestHandler):
-            def log_message(self, *_: Any) -> None:
-                pass
-
+        class Manejador(ManejadorFalso):
             # -- utilidades ------------------------------------------------- #
 
             def _autorizado(self) -> bool:

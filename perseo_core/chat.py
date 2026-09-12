@@ -48,7 +48,7 @@ from typing import Any, AsyncGenerator
 
 import aiohttp
 
-from . import almacen, correo_lectura, habitos, identidad, politica, tareas
+from . import almacen, correo_lectura, habitos, identidad, politica, tareas, triaje
 from .agentes import registrar
 
 logger = logging.getLogger(__name__)
@@ -643,21 +643,12 @@ def _situacion_actual() -> str:
 
 
 def _correo_por_cajones(trabajos: list[dict[str, Any]]) -> dict[str, int]:
-    """El recuento del buzón sin resolver, igual que `estado.presencia`."""
+    """El recuento del buzón sin resolver, con el criterio de `triaje`."""
     try:
         marcados = almacen.correos_marcados()
     except Exception:  # noqa: BLE001
         marcados = {}
-    pendientes: dict[str, int] = {}
-    for t in trabajos:
-        resultado = t.get("resultado")
-        if not isinstance(resultado, dict):
-            continue
-        for correo in resultado.get("clasificados") or []:
-            if correo.get("clase") == "ignorar" or marcados.get(correo.get("id")):
-                continue
-            pendientes[correo["clase"]] = pendientes.get(correo["clase"], 0) + 1
-    return pendientes
+    return triaje.pendientes_por_cajon(trabajos, marcados)
 
 
 def _consultar_trabajo(id_crudo: Any) -> str:

@@ -25,15 +25,19 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
-import threading
 import time
 from datetime import datetime, timedelta, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from perseo_core.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
+from perseo_core.arnes_pruebas import (  # noqa: E402
+    ManejadorFalso,
+    Nucleo,
+    ServidorFalso,
+    comprobar,
+    resumir,
+)
 from perseo_core.chat import MODELO_POR_DEFECTO  # noqa: E402
 
 TEXTO_FINAL = "Mañana tienes la revisión del proyecto a las 10:00. Nada más en 24 horas."
@@ -43,7 +47,7 @@ TITULO_EVENTO = "Revisión del proyecto"
 FIRMA = "FIRMA-DE-PENSAMIENTO-DE-MENTIRA"
 
 
-class FalsoGemini:
+class FalsoGemini(ServidorFalso):
     """El modelo de fuera, de mentira y hablando SSE como el real.
 
     Dos rondas por turno: la primera devuelve una llamada a `consultar_agenda`;
@@ -54,20 +58,13 @@ class FalsoGemini:
 
     def __init__(self) -> None:
         self.peticiones: list[dict] = []
-        servidor = ThreadingHTTPServer(("127.0.0.1", 0), self._manejador())
-        self.puerto = servidor.server_address[1]
-        self.url = f"http://127.0.0.1:{self.puerto}"
-        hilo = threading.Thread(target=servidor.serve_forever, daemon=True)
-        hilo.start()
-        self._servidor = servidor
-
-    def parar(self) -> None:
-        self._servidor.shutdown()
+        super().__init__()
+        self.arrancar()
 
     def _manejador(self):
         externa = self
 
-        class Manejador(BaseHTTPRequestHandler):
+        class Manejador(ManejadorFalso):
             def do_POST(self) -> None:  # noqa: N802 — lo pone http.server
                 longitud = int(self.headers.get("Content-Length", 0))
                 cuerpo = json.loads(self.rfile.read(longitud) or b"{}")
@@ -94,9 +91,6 @@ class FalsoGemini:
                 self.send_header("Content-Length", str(len(datos)))
                 self.end_headers()
                 self.wfile.write(datos)
-
-            def log_message(self, *args) -> None:  # silencio: el arnés ya muestra la salida
-                pass
 
         return Manejador
 

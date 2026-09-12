@@ -77,7 +77,7 @@ export type Datos = { tareas: Tarea[] };
  *  sola nota no enseña qué se puede hacer con él, y estas tres se tiran en diez
  *  segundos. Solo salen la primera vez; en cuanto hay algo guardado, manda lo
  *  guardado aunque esté vacío. */
-export const TAREAS_INICIALES: { titulo: string; detalle: string; columna: Columna; color: Color }[] = [
+const TAREAS_INICIALES: { titulo: string; detalle: string; columna: Columna; color: Color }[] = [
   {
     titulo: 'Arrastra esta nota a «En proceso»',
     detalle:
@@ -492,7 +492,7 @@ export function avisar(): void {
  * Es la ÚNICA puerta de escritura de Perseo. Todo pasa por aquí para que no
  * haya ninguna forma de dejar el disco cambiado y la pantalla sin enterarse.
  */
-export function aplicarDeFuera(cambio: (d: Datos) => Datos): Datos {
+function aplicarDeFuera(cambio: (d: Datos) => Datos): Datos {
   const siguientes = cambio(leer());
   guardar(siguientes);
   avisar();

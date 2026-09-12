@@ -204,3 +204,29 @@ def recontar(clasificaciones: list[Clasificacion]) -> dict[str, int]:
         recuento[clasificacion.clase] += 1
     recuento["total"] = len(clasificaciones)
     return recuento
+
+
+def pendientes_por_cajon(
+    trabajos: list[dict[str, Any]], marcados: dict[str, str]
+) -> dict[str, int]:
+    """Cuántos correos triados quedan sin resolver, por cajón.
+
+    El criterio es el de la pestaña de Correo: lo que nadie ha marcado está
+    pendiente, y lo que cayó en `ignorar` no cuenta porque no pide nada.
+
+    Vive aquí porque lo preguntan dos sitios —la presencia que pinta el panel y
+    la herramienta `situacion_actual` de la llamada— y hasta el 2026-09-12 el
+    bucle estaba escrito dos veces, con un comentario en cada copia diciendo que
+    era igual que la otra. Dos copias de un criterio son dos criterios en cuanto
+    alguien toca una.
+    """
+    pendientes: dict[str, int] = {}
+    for trabajo in trabajos:
+        resultado = trabajo.get("resultado")
+        if not isinstance(resultado, dict):
+            continue
+        for correo in resultado.get("clasificados") or []:
+            if correo.get("clase") == IGNORAR or marcados.get(correo.get("id")):
+                continue
+            pendientes[correo["clase"]] = pendientes.get(correo["clase"], 0) + 1
+    return pendientes
