@@ -25,7 +25,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from perseo_core.agentes import dev  # noqa: E402
+from perseo_core.agentes import dev, dev_motores  # noqa: E402
 from perseo_core.infra import almacen  # noqa: E402
 from verificadores.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
 
@@ -66,28 +66,28 @@ def comprobar_en_proceso() -> None:
     # 2. Las listas de herramientas son lo que hace aceptable que no pregunte.
     comprobar(
         "git push esta denegado",
-        any("git push" in h for h in dev.HERRAMIENTAS_DENEGADAS),
+        any("git push" in h for h in dev_motores.HERRAMIENTAS_DENEGADAS),
     )
     comprobar(
         "Y borrar tambien",
-        any(h.startswith("Bash(rm ") for h in dev.HERRAMIENTAS_DENEGADAS),
+        any(h.startswith("Bash(rm ") for h in dev_motores.HERRAMIENTAS_DENEGADAS),
     )
     comprobar(
         "No hay un Bash abierto entre las permitidas",
-        "Bash" not in dev.HERRAMIENTAS_PERMITIDAS,
-        ", ".join(h for h in dev.HERRAMIENTAS_PERMITIDAS if h.startswith("Bash")),
+        "Bash" not in dev_motores.HERRAMIENTAS_PERMITIDAS,
+        ", ".join(h for h in dev_motores.HERRAMIENTAS_PERMITIDAS if h.startswith("Bash")),
     )
-    comprobar("Hay tope de vueltas", dev.MAX_VUELTAS > 0, str(dev.MAX_VUELTAS))
+    comprobar("Hay tope de vueltas", dev_motores.MAX_VUELTAS > 0, str(dev_motores.MAX_VUELTAS))
     # La lista ancha es para lo que pide el señor Persus con el dedo; sin ella,
     # "abre la app de armario" acaba en verde sin abrir nada.
     comprobar(
         "La lista ancha puede arrancar procesos",
-        "Bash" in dev.HERRAMIENTAS_PERMITIDAS_AMPLIAS
-        and "Task" in dev.HERRAMIENTAS_PERMITIDAS_AMPLIAS,
+        "Bash" in dev_motores.HERRAMIENTAS_PERMITIDAS_AMPLIAS
+        and "Task" in dev_motores.HERRAMIENTAS_PERMITIDAS_AMPLIAS,
     )
     comprobar(
         "Y lo denegado sigue denegado con ella",
-        all(h in dev.HERRAMIENTAS_DENEGADAS for h in ("Bash(git push*)", "Bash(rm *)")),
+        all(h in dev_motores.HERRAMIENTAS_DENEGADAS for h in ("Bash(git push*)", "Bash(rm *)")),
     )
     comprobar(
         "Una URL no se toma por directorio",
@@ -96,8 +96,8 @@ def comprobar_en_proceso() -> None:
 
     # 2 bis. La bitacora: es lo que convierte "HECHO (16 vueltas)" en algo que
     #        se puede depurar sin abrir el registro del nucleo.
-    dev._anotar(9001, dev.Paso(tipo="herramienta", titulo="Leyendo api.py"))
-    dev._anotar(9001, dev.Paso(tipo="resultado", titulo="Error", agente="tu_1", ok=False))
+    dev._anotar(9001, dev_motores.Paso(tipo="herramienta", titulo="Leyendo api.py"))
+    dev._anotar(9001, dev_motores.Paso(tipo="resultado", titulo="Error", agente="tu_1", ok=False))
     actividad = dev.actividad_de(9001)
     comprobar(
         "La bitacora apunta el paso a paso",

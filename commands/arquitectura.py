@@ -60,10 +60,9 @@ TECHO_DURO = 900
 # la regla. La prueba comprueba dos cosas: que no aparece ninguno nuevo, y que
 # ninguno de estos **crece**. La lista solo puede encoger.
 EXCEPCIONES_DE_TAMANO: dict[str, int] = {
-    "perseo_core/agentes/dev.py": 1543,
     "RealTime/src/components/Panel.tsx": 1479,
-    "RealTime/src/lib/gemini-live.ts": 1443,
-    "perseo_core/agentes/chat.py": 1308,
+    "RealTime/src/lib/gemini-live.ts": 1163,
+    "perseo_core/agentes/chat.py": 1049,
     "perseo_core/infra/almacen.py": 1192,
     "RealTime/src/App.tsx": 1162,
     "RealTime/src/components/Habitos.tsx": 1056,

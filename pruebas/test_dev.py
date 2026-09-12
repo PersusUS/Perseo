@@ -11,7 +11,7 @@ import pytest
 
 from dataclasses import replace
 
-from perseo_core.agentes import dev
+from perseo_core.agentes import dev, dev_motores
 from perseo_core.infra import almacen
 
 #: Ruta absoluta fuera de la raíz permitida, en cualquiera de los dos sistemas
@@ -35,7 +35,7 @@ def dev_falso(cfg: almacen.Configuracion, tmp_path: Path, monkeypatch):
 
 
 def test_con_motor_falso_hay_motor(dev_falso) -> None:
-    assert isinstance(dev._motor, dev.MotorFalso)
+    assert isinstance(dev._motor, dev_motores.MotorFalso)
 
 
 def test_sin_directorio_el_encargo_va_a_la_raiz(dev_falso: Path) -> None:
@@ -92,22 +92,22 @@ def test_un_directorio_que_no_existe_se_rechaza(dev_falso) -> None:
 
 def test_git_push_esta_denegado() -> None:
     """Publicar es del usuario, no del agente."""
-    assert any("git push" in h for h in dev.HERRAMIENTAS_DENEGADAS)
+    assert any("git push" in h for h in dev_motores.HERRAMIENTAS_DENEGADAS)
 
 
 def test_borrar_esta_denegado() -> None:
-    assert any(h.startswith("Bash(rm ") for h in dev.HERRAMIENTAS_DENEGADAS)
-    assert any("git reset --hard" in h for h in dev.HERRAMIENTAS_DENEGADAS)
+    assert any(h.startswith("Bash(rm ") for h in dev_motores.HERRAMIENTAS_DENEGADAS)
+    assert any("git reset --hard" in h for h in dev_motores.HERRAMIENTAS_DENEGADAS)
 
 
 def test_no_hay_un_bash_abierto_entre_las_permitidas() -> None:
     """Un `Bash` a secas haría inútiles las denegadas."""
-    assert "Bash" not in dev.HERRAMIENTAS_PERMITIDAS
-    assert all(h.startswith("Bash(") or "(" not in h for h in dev.HERRAMIENTAS_PERMITIDAS)
+    assert "Bash" not in dev_motores.HERRAMIENTAS_PERMITIDAS
+    assert all(h.startswith("Bash(") or "(" not in h for h in dev_motores.HERRAMIENTAS_PERMITIDAS)
 
 
 def test_hay_tope_de_vueltas() -> None:
-    assert 0 < dev.MAX_VUELTAS <= 100
+    assert 0 < dev_motores.MAX_VUELTAS <= 100
 
 
 def test_el_encargo_pasa_por_el_motor(dev_falso) -> None:
@@ -142,7 +142,7 @@ def test_sin_motor_el_encargo_falla_con_un_error_util(dev_falso, monkeypatch) ->
 def test_un_resultado_fallido_del_motor_falla_el_trabajo(dev_falso, monkeypatch) -> None:
     class MotorQueFalla:
         async def ejecutar(self, encargo, avisar=None):
-            return dev.Resultado(texto="no pude", ok=False)
+            return dev_motores.Resultado(texto="no pude", ok=False)
 
     monkeypatch.setattr(dev, "_motor", MotorQueFalla())
     with pytest.raises(RuntimeError, match="no pude"):
@@ -158,7 +158,7 @@ def test_la_eleccion_por_encargo_manda(dev_falso, monkeypatch) -> None:
     class MotorQueAnota:
         async def ejecutar(self, encargo, avisar=None):
             lanzados.append(encargo)
-            return dev.Resultado(texto="hecho", vueltas=1)
+            return dev_motores.Resultado(texto="hecho", vueltas=1)
 
     monkeypatch.setattr(dev, "_motor_de", lambda nombre: MotorQueAnota())
     asyncio.run(dev._dev({"peticion": {"texto": "algo", "motor": "opencode"}}))
@@ -278,7 +278,7 @@ def test_lo_que_pide_el_señor_persus_lleva_las_manos_anchas(dev_falso, monkeypa
     class MotorQueAnota:
         async def ejecutar(self, encargo, avisar=None):
             vistos.append(encargo)
-            return dev.Resultado(texto="hecho", vueltas=1)
+            return dev_motores.Resultado(texto="hecho", vueltas=1)
 
     monkeypatch.setattr(dev, "_motor", MotorQueAnota())
     asyncio.run(dev._dev({"origen": "texto", "peticion": {"texto": "abre la app"}}))
@@ -293,11 +293,11 @@ def test_lo_que_nace_de_un_correo_sigue_con_las_manos_cortas(dev_falso, monkeypa
     class MotorQueAnota:
         async def ejecutar(self, encargo, avisar=None):
             vistos.append(encargo)
-            return dev.Resultado(texto="hecho", vueltas=1)
+            return dev_motores.Resultado(texto="hecho", vueltas=1)
 
     monkeypatch.setattr(dev, "_motor", MotorQueAnota())
     asyncio.run(dev._dev({"origen": "disparador", "peticion": {"texto": "haz algo"}}))
-    assert vistos[0].permitidas == dev.HERRAMIENTAS_PERMITIDAS
+    assert vistos[0].permitidas == dev_motores.HERRAMIENTAS_PERMITIDAS
     assert "Bash" not in vistos[0].permitidas
 
 
@@ -307,7 +307,7 @@ def test_el_modelo_del_encargo_llega_al_motor(dev_falso, monkeypatch) -> None:
     class MotorQueAnota:
         async def ejecutar(self, encargo, avisar=None):
             vistos.append(encargo)
-            return dev.Resultado(texto="hecho", vueltas=1)
+            return dev_motores.Resultado(texto="hecho", vueltas=1)
 
     monkeypatch.setattr(dev, "_motor", MotorQueAnota())
     asyncio.run(dev._dev({"peticion": {"texto": "algo", "modelo": "opus"}}))
@@ -321,7 +321,7 @@ def test_el_agente_ve_las_demas_carpetas_del_perfil(dev_falso, monkeypatch) -> N
     class MotorQueAnota:
         async def ejecutar(self, encargo, avisar=None):
             vistos.append(encargo)
-            return dev.Resultado(texto="hecho", vueltas=1)
+            return dev_motores.Resultado(texto="hecho", vueltas=1)
 
     monkeypatch.setattr(dev, "_motor", MotorQueAnota())
     asyncio.run(dev._dev({"peticion": {"texto": "algo"}}))
@@ -343,11 +343,11 @@ def test_la_bitacora_guarda_el_paso_a_paso(dev_falso, monkeypatch, tmp_path: Pat
 
     class MotorQueCuenta:
         async def ejecutar(self, encargo, avisar=None):
-            avisar(dev.Paso(tipo="herramienta", titulo="Leyendo api.py"))
-            avisar(dev.Paso(tipo="subagente", titulo="explorador: mira esto", agente="tu_1"))
-            avisar(dev.Paso(tipo="herramienta", titulo="Buscando def", agente="tu_1"))
-            avisar(dev.Paso(tipo="resultado", titulo="Error", agente="tu_1", ok=False))
-            return dev.Resultado(texto="hecho", vueltas=3)
+            avisar(dev_motores.Paso(tipo="herramienta", titulo="Leyendo api.py"))
+            avisar(dev_motores.Paso(tipo="subagente", titulo="explorador: mira esto", agente="tu_1"))
+            avisar(dev_motores.Paso(tipo="herramienta", titulo="Buscando def", agente="tu_1"))
+            avisar(dev_motores.Paso(tipo="resultado", titulo="Error", agente="tu_1", ok=False))
+            return dev_motores.Resultado(texto="hecho", vueltas=3)
 
     monkeypatch.setattr(dev, "_motor", MotorQueCuenta())
     asyncio.run(dev._dev({"id": 41, "peticion": {"texto": "algo"}}))
@@ -365,7 +365,7 @@ def test_la_bitacora_guarda_el_paso_a_paso(dev_falso, monkeypatch, tmp_path: Pat
 def test_la_bitacora_se_relee_del_disco(dev_falso, monkeypatch, tmp_path: Path) -> None:
     """El núcleo se reinicia; la pregunta de la mañana siguiente sigue en pie."""
     monkeypatch.setattr(dev, "_datos", tmp_path)
-    dev._anotar(77, dev.Paso(tipo="herramienta", titulo="Editando api.py"))
+    dev._anotar(77, dev_motores.Paso(tipo="herramienta", titulo="Editando api.py"))
     dev._bitacoras.pop(77, None)
     assert [p["titulo"] for p in dev.actividad_de(77)["pasos"]] == ["Editando api.py"]
 
@@ -441,7 +441,7 @@ def _argumentos_de_opencode(monkeypatch, **entorno) -> list[str]:
         monkeypatch.setenv(clave, valor)
     monkeypatch.setattr(asyncio, "create_subprocess_exec", falso_exec)
     motor = dev.MotorOpencode("opencode")
-    asyncio.run(motor.ejecutar(dev.Encargo("haz algo", Path.cwd(), 30.0)))
+    asyncio.run(motor.ejecutar(dev_motores.Encargo("haz algo", Path.cwd(), 30.0)))
     return vistos["argumentos"]
 
 
@@ -465,14 +465,14 @@ def test_opencode_nunca_sale_sin_modelo(monkeypatch) -> None:
     """Sin `-m`, opencode usa el que tenga configurado — y ese puede ser DE PAGO."""
     argumentos = _argumentos_de_opencode(monkeypatch)
     elegido = argumentos[argumentos.index("-m") + 1]
-    assert elegido == dev.MODELO_OPENCODE_POR_DEFECTO
-    assert elegido in dev.MODELOS_GRATIS_OPENCODE
+    assert elegido == dev_motores.MODELO_OPENCODE_POR_DEFECTO
+    assert elegido in dev_motores.MODELOS_GRATIS_OPENCODE
 
 
 def test_el_modelo_dictado_a_medias_se_completa(monkeypatch) -> None:
     """Perseo oye «el hy3» y lo manda sin proveedor: la barra se le pone aquí."""
     monkeypatch.delenv("PERSEO_DEV_MODELO", raising=False)
-    assert dev.modelo_opencode("hy3-free") == "opencode/hy3-free"
+    assert dev_motores.modelo_opencode("hy3-free") == "opencode/hy3-free"
 
 
 @pytest.mark.parametrize(
@@ -489,7 +489,7 @@ def test_un_exito_que_no_hizo_nada_cuenta_como_fallo(monkeypatch, salida: str) -
         return _proceso_falso([_evento_de_texto(salida)])
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", falso_exec)
-    resultado = asyncio.run(dev.MotorOpencode("opencode").ejecutar(dev.Encargo("x", Path.cwd(), 30.0)))
+    resultado = asyncio.run(dev.MotorOpencode("opencode").ejecutar(dev_motores.Encargo("x", Path.cwd(), 30.0)))
     assert not resultado.ok
 
 
@@ -500,7 +500,7 @@ def test_una_salida_normal_sigue_siendo_exito(monkeypatch) -> None:
         return _proceso_falso([_evento_de_texto("Fichero creado con el texto ok.")])
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", falso_exec)
-    resultado = asyncio.run(dev.MotorOpencode("opencode").ejecutar(dev.Encargo("x", Path.cwd(), 30.0)))
+    resultado = asyncio.run(dev.MotorOpencode("opencode").ejecutar(dev_motores.Encargo("x", Path.cwd(), 30.0)))
     assert resultado.ok
 
 
@@ -520,10 +520,10 @@ def test_opencode_apunta_en_la_bitacora_lo_que_va_haciendo(monkeypatch) -> None:
         return _proceso_falso(lineas)
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", falso_exec)
-    pasos: list[dev.Paso] = []
+    pasos: list[dev_motores.Paso] = []
     asyncio.run(
         dev.MotorOpencode("opencode").ejecutar(
-            dev.Encargo("x", Path.cwd(), 30.0), avisar=pasos.append
+            dev_motores.Encargo("x", Path.cwd(), 30.0), avisar=pasos.append
         )
     )
     assert any(p.tipo == "herramienta" for p in pasos)
@@ -583,7 +583,7 @@ def test_pedir_el_sdk_sin_tenerlo_no_deja_sin_motor(cfg, monkeypatch) -> None:
 )
 def test_el_progreso_se_cuenta_en_cristiano(herramienta, entrada, espera) -> None:
     """Quien mira quiere saber si avanza, no ver el JSON de la llamada."""
-    assert dev._contar_herramienta(herramienta, entrada) == espera
+    assert dev_motores._contar_herramienta(herramienta, entrada) == espera
 
 
 def test_el_progreso_de_un_encargo_vivo_se_puede_consultar(dev_falso) -> None:
@@ -627,7 +627,7 @@ def test_el_envoltorio_cmd_se_cambia_por_el_exe_de_verdad(tmp_path) -> None:
     el trabajo se apuntaba como hecho. Medido el 2026-08-28.
     """
     cmd = _envoltorio(tmp_path, '"%dp0%\\node_modules\\opencode-ai\\bin\\opencode.exe"   %*\n')
-    real = dev.ejecutable_real(str(cmd))
+    real = dev_motores.ejecutable_real(str(cmd))
     assert real.endswith("opencode.exe")
     assert Path(real).exists()
 
@@ -638,13 +638,13 @@ def test_un_envoltorio_que_no_se_entiende_se_deja_como_estaba(tmp_path) -> None:
     llaman a `node.exe script.js` llevan DOS rutas, y quedarse con la primera
     daría un `node` sin guion."""
     cmd = _envoltorio(tmp_path, '"%dp0%\\node.exe" "%dp0%\\cli.js" %*\n', con_exe=False)
-    assert dev.ejecutable_real(str(cmd)) == str(cmd)
+    assert dev_motores.ejecutable_real(str(cmd)) == str(cmd)
 
 
 def test_un_ejecutable_de_verdad_no_se_toca() -> None:
     """`claude` ya es un `.EXE`: pasar por aquí no puede cambiarlo."""
-    assert dev.ejecutable_real("C:\\bin\\claude.EXE") == "C:\\bin\\claude.EXE"
-    assert dev.ejecutable_real("/usr/bin/opencode") == "/usr/bin/opencode"
+    assert dev_motores.ejecutable_real("C:\\bin\\claude.EXE") == "C:\\bin\\claude.EXE"
+    assert dev_motores.ejecutable_real("/usr/bin/opencode") == "/usr/bin/opencode"
 
 
 @pytest.mark.skipif(os.name != "nt", reason="El envoltorio `.cmd` es de Windows")
@@ -665,12 +665,12 @@ def test_el_modelo_por_defecto_es_uno_que_contesta() -> None:
     cien segundos (2026-08-28). Un modelo que no contesta no da error: se
     cuelga hasta el tope de 900 s, y en el panel eso es un encargo eterno."""
     muertos = ("opencode/nemotron-3-ultra-free", "opencode/nemotron-3.5-lightning-free")
-    assert dev.MODELO_OPENCODE_POR_DEFECTO not in muertos
-    assert dev.modelo_opencode("") not in muertos
+    assert dev_motores.MODELO_OPENCODE_POR_DEFECTO not in muertos
+    assert dev_motores.modelo_opencode("") not in muertos
     # Siguen en la lista por si vuelven, pero los últimos.
     for muerto in muertos:
-        assert muerto in dev.MODELOS_GRATIS_OPENCODE
-        assert dev.MODELOS_GRATIS_OPENCODE.index(muerto) >= len(dev.MODELOS_GRATIS_OPENCODE) - 2
+        assert muerto in dev_motores.MODELOS_GRATIS_OPENCODE
+        assert dev_motores.MODELOS_GRATIS_OPENCODE.index(muerto) >= len(dev_motores.MODELOS_GRATIS_OPENCODE) - 2
 
 
 def test_las_cuatro_listas_de_modelos_dicen_lo_mismo() -> None:
@@ -684,7 +684,7 @@ def test_las_cuatro_listas_de_modelos_dicen_lo_mismo() -> None:
     )
     for fichero in ficheros:
         texto = fichero.read_text(encoding="utf-8")
-        encontrados = [m for m in dev.MODELOS_GRATIS_OPENCODE if m in texto]
-        assert encontrados == list(dev.MODELOS_GRATIS_OPENCODE), (
+        encontrados = [m for m in dev_motores.MODELOS_GRATIS_OPENCODE if m in texto]
+        assert encontrados == list(dev_motores.MODELOS_GRATIS_OPENCODE), (
             f"{fichero.name} no ofrece los mismos modelos, o no en el mismo orden"
         )
