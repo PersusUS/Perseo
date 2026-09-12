@@ -395,6 +395,21 @@ def cuadro_de_mandos() -> None:
     if muertas:
         print("\nExcepciones que ya sobran: " + ", ".join(muertas))
 
+    print("\nLa frontera de la cara")
+    con_puerta = arquitectura.componentes_con_puerta_propia()
+    perdonados = arquitectura.COMPONENTES_QUE_LLAMAN_AL_NUCLEO
+    nuevos = sorted(con_puerta - perdonados)
+    print(
+        f"  componentes que llaman al núcleo: {len(con_puerta)}"
+        f"   (perdonados: {len(perdonados)})"
+    )
+    for nombre in sorted(con_puerta):
+        print(f"    {nombre}" + ("  <- NUEVO" if nombre in nuevos else ""))
+
+    print("\nEl repaso, en una línea: nada NUEVO arriba, y las listas más cortas")
+    print("que la última vez. Lo que no se pueda encoger, que tenga su página en")
+    print("docs/adr/ diciendo por qué.")
+
 
 if __name__ == "__main__":
     raise SystemExit(comprobar(sys.argv[1:]))

@@ -135,8 +135,10 @@ def _motor(pedido: str = "") -> str:
 
 
 #: Lo que un subagente no ejecuta ni aunque se lo pidan. Copia deliberada de
-#: `perseo_core/agentes/dev.py`: los dos reparten trabajo a un CLI de agente, y el cerco
-#: tiene que ser el mismo se entre por donde se entre.
+#: `perseo_core/agentes/dev_motores.py`: los dos reparten trabajo a un CLI de
+#: agente, y el cerco tiene que ser el mismo se entre por donde se entre.
+#: El porqué de que sean dos y no una, en
+#: `docs/adr/0004-una-copia-deliberada-de-ejecutable-real.md`.
 DENEGADAS = (
     "Bash(git push*)",
     "Bash(git reset --hard*)",
@@ -151,7 +153,8 @@ DENEGADAS = (
 def _ejecutable_real(ruta: str) -> str:
     """El binario de verdad detrás de un envoltorio `.cmd` de npm.
 
-    Copia deliberada de `perseo_core.dev.ejecutable_real`, por lo mismo que
+    Copia deliberada de `perseo_core.agentes.dev_motores.ejecutable_real`, por lo
+    mismo que
     `DENEGADAS`: este servidor corre como proceso suelto y no importa el
     núcleo. En Windows, lanzar el `.cmd` de npm pasa por `cmd.exe`, que **corta
     la orden en el primer salto de línea**: al subagente le llegaba la primera

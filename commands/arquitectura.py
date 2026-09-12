@@ -69,7 +69,7 @@ TECHO_DURO = 900
 # único de este repositorio que no se puede probar sin hablar por el micrófono.
 #
 # Partir por cuota lo que no tiene costura es cómo se rompe algo de verdad. Ver
-# `bitacora/adr/0002-por-que-no-se-parten-la-llamada-y-la-ventana.md`.
+# `docs/adr/0002-no-se-parten-la-llamada-y-la-ventana.md`.
 EXCEPCIONES_DE_TAMANO: dict[str, int] = {
     # Una clase, `GeminiLiveClient`. Ya bajó de 1443 al sacarle el catálogo de
     # herramientas; lo que queda es el socket, y no se sostiene en dos mitades.

@@ -325,6 +325,10 @@ def ejecutable_real(ruta: str) -> str:
     envoltorio tiene otra forma —dos rutas entrecomilladas, como los que llaman
     a `node.exe script.js`— se deja como estaba: mejor el fallo conocido que
     una orden mal montada.
+
+    Hay una **copia deliberada** en `commands/subagentes_mcp.py`, que corre
+    como proceso suelto y no importa el núcleo. Si tocas esta, toca la otra:
+    `docs/adr/0004-una-copia-deliberada-de-ejecutable-real.md`.
     """
     if os.name != "nt" or not ruta.lower().endswith((".cmd", ".bat")):
         return ruta

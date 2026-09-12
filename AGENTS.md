@@ -113,6 +113,31 @@ real: se montan un directorio temporal y servidores de mentira.
 - **Nada de secretos en el código.** Si algo necesita una clave, se lee del
   entorno o de `<datos>`, y `<datos>` está en el `.gitignore`.
 
+## Las reglas que no dependen de que te acuerdes
+
+Cinco cosas que antes eran costumbre y ahora las comprueba
+`pruebas/test_arquitectura.py` y `pruebas/test_documentacion.py`. Si alguna se
+pone roja, el arreglo **no** es tocar la prueba:
+
+| Regla | Qué pasa si la rompes | Dónde se afloja |
+|---|---|---|
+| El núcleo va en capas y nadie importa hacia arriba | rojo, con el importe señalado | el orden de `CAPAS` en `commands/arquitectura.py` |
+| Ningún fichero pasa de 900 líneas | rojo, con el fichero y su cuenta | pártelo; la lista de excepciones solo encoge |
+| Un componente no llama al núcleo | rojo, con el componente | pídele los datos a un gancho de `lib/datos/` |
+| `docs/API.md` describe las rutas que existen, y todas | rojo, con la ruta | documéntala o bórrala |
+| Los recuentos que cita el README son los de verdad | rojo, con la cifra | `perseo cuentas --arreglar` |
+
+Las excepciones vivas —dos ficheros grandes y diez componentes— tienen nombre y
+apellidos en `commands/arquitectura.py`, y las dos que necesitan explicación la
+tienen en [`docs/adr/`](docs/adr/). Una excepción sin porqué no vale: si nadie
+sabe explicar por qué algo sigue ahí, la respuesta correcta es quitarlo.
+
+Para ver cómo va todo de un vistazo:
+
+```bash
+python commands/perseo.py comprobar --arquitectura
+```
+
 ## Lo que no hay que hacer
 
 - Meter lógica en una cara.
