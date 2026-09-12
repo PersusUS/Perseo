@@ -17,7 +17,9 @@
  */
 
 import { useEffect, useState, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import * as nucleo from './lib/datos/panel';
+import { MINUTOS_CON_IDENTIDAD, MINUTOS_SIN_IDENTIDAD, useConfianza } from './lib/llamada/confianza';
+import * as puente from './lib/datos/llamada';
 import { listen } from '@tauri-apps/api/event';
 import { PerseoFace } from './components/PerseoFace';
 import { Settings } from './components/Settings';
@@ -27,9 +29,9 @@ import { Tareas } from './components/Tareas';
 import {
   EVENTO_CAMBIO as TAREAS_CAMBIO,
   aplicarOrden as aplicarOrdenTarea,
-  foto as fotoTareas,
+  espejar as espejarTareas,
   leer as leerTareas,
-  resumen as resumenTareas,
+  recoger as recogerTareas,
 } from './lib/datos/tareas';
 import { Proyectos } from './components/Proyectos';
 import { Escenografia, comoReloj, type Fase } from './components/Escenografia';
@@ -211,35 +213,10 @@ function App() {
   // que viaja al núcleo con cada llamada a una herramienta, porque el callback
   // que la ejecuta se registra una sola vez y no vería el estado nuevo.
   const hablanteRef = useRef<string | null>(null);
-  // Hasta cuándo dura la confianza que ha pedido esta llamada, en ms de reloj.
-  // Sirve para renovarla mientras él siga hablando, en vez de pedir una hora
-  // entera de golpe. Ver `renovarConfianza`.
-  const confianzaHasta = useRef(0);
-  /**
-   * Enciende —o alarga— el modo confianza mientras dure la llamada.
-   *
-   * Hasta el 2026-09-12 esto era una sola llamada de 60 minutos al conectar: si
-   * el señor Persus se levantaba y dejaba la llamada abierta con alguien
-   * delante, lo irreversible seguía sin preguntar durante una hora. Ahora la
-   * ventana es corta y se rearma cada vez que se le oye, así que se apaga sola
-   * cuando el que habla deja de ser él.
-   *
-   * Con el reconocimiento apagado no hay forma de saber quién habla, y entonces
-   * se mantiene el comportamiento de antes: una ventana larga, que es lo que
-   * hacía falta para dictar sin que cada frase pidiera permiso.
-   */
-  const renovarConfianza = (minutos: number) => {
-    const hasta = Date.now() + minutos * 60_000;
-    // No se martillea al núcleo: solo se pide cuando queda menos de la mitad.
-    if (hasta - confianzaHasta.current < (minutos * 60_000) / 2) return;
-    confianzaHasta.current = hasta;
-    invoke('panel_confianza', { minutos }).catch(e =>
-      console.warn('[Confianza] No se pudo activar:', e)
-    );
-  };
-  /** Minutos de confianza por llamada. Cortos si se sabe quién habla. */
-  const MINUTOS_CONFIANZA_CON_IDENTIDAD = 10;
-  const MINUTOS_CONFIANZA_SIN_IDENTIDAD = 60;
+  // El modo confianza de esta llamada. Lo de dentro —el reloj, la ventana, la
+  // regla de no martillear al núcleo— vive en `lib/llamada/confianza.ts`, que
+  // se prueba sin React.
+  const confianza = useConfianza();
   const conversacionRef = useRef<TranscriptMsg[]>([]);
   // Dónde empieza el episodio en curso: la transcripción anterior a esa marca
   // no viaja al prompt ni en reconexión. Lo pide el arreglo del 2026-08-24 —
@@ -255,11 +232,8 @@ function App() {
     if (utiles.length === 0) return;
 
     try {
-      await invoke('ejecutar_herramienta', {
-        toolName: 'guardar_conversacion',
-        argumentos: JSON.stringify({
-          mensajes: utiles.map(m => ({ tipo: m.type, texto: m.text })),
-        }),
+      await puente.ejecutarHerramienta('guardar_conversacion', {
+        mensajes: utiles.map(m => ({ tipo: m.type, texto: m.text })),
       });
       console.log(`[Historial] Conversación guardada (${utiles.length} mensajes).`);
     } catch (e) {
@@ -286,11 +260,9 @@ function App() {
         // persona delante, y lo irreversible deja de pedir un sí que ya está
         // oyendo. La ventana es corta cuando el reconocimiento puede decir
         // quién habla —se renueva sola con su voz— y larga cuando no.
-        confianzaHasta.current = 0;
-        renovarConfianza(
-          defaultConfig.identidadActivada
-            ? MINUTOS_CONFIANZA_CON_IDENTIDAD
-            : MINUTOS_CONFIANZA_SIN_IDENTIDAD
+        confianza.olvidar();
+        confianza.renovar(
+          defaultConfig.identidadActivada ? MINUTOS_CON_IDENTIDAD : MINUTOS_SIN_IDENTIDAD
         );
         addTranscript('system', 'Conectado.');
         conectadoRef.current = true;
@@ -377,7 +349,7 @@ function App() {
       // ventana abierta se acaba sola en unos minutos y lo irreversible
       // vuelve a preguntar sin que nadie tenga que acordarse de apagar nada.
       if (esElSenor(nombre, defaultConfig.perfilPersus)) {
-        renovarConfianza(MINUTOS_CONFIANZA_CON_IDENTIDAD);
+        confianza.renovar(MINUTOS_CON_IDENTIDAD);
       }
       if (nombre) {
         addTranscript('system', `Habla ${nombre}.`);
@@ -457,7 +429,7 @@ function App() {
       try {
         await cargarAjustesPersistidos();
         setAspecto(defaultConfig.aspectoLive);
-        const clave = await invoke<string>('obtener_api_key');
+        const clave = await puente.apiKey();
         defaultConfig.geminiApiKey = clave;
         if (!clave) addTranscript('system', 'No hay API Key configurada. Pulsa ⚙ para añadirla.');
       } catch (e) {
@@ -496,7 +468,7 @@ function App() {
     if (!apiKeyReady || connectionState !== 'disconnected') return;
 
     let cancelado = false;
-    invoke<string>('consumir_autollamada').then(motivo => {
+    puente.consumirAutollamada().then(motivo => {
       if (cancelado || !motivo) return;
       atenderMarcador(motivo, handleCall);
     }).catch(e => console.warn('[AutoLlamada] No se pudo comprobar la señal:', e));
@@ -574,12 +546,7 @@ function App() {
   // app, y las órdenes esperan en su cola hasta la próxima vuelta.
   useEffect(() => {
     const recoger = async () => {
-      try {
-        const recogido = await invoke<{ ordenes?: unknown[] }>('tareas_recoger');
-        for (const orden of recogido?.ordenes ?? []) aplicarOrdenTarea(orden);
-      } catch {
-        // Núcleo apagado o sin token todavía: se reintenta a la vuelta siguiente.
-      }
+      for (const orden of await recogerTareas()) aplicarOrdenTarea(orden);
     };
     recoger();
     const t = setInterval(recoger, ESPERA_ORDENES_TAREAS);
@@ -602,9 +569,7 @@ function App() {
     const espejar = () => {
       clearTimeout(espera);
       espera = setTimeout(() => {
-        const datos = leerTareas();
-        invoke('tareas_espejo', { texto: resumenTareas(datos), foto: fotoTareas(datos) })
-          .catch(e => console.debug('[Tareas] El núcleo no recogió la copia:', e));
+        void espejarTareas(leerTareas());
       }, ESPERA_ESPEJO_TAREAS);
     };
     espejar();
@@ -806,12 +771,7 @@ function App() {
     setPendientes([]);
     // Y se apaga la confianza que encendió la llamada (N-3): sin persona
     // delante, lo irreversible vuelve a preguntar.
-    confianzaHasta.current = 0;
-    try {
-      await invoke('panel_confianza', {});
-    } catch (e) {
-      console.warn('[Confianza] No se pudo apagar:', e);
-    }
+    await confianza.apagar();
 
     // Colgar sí cierra la conversación de verdad: aquí es donde se guarda y se
     // limpia, no en cada 'disconnected'. Ver y.
@@ -870,7 +830,7 @@ function App() {
   const responderPendiente = async (id: number, decision: 'aprobar' | 'rechazar') => {
     setPendientes(prev => prev.filter(p => p.id !== id));
     try {
-      await invoke('panel_responder', { id, decision });
+      await nucleo.responder(id, decision);
       addTranscript('system', decision === 'aprobar' ? `Aprobado el #${id}.` : `Rechazado el #${id}.`);
     } catch (e) {
       addTranscript('system', `No se pudo responder al #${id}: ${e}`);

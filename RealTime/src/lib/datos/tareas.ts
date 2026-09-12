@@ -27,6 +27,7 @@
  * piden a mano. Una nota que desaparece porque la arrastraste mal es la forma
  * más rápida de dejar de fiarte de un tablero.
  */
+import { invoke } from '@tauri-apps/api/core';
 
 /** La clave del almacén. Versionada: si algún día cambia la forma del dato, el
  *  tablero viejo se queda quieto en su clave en vez de reventar al leerlo. */
@@ -598,4 +599,40 @@ export function aplicarOrden(orden: any): string {
     return moverDeFuera(titulo, columna);
   }
   return `Orden desconocida («${accion}»); no se ha tocado nada.`;
+}
+
+
+// --------------------------------------------------------------------------- //
+// El puente con el núcleo
+// --------------------------------------------------------------------------- //
+//
+// Las dos direcciones del espejo, fuera de `App.tsx` por «las caras no
+// piensan». Igual que en `habitos.ts`: el almacén de verdad sigue siendo el
+// `localStorage` de esta ventana, y el núcleo tiene una copia para que el chat
+// escrito y los agentes vean lo mismo que la llamada.
+
+/** Las órdenes que el núcleo ha dejado esperando, y las consume al leerlas.
+ *
+ *  Si falla, devuelve la lista vacía: el núcleo apagado —o sin token todavía—
+ *  es un estado normal de esta app, y las órdenes esperan en su cola hasta la
+ *  vuelta siguiente. */
+export async function recoger(): Promise<unknown[]> {
+  try {
+    const recogido = await invoke<{ ordenes?: unknown[] }>('tareas_recoger');
+    return recogido?.ordenes ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Manda al núcleo una copia de solo lectura del tablero.
+ *
+ *  Si falla, se calla, por el mismo motivo que `recoger`: el cambio siguiente
+ *  la manda otra vez. */
+export async function espejar(datos: Datos): Promise<void> {
+  try {
+    await invoke('tareas_espejo', { texto: resumen(datos), foto: foto(datos) });
+  } catch (e) {
+    console.debug('[Tareas] El núcleo no recogió la copia:', e);
+  }
 }

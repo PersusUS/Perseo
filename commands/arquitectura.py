@@ -75,10 +75,15 @@ EXCEPCIONES_DE_TAMANO: dict[str, int] = {
     # herramientas; lo que queda es el socket, y no se sostiene en dos mitades.
     "RealTime/src/lib/llamada/gemini-live.ts": 1163,
     # Un componente, `App`, con diecisiete efectos que comparten estado. La
-    # partición buena es sacar ganchos (`useLlamada`, `useIdentidad`,
-    # `useConfianza`), y eso cambia comportamiento: pendiente de hacerse con la
-    # app delante.
-    "RealTime/src/App.tsx": 1162,
+    # partición buena es sacar ganchos. `useConfianza` salió el 2026-09-12 —era
+    # un reloj y una petición, sin socket ni micrófono de por medio, y ahora se
+    # prueba sin React—. Los otros dos, `useLlamada` y `useIdentidad`, están
+    # enredados con el ciclo de vida de la conexión: la identidad se toca en el
+    # efecto que conecta, en el que registra los callbacks y en el que pinta la
+    # transcripción. Sacarlos cambia comportamiento en el único camino de este
+    # repositorio que no se puede probar sin hablar por el micrófono, así que
+    # salen con la app delante y no antes.
+    "RealTime/src/App.tsx": 1122,
     # La PWA entera: una página sin build, con su CSS y su JS dentro. Es el
     # fichero más grande del repositorio y entra aquí el mismo día que empieza
     # a medirse, no como perdón sino como línea de salida: a partir de hoy solo
@@ -183,28 +188,22 @@ def excepciones_muertas() -> list[str]:
 #: que tiene la app de escritorio hacia fuera de sí misma.
 PUERTA_AL_NUCLEO = "@tauri-apps/api/core"
 
-#: Los componentes de React que todavía la abren ellos mismos.
+#: Los componentes de React que la abren ellos mismos. **Vacía desde el
+#: 2026-09-12**, y esa es toda la gracia.
 #:
 #: «Las caras no piensan» lleva escrito en `AGENTS.md` desde el principio, y
-#: hasta hoy no lo comprobaba nadie. Un componente que llama al núcleo mezcla
-#: dos trabajos —pintar y decidir qué pedir— y además no se puede probar sin
-#: Rust delante. Lo que debe hacer es pedirle los datos a un gancho de
+#: hasta hace nada no lo comprobaba nadie. Un componente que llama al núcleo
+#: mezcla dos trabajos —pintar y decidir qué pedir— y además no se puede probar
+#: sin Rust delante. Lo que hace ahora es pedirle los datos a un módulo de
 #: `lib/datos/`, que sí puede probarse solo.
 #:
-#: Esta lista es la deuda de ese principio, con nombre y apellidos. **Solo puede
-#: encoger**: un componente nuevo no entra, y cada uno que se arregla sale. No
-#: se vació de golpe a propósito: son catorce sitios en el camino de la llamada
-#: y del panel, y reescribirlos a la vez sin la app delante es la clase de
-#: cambio que rompe algo que nadie mira hasta la semana siguiente.
-COMPONENTES_QUE_LLAMAN_AL_NUCLEO: frozenset[str] = frozenset(
-    {
-        # El ultimo. Sale cuando salgan sus ganchos (`useLlamada`,
-        # `useIdentidad`, `useConfianza`), que es un cambio de comportamiento y
-        # pide la app delante. Ver la excepcion de tamano de este mismo fichero:
-        # los dos problemas de App.tsx son el mismo problema.
-        "RealTime/src/App.tsx",
-    }
-)
+#: Empezó con catorce sitios y se vació en tres tandas, no de golpe: el panel y
+#: sus pestañas primero, las ventanas y la corteza después, y `App.tsx` la
+#: última. Se queda aquí, vacía, porque la regla que sostiene no es «esto era
+#: deuda» sino «aquí no entra nadie más»: un componente nuevo que importe la
+#: puerta pone la prueba en rojo, y el arreglo es un módulo de datos, no una
+#: línea en esta lista.
+COMPONENTES_QUE_LLAMAN_AL_NUCLEO: frozenset[str] = frozenset()
 
 
 def componentes_con_puerta_propia() -> set[str]:
