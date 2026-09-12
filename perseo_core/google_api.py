@@ -200,16 +200,18 @@ def _cabecera(cabeceras: list[dict[str, Any]], nombre: str) -> str:
     return ""
 
 
-class BuzonGmail:
-    """El buzón de verdad. Solo lee, y solo cabeceras y extracto."""
+class ClienteGoogle:
+    """La parte que el buzón y el calendario tenían escrita igual.
 
-    #: Lo que se considera "entrante sin mirar". Se dejan fuera los chats, que en
-    #: Gmail también son mensajes y no son correo.
-    CONSULTA = "is:unread -in:chats"
+    Los dos hablan con Google por la misma puerta —una `ClientSession` con su
+    plazo y una `Sesion` que renueva el testigo— y los dos la abrían tarde, a la
+    primera petición, para que arrancar el núcleo sin credenciales no costara
+    ni un socket. Eso eran catorce líneas idénticas en dos sitios; ahora están
+    aquí, y cada cliente solo escribe lo suyo: qué le pide a Google.
+    """
 
-    def __init__(self, credenciales: Credenciales, tope: int = TOPE_MENSAJES) -> None:
+    def __init__(self, credenciales: Credenciales) -> None:
         self._credenciales = credenciales
-        self._tope = tope
         self._http: aiohttp.ClientSession | None = None
         self._sesion: Sesion | None = None
 
@@ -224,6 +226,18 @@ class BuzonGmail:
             await self._http.close()
             self._http = None
             self._sesion = None
+
+
+class BuzonGmail(ClienteGoogle):
+    """El buzón de verdad. Solo lee, y solo cabeceras y extracto."""
+
+    #: Lo que se considera "entrante sin mirar". Se dejan fuera los chats, que en
+    #: Gmail también son mensajes y no son correo.
+    CONSULTA = "is:unread -in:chats"
+
+    def __init__(self, credenciales: Credenciales, tope: int = TOPE_MENSAJES) -> None:
+        super().__init__(credenciales)
+        self._tope = tope
 
     async def nuevos(self) -> list[Mensaje]:
         sesion = await self._abrir()
@@ -305,26 +319,12 @@ class BuzonGmail:
         }
 
 
-class CalendarioGoogle:
+class CalendarioGoogle(ClienteGoogle):
     """El calendario de verdad. Solo lee lo que viene."""
 
     def __init__(self, credenciales: Credenciales, calendario: str = "primary") -> None:
-        self._credenciales = credenciales
+        super().__init__(credenciales)
         self._calendario = calendario
-        self._http: aiohttp.ClientSession | None = None
-        self._sesion: Sesion | None = None
-
-    async def _abrir(self) -> Sesion:
-        if self._sesion is None:
-            self._http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
-            self._sesion = Sesion(self._credenciales, self._http)
-        return self._sesion
-
-    async def cerrar(self) -> None:
-        if self._http is not None:
-            await self._http.close()
-            self._http = None
-            self._sesion = None
 
     async def proximos(self, horizonte: timedelta) -> list[Evento]:
         sesion = await self._abrir()

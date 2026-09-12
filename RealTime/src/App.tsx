@@ -281,11 +281,7 @@ function App() {
         // La vista de la pantalla ya no se pide: si el ajuste no dice lo
         // contrario, Perseo la ve desde el primer segundo de la llamada. Es lo
         // que hace de esto un agente — mirar sin que le den las cosas.
-        if (defaultConfig.pantallaAuto) {
-          screenManager.start();
-        } else if (defaultConfig.screenEnabled) {
-          screenManager.start();
-        }
+        if (defaultConfig.pantallaAuto) screenManager.start();
         // Confianza automática en llamada (N-3): si hay enlace de voz hay una
         // persona delante, y lo irreversible deja de pedir un sí que ya está
         // oyendo. La ventana es corta cuando el reconocimiento puede decir

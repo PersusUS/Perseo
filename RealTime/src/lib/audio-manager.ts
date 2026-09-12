@@ -40,12 +40,9 @@ export class AudioManager {
     if (this.captureContext) return;
 
     try {
-      console.log('[AudioManager] Attempting to start...');
       this.captureContext = new AudioContext({ sampleRate: 16000 });
-      console.log('[AudioManager] AudioContext (16kHz) created. State:', this.captureContext.state);
       
       await this.captureContext.audioWorklet.addModule('/audio-processor.js');
-      console.log('[AudioManager] AudioWorklet module loaded');
 
       this.stream = await navigator.mediaDevices.getUserMedia({ 
         audio: { 
@@ -55,7 +52,6 @@ export class AudioManager {
           noiseSuppression: true 
         } 
       });
-      console.log('[AudioManager] Microphone stream obtained successfully');
 
       this.sourceNode = this.captureContext.createMediaStreamSource(this.stream);
       this.workletNode = new AudioWorkletNode(this.captureContext, 'audio-capture');

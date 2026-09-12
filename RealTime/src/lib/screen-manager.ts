@@ -24,7 +24,6 @@ export class ScreenManager {
   start() {
     if (this.intervalId) return;
     
-    console.log('[ScreenManager] Starting capture loop...');
     this.isRunning = true;
 
     const fps = defaultConfig.screenFps;
@@ -80,7 +79,6 @@ export class ScreenManager {
       window.clearInterval(this.intervalId);
       this.intervalId = null;
     }
-    console.log('[ScreenManager] Stopped capture loop.');
   }
 }
 

@@ -237,6 +237,49 @@ def _hay_sdk_mcp() -> bool:
     return importlib.util.find_spec("mcp") is not None
 
 
+def _preparar_llamada(
+    nombre: str,
+    herramientas: list[dict[str, Any]],
+    permitidas: set[str],
+    herramienta: str,
+    argumentos: dict[str, Any],
+    por_defecto: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Lo que hay que comprobar antes de que una llamada salga de casa.
+
+    Devuelve el esquema de la herramienta y los argumentos ya acomodados, o
+    revienta con `ErrorMcp` diciendo qué falta. Los dos transportes —el proceso
+    hijo por stdio y el servidor remoto por HTTP— hacían exactamente esto, cada
+    uno con su copia de veinte líneas: existe la herramienta, está permitida,
+    encajan los argumentos. Dos copias de una comprobación de seguridad son la
+    forma más fácil de que un día solo una de las dos se entere de algo.
+    """
+    if herramienta not in {h.get("name") for h in herramientas}:
+        disponibles = ", ".join(sorted(str(h.get("name")) for h in herramientas))
+        raise ErrorMcp(
+            f"'{nombre}' no tiene ninguna herramienta '{herramienta}'. Tiene: {disponibles}"
+        )
+    if permitidas and herramienta not in permitidas:
+        raise ErrorMcp(f"'{herramienta}' no está en la lista de '{nombre}' en {NOMBRE_FICHERO}.")
+
+    esquema = _esquema_de(herramientas, herramienta)
+    argumentos = _acomodar(argumentos, esquema, por_defecto)
+    # Si el modelo llama a search_files del vault con lenguaje natural en vez de
+    # un glob, se convierte para que no falle con un -32602.
+    if nombre == "vault" and herramienta == "search_files":
+        argumentos = _normalizar_search_files(argumentos)
+    faltan = _faltan_requeridos(argumentos, esquema)
+    if faltan:
+        # El viaje se ahorra: el servidor iba a contestar -32602 y el modelo se
+        # iba a quedar sin saber cómo se llaman los campos.
+        raise ErrorMcp(
+            f"A '{nombre}.{herramienta}' le faltan argumentos: "
+            + ", ".join(faltan)
+            + _pista_esquema(esquema, herramienta)
+        )
+    return esquema, argumentos
+
+
 class ServidorMcpRemoto:
     """Un servidor MCP que vive en otra máquina, hablado por HTTP.
 
@@ -314,30 +357,14 @@ class ServidorMcpRemoto:
         self.vivo = False
 
     async def llamar(self, herramienta: str, argumentos: dict[str, Any]) -> str:
-        permitidas = self._permitidas()
-        if herramienta not in {h.get("name") for h in self.herramientas}:
-            disponibles = ", ".join(sorted(str(h.get("name")) for h in self.herramientas))
-            raise ErrorMcp(
-                f"'{self.nombre}' no tiene ninguna herramienta '{herramienta}'. Tiene: {disponibles}"
-            )
-        if permitidas and herramienta not in permitidas:
-            raise ErrorMcp(
-                f"'{herramienta}' no está en la lista de '{self.nombre}' en {NOMBRE_FICHERO}."
-            )
-
-        esquema = _esquema_de(self.herramientas, herramienta)
-        argumentos = _acomodar(argumentos, esquema, self._por_defecto(herramienta))
-        # Seguridad: si el modelo llama a search_files del vault con lenguaje natural
-        # en vez de glob pattern, lo convertimos para que no falle (error 32602).
-        if self.nombre == "vault" and herramienta == "search_files":
-            argumentos = _normalizar_search_files(argumentos)
-        faltan = _faltan_requeridos(argumentos, esquema)
-        if faltan:
-            raise ErrorMcp(
-                f"A '{self.nombre}.{herramienta}' le faltan argumentos: "
-                + ", ".join(faltan)
-                + _pista_esquema(esquema, herramienta)
-            )
+        esquema, argumentos = _preparar_llamada(
+            self.nombre,
+            self.herramientas,
+            self._permitidas(),
+            herramienta,
+            argumentos,
+            self._por_defecto(herramienta),
+        )
 
         try:
             async with asyncio.timeout(self.tope):
@@ -493,28 +520,14 @@ class ServidorMcp:
                 await self.detener()
                 await self._arrancar_bajo_cerrojo()
 
-            permitidas = self._permitidas()
-            if herramienta not in {h.get("name") for h in self.herramientas}:
-                disponibles = ", ".join(sorted(str(h.get("name")) for h in self.herramientas))
-                raise ErrorMcp(f"'{self.nombre}' no tiene ninguna herramienta '{herramienta}'. Tiene: {disponibles}")
-            if permitidas and herramienta not in permitidas:
-                raise ErrorMcp(
-                    f"'{herramienta}' no está en la lista de '{self.nombre}' en {NOMBRE_FICHERO}."
-                )
-
-            esquema = _esquema_de(self.herramientas, herramienta)
-            argumentos = _acomodar(argumentos, esquema, self._por_defecto(herramienta))
-            if self.nombre == "vault" and herramienta == "search_files":
-                argumentos = _normalizar_search_files(argumentos)
-            faltan = _faltan_requeridos(argumentos, esquema)
-            if faltan:
-                # El viaje se ahorra: el servidor iba a contestar -32602 y el
-                # modelo se iba a quedar sin saber cómo se llaman los campos.
-                raise ErrorMcp(
-                    f"A '{self.nombre}.{herramienta}' le faltan argumentos: "
-                    + ", ".join(faltan)
-                    + _pista_esquema(esquema, herramienta)
-                )
+            esquema, argumentos = _preparar_llamada(
+                self.nombre,
+                self.herramientas,
+                self._permitidas(),
+                herramienta,
+                argumentos,
+                self._por_defecto(herramienta),
+            )
 
             try:
                 resultado = await self._pedir(

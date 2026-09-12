@@ -75,7 +75,6 @@ export interface PerseoConfig {
   screenFps: number;
   screenQuality: number;
   cameraEnabled: boolean;
-  screenEnabled: boolean;
   /** Ver la pantalla al conectar sin que haya que compartirla a mano. */
   pantallaAuto: boolean;
   /**
@@ -119,7 +118,6 @@ export const defaultConfig: PerseoConfig = {
   screenFps: 0.5,
   screenQuality: 70,
   cameraEnabled: false,
-  screenEnabled: false,
   pantallaAuto: true,
   identidadActivada: false,
   perfilPersus: PERFIL_PERSUS_POR_DEFECTO,

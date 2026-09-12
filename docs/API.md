@@ -41,7 +41,7 @@ iconos. `/salud` no devuelve nada sensible.
 | Ruta | Qué hace |
 |---|---|
 | `POST /mensaje` | Entrada conversacional. **El router decide** si contesta él o encola para un agente |
-| `POST /trabajos` | Encola directamente, saltándose el router: `{"agente": "correo", "instruccion": "…"}` |
+| `POST /trabajos` | Encola directamente, saltándose el router: `{"agente": "pc", "peticion": {"accion": "abrir_app", "parametro": "notepad"}}`. Admite además `origen` (`voz`, `texto` o `disparador`) y `quien` — el perfil de quien lo pidió, que es lo que mira la política para no dejar que una visita mueva las manos |
 | `GET /trabajos` | La cola. Filtros `?estado=` y `?limite=` |
 | `GET /trabajos/{id}` | Uno |
 | `GET /trabajos/{id}/actividad` | Por dónde va un encargo largo, paso a paso |
@@ -122,10 +122,10 @@ consiga el token consigue encolar, no consigue una consola.
 TOKEN=$(cat perseo_core/datos/token.txt)
 BASE=http://127.0.0.1:8787
 
-# Encola algo irreversible
+# Encola algo irreversible: teclear va a ciegas sobre la ventana con el foco
 curl -s -X POST $BASE/trabajos \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"agente":"pc","instruccion":"Abre el navegador"}'
+  -d '{"agente":"pc","peticion":{"accion":"escribir_teclado","parametro":"hola"}}'
 
 # Se queda esperando
 curl -s "$BASE/trabajos?estado=esperando" -H "Authorization: Bearer $TOKEN"
