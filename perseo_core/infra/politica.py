@@ -40,6 +40,15 @@ Dos decisiones que conviene entender:
    idéntica hasta el último parámetro, lo crítico nunca entra, y apagar la
    confianza borra los síes guardados.
 
+**Y desde el 2026-09-12, nada de esto llega a aplicarse.** Todo lo de arriba
+sigue escrito, probado y vivo, pero hay un interruptor por encima —
+`CONFIRMACIONES`, aquí abajo— que el dueño puso en apagado, y con él nada se
+para. La tabla de esta cabecera describe lo que la política **decide**;
+mientras el interruptor esté apagado, la columna de la derecha es «se
+ejecuta» en las cuatro filas. La razón y lo que cuesta están escritos en el
+propio interruptor, que es donde alguien los buscará el día que quiera
+volver a encenderlo.
+
 
 """
 
@@ -47,6 +56,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -107,6 +117,37 @@ TABLA: dict[str, str] = {
     "chat": LIBRE,
 }
 
+#: **Si el sistema para algo alguna vez, o no para nunca.**
+#:
+#: El 2026-09-12 el señor Persus lo apagó entero, y la razón se escribe aquí
+#: para que volver a encenderlo no necesite arqueología. Las confirmaciones que
+#: le llegaban no venían de un peligro: venían de un camino roto. La ventana de
+#: confianza se caía a los diez minutos porque el reconocimiento de voz no le
+#: nombraba —`UMBRAL_VOZ` está puesto alto a propósito, «mejor un Desconocido»—,
+#: así que «no sé quién habla» acababa tratándose igual que «no es él». Y
+#: preguntar por algo que acababa de ordenar en voz alta no protegía de nada.
+#: Su decisión, con sus palabras: «cualquier usuario puede decir una tarea y no
+#: requerir confirmación no es tan preocupante como para tener que usarse».
+#:
+#: **Lo que NO se ha hecho: borrar la política.** La tabla de niveles, el modo
+#: confianza, las repeticiones y `pide_confirmacion` siguen enteros y probados,
+#: y sus pruebas siguen corriendo. Este interruptor es lo único que se
+#: interpone. Rearmar el sistema es ponerlo en `True`, o arrancar con
+#: `PERSEO_CONFIRMACIONES=1` sin tocar el código.
+#:
+#: **Lo que se pierde mientras esté apagado, dicho sin adornos:** `CRITICO`
+#: también. Borrar ficheros, tocar el registro, matar procesos y `PowerShell`
+#: salen sin preguntar. Esa es exactamente la puerta por la que el 2026-08-27
+#: salió un `Remove-Item` que nadie autorizó, y que es la razón de que el nivel
+#: exista. Ver la cabecera de `CRITICO` en `dominio/niveles.py`.
+CONFIRMACIONES = os.environ.get("PERSEO_CONFIRMACIONES", "").strip().lower() in (
+    "1",
+    "si",
+    "sí",
+    "true",
+)
+
+
 #: Cuánto dura el modo confianza si no se dice otra cosa. Una sesión de trabajo,
 #: no un día: la idea es que se acabe sola antes de que te olvides de ella.
 MINUTOS_CONFIANZA = 60
@@ -145,6 +186,10 @@ def registrar_niveles(fn) -> None:
 def iniciar(directorio_datos: Path | str) -> None:
     global _fichero
     _fichero = Path(directorio_datos) / "confianza.txt"
+    if not CONFIRMACIONES:
+        logger.warning(
+            "Las confirmaciones están APAGADAS (politica.CONFIRMACIONES): nada se parará a pedir un sí, tampoco lo crítico."
+        )
 
 
 def _ahora() -> datetime:
@@ -321,6 +366,22 @@ def pide_confirmacion(
         return False
     # El modo confianza baja lo irreversible a reversible mientras dura.
     return not hay_confianza()
+
+
+def hay_que_parar(
+    agente: str, peticion: dict[str, Any] | None = None, quien: str | None = None
+) -> bool:
+    """Si este trabajo se para de verdad, aquí y ahora.
+
+    Es lo único que mira el trabajador, y existe para que el interruptor viva
+    en un sitio y no repartido por los caminos de ejecución. `pide_confirmacion`
+    dice lo que la política **querría**; esta dice lo que **pasa**. Separarlas
+    es lo que permite apagar las preguntas sin dejar la política sin probar:
+    todo lo de arriba se sigue comprobando aunque hoy no llegue a aplicarse.
+    """
+    if not CONFIRMACIONES:
+        return False
+    return pide_confirmacion(agente, peticion, quien)
 
 
 def resumir(

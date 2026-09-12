@@ -21,6 +21,7 @@ cocer— y una decisión que solo existe en un disco no gobierna nada.
 | [0002](0002-no-se-parten-la-llamada-y-la-ventana.md) | Por qué `gemini-live.ts` y `App.tsx` siguen pasando del techo |
 | [0003](0003-el-catalogo-se-declara-una-vez.md) | El catálogo de herramientas se declara una vez, con copia de respaldo |
 | [0004](0004-una-copia-deliberada-de-ejecutable-real.md) | Una copia deliberada: `ejecutable_real` |
+| [0005](0005-las-confirmaciones-estan-apagadas.md) | Las confirmaciones están apagadas, y con qué se vuelven a encender |
 
 ## El formato
 

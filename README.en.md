@@ -8,14 +8,16 @@
 voice, desktop panel, phone web app, and alerts in your pocket.**
 
 It talks to you by voice in real time, triages your inbox before you open it,
-writes to your memory, delegates coding tasks to other agents — and asks for
-permission before doing anything it can't undo.
+writes to your memory and delegates coding tasks to other agents. It grades
+everything it does by risk — in the worker, not in the prompt — and can stop
+anything irreversible to wait for your yes. That stop ships switched off:
+see [ADR 0005](docs/adr/0005-las-confirmaciones-estan-apagadas.md).
 
 [![Verification](https://github.com/PersusUS/Perseo/actions/workflows/verificacion.yml/badge.svg)](https://github.com/PersusUS/Perseo/actions/workflows/verificacion.yml)
 [![MIT licence](https://img.shields.io/badge/licence-MIT-black.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-black.svg)](https://www.python.org/)
 [![Tauri 2](https://img.shields.io/badge/tauri-2-black.svg)](https://tauri.app/)
-[![899 tests](https://img.shields.io/badge/tests-899-black.svg)](#verification)
+[![903 tests](https://img.shields.io/badge/tests-903-black.svg)](#verification)
 
 [What it is](#what-it-is) · [What it looks like](#what-it-looks-like) ·
 [How it works](#how-it-works) · [Install](#install) · [Privacy](#privacy) ·
@@ -46,7 +48,7 @@ Raspberry Pi tomorrow without rewriting a line of interface code.
 | 📬 **Mail triaged before you read it** | Every message lands in a bucket — ignore, interesting, needs action, not sure — decided by a **local** model, on your GPU |
 | 🧠 **Real memory** | Markdown notes in your Obsidian vault. It searches, reads and **appends**; never overwrites, never deletes |
 | 👤 **It knows who's talking** | Recognises voices and faces with local models, and learns people it hasn't met. Off by default |
-| 🛑 **It asks first, and knows who asked** | Four confirmation levels enforced in the worker, not in the prompt. Anything irreversible stops and waits for your yes — and an order from a guest stops even while you are right there |
+| 🛑 **It grades risk, and knows who asked** | Four levels enforced in the worker, not in the prompt. Switched on, anything irreversible stops and waits for your yes — and an order from a guest stops even while you are right there. **They ship off** as of 2026-09-12: [ADR 0005](docs/adr/0005-las-confirmaciones-estan-apagadas.md) |
 | 📱 **It follows you to your phone** | A PWA over your home VPN: chat, queue, mail and status. No build step, one single file |
 | 🤖 **It delegates code** | Hands tasks to sub-agents (Claude Code or opencode) and tells you how they're going while they work |
 | 🔌 **It speaks MCP** | Its own client for local and remote servers: vault, browser, Windows, triaged mail, sub-agents |
@@ -211,6 +213,13 @@ three levels enforced **in the worker**, before the agent runs:
 There is a fourth one, `critico` — deleting, touching the registry, killing
 processes — that **always** asks, trust mode or not.
 
+> **And one switch above all of it.** As of 2026-09-12
+> `politica.CONFIRMACIONES` is `False`, and the right-hand column reads
+> "runs" on all four rows: nothing stops, `critico` included. The table, the
+> levels and their tests are all still there — the only thing that never
+> happens is the stop. Why, what it costs and how to re-arm it — one line, or
+> `PERSEO_CONFIRMACIONES=1` — are in [ADR 0005](docs/adr/0005-las-confirmaciones-estan-apagadas.md).
+
 You give the yes from the web app, from the Telegram alert, or **out loud
 during the call**. *Trust mode* lowers irreversible to reversible while you're
 sitting there, and expires on its own: during a call it is renewed by your
@@ -367,12 +376,12 @@ the tables read fine in any language.
 None of this is checked by eye, and it's checked two ways.
 
 **Unit tests** — each piece on its own, no network, no subprocesses. They tell
-you *what* broke: **899** in total.
+you *what* broke: **903** in total.
 
 ```bash
 python commands/perseo.py comprobar    # everything, cheapest first
 
-python -m pytest                       # 756, core and commands
+python -m pytest                       # 760, core and commands
 cd RealTime && npm test                # 143, the interface
 cd RealTime/src-tauri && cargo check   # and that the Rust compiles
 ```
@@ -424,7 +433,7 @@ details are in [`docs/PRIVACIDAD.md`](docs/PRIVACIDAD.md).
 
 Perseo works and gets used daily, but it's a personal project: built for
 **one** person on **one** Windows machine, and it shows. Behind it are roughly
-49,100 lines, 899 tests and 17 verifiers.
+49,100 lines, 903 tests and 17 verifiers.
 
 If you clone it and something won't start, open an
 [issue](https://github.com/PersusUS/Perseo/issues) — and if you fix it, even

@@ -47,7 +47,21 @@ def test_un_trabajo_libre_se_ejecuta(db) -> None:
     assert almacen.obtener(trabajo["id"])["estado"] == almacen.HECHO
 
 
-def test_un_trabajo_irreversible_se_para_antes_de_ejecutarse(db) -> None:
+@pytest.fixture
+def armado(monkeypatch):
+    """Enciende las confirmaciones mientras dure la prueba.
+
+    Están apagadas de fábrica desde el 2026-09-12 —ver `politica.CONFIRMACIONES`—,
+    pero lo que estas pruebas comprueban es el **cableado**: que el trabajador
+    consulta la política antes de ejecutar y respeta lo que diga. Ese cableado
+    tiene que seguir probado aunque hoy no se use, porque es lo que hará falta
+    el día que alguien vuelva a armarlo, y un camino sin pruebas se pudre
+    callado.
+    """
+    monkeypatch.setattr(politica, "CONFIRMACIONES", True)
+
+
+def test_un_trabajo_irreversible_se_para_antes_de_ejecutarse(db, armado) -> None:
     """Lo que espera no puede haber hecho ya la mitad."""
     trabajo = almacen.encolar("pc", {"accion": "escribir_teclado", "parametro": "hola"})
     reclamado = almacen.reclamar()
@@ -58,7 +72,7 @@ def test_un_trabajo_irreversible_se_para_antes_de_ejecutarse(db) -> None:
     assert "irreversible" in parado["confirmacion"]["resumen"]
 
 
-def test_lo_que_no_esta_clasificado_tambien_se_para(db) -> None:
+def test_lo_que_no_esta_clasificado_tambien_se_para(db, armado) -> None:
     trabajo = almacen.encolar("memoria", {"accion": "borrar"})
     reclamado = almacen.reclamar()
     _ejecutar_uno(reclamado)
@@ -82,7 +96,7 @@ def test_con_confianza_lo_irreversible_pasa(db, monkeypatch) -> None:
     assert len(ejecutado) == 1
 
 
-def test_tras_aprobar_el_trabajo_pasa_la_politica(db, monkeypatch) -> None:
+def test_tras_aprobar_el_trabajo_pasa_la_politica(db, armado, monkeypatch) -> None:
     """El agente se ejecuta desde el principio, y esta vez ve el sí."""
     ejecutado = []
 
@@ -97,6 +111,50 @@ def test_tras_aprobar_el_trabajo_pasa_la_politica(db, monkeypatch) -> None:
     _ejecutar_uno(almacen.reclamar())
 
     assert len(ejecutado) == 1
+    assert almacen.obtener(trabajo["id"])["estado"] == almacen.HECHO
+
+
+def test_apagadas_no_se_para_nada(db, monkeypatch) -> None:
+    """Con el interruptor en su sitio de fábrica, lo irreversible sale entero.
+
+    Es la decisión del 2026-09-12 dicha en una prueba. Si algún día alguien
+    vuelve a armar el guardia sin querer, esta es la que se pone roja.
+    """
+    assert politica.CONFIRMACIONES is False
+
+    ejecutado = []
+
+    async def falso(trabajo):
+        ejecutado.append(trabajo["id"])
+        return {"texto": "hecho"}
+
+    monkeypatch.setitem(router.REGISTRO, "pc", falso)
+    trabajo = almacen.encolar("pc", {"accion": "escribir_teclado", "parametro": "hola"})
+    _ejecutar_uno(almacen.reclamar())
+
+    assert ejecutado == [trabajo["id"]]
+    assert almacen.obtener(trabajo["id"])["estado"] == almacen.HECHO
+
+
+def test_apagadas_tampoco_para_a_una_visita(db, monkeypatch) -> None:
+    """La otra mitad: ni siquiera quien no es el dueño se para.
+
+    Va escrito porque es lo que más sorprende de la decisión, y porque la regla
+    de la visita sigue entera en `politica.pide_confirmacion`: lo que la desactiva
+    es el interruptor, no un olvido.
+    """
+    ejecutado = []
+
+    async def falso(trabajo):
+        ejecutado.append(trabajo["id"])
+        return {"texto": "hecho"}
+
+    monkeypatch.setitem(router.REGISTRO, "pc", falso)
+    trabajo = almacen.encolar(
+        "pc", {"accion": "escribir_teclado", "parametro": "hola"}, quien="Una visita"
+    )
+    _ejecutar_uno(almacen.reclamar())
+
     assert almacen.obtener(trabajo["id"])["estado"] == almacen.HECHO
 
 

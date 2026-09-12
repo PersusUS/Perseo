@@ -334,7 +334,7 @@ class Trabajador:
             # son seis `escribir_teclado` idénticos, y preguntar seis veces
             # enseña a decir que sí sin leer. Ver MINUTOS_REPETICION.
             politica.recordar_aprobacion(nombre, trabajo.get("peticion"), quien)
-        if not aprobado(trabajo) and politica.pide_confirmacion(
+        if not aprobado(trabajo) and politica.hay_que_parar(
             nombre, trabajo.get("peticion"), quien
         ):
             esperando = await asyncio.to_thread(

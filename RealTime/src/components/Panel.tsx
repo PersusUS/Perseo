@@ -204,7 +204,10 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
   const malas = estado?.piezas.filter(p => p.estado === 'malo').length ?? 0;
   const visibles = trabajos.filter(FILTROS[filtro]);
   const confianza = estado?.piezas.find(p => p.id === 'confianza');
-  const confiando = confianza?.estado === 'aviso';
+  // Ojo: `aviso` es también el color de «apagadas», así que el modo
+  // confianza solo cuenta cuando el sistema llega a preguntar alguna vez.
+  const confirmaciones = estado?.confirmaciones !== false;
+  const confiando = confirmaciones && confianza?.estado === 'aviso';
 
   return (
     <div className="pnl">
@@ -432,15 +435,22 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
             </div>
 
             <div className="pnl-acciones">
-              <button
-                className={`pnl-pildora ${confiando ? 'peligro' : ''}`}
-                onClick={async () => {
-                  await invoke('panel_confianza', { minutos: confiando ? null : 60 });
-                  cargarEstado();
-                }}
-              >
-                {confiando ? 'Apagar el modo confianza' : 'Confiar durante 60 min'}
-              </button>
+              {/* Con las confirmaciones apagadas (ADR 0005) este botón no
+                  cambiaría nada: encender la confianza solo baja lo
+                  irreversible a reversible, y ya no se para nada. Un botón que
+                  no hace lo que dice es peor que no tenerlo. La pieza
+                  «Confirmaciones» de arriba explica por qué no está. */}
+              {confirmaciones && (
+                <button
+                  className={`pnl-pildora ${confiando ? 'peligro' : ''}`}
+                  onClick={async () => {
+                    await invoke('panel_confianza', { minutos: confiando ? null : 60 });
+                    cargarEstado();
+                  }}
+                >
+                  {confiando ? 'Apagar el modo confianza' : 'Confiar durante 60 min'}
+                </button>
+              )}
               <button className="pnl-pildora" onClick={cargarEstado}>Refrescar</button>
             </div>
           </>

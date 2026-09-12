@@ -106,11 +106,23 @@ def comprobar_sin_configurar() -> None:
                 actual.get("arreglo", ""),
             )
 
+        # El panel tiene que contar lo que de verdad pasa, y desde el
+        # 2026-09-12 lo que pasa es que no se para nada (ADR 0005). Lo que se
+        # comprueba es la coherencia entre el interruptor y lo que se enseña:
+        # que digan cosas distintas es el fallo que esta linea busca.
+        confirmaciones = bool(panel.get("confirmaciones"))
+        estado_pieza = pieza(panel, "confianza").get("estado")
         comprobar(
-            "Las confirmaciones vienen puestas",
-            pieza(panel, "confianza").get("estado") == "ok",
-            str(pieza(panel, "confianza").get("detalle")),
+            "El panel cuenta las confirmaciones tal y como estan",
+            estado_pieza == ("ok" if confirmaciones else "aviso"),
+            f"interruptor={confirmaciones}, pieza={estado_pieza}",
         )
+        if not confirmaciones:
+            comprobar(
+                "Y apagadas, la pieza dice como se rearman",
+                "PERSEO_CONFIRMACIONES" in str(pieza(panel, "confianza").get("arreglo")),
+                str(pieza(panel, "confianza").get("arreglo")),
+            )
 
         # La ola y el avatar los pide el navegador en la pantalla que pide el
         # token, o sea antes de que haya cookie. Con 401 se verían dos huecos.

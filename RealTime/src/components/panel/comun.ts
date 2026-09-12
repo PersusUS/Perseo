@@ -50,6 +50,10 @@ export type Estado = {
    *  quedó congelada: la diferencia con el reloj se enseña en la lectura. */
   generado?: string;
   piezas: Pieza[];
+  /** Si el núcleo para algo alguna vez a pedir un sí. Apagado desde el
+   *  2026-09-12 (ADR 0005): con `false`, el modo confianza no cambia nada
+   *  y el botón que lo enciende no se enseña. */
+  confirmaciones?: boolean;
   trabajos: Record<string, number>;
   agentes: string[];
   disparadores: { nombre: string; activo: boolean; intervalo: number }[];

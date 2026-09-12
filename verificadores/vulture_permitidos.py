@@ -48,6 +48,10 @@ politica_limpia
 sin_memoria
 _limpio
 todos_instalados
+# `armado` enciende las confirmaciones mientras dura una prueba del
+# trabajador (ver ADR 0005). Se pide por el nombre del parámetro y no se
+# usa dentro del cuerpo: el efecto es el monkeypatch, no un valor.
+armado
 
 # Funciones que se declaran dentro de una prueba solo para ver qué pasa al
 # declararlas: el `@registrar` duplicado que tiene que fallar, el disparador que

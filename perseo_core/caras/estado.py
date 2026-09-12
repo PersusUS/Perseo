@@ -392,6 +392,25 @@ def _chat(cfg: Configuracion) -> Pieza:
 
 
 def _confianza() -> Pieza:
+    """Qué pasa hoy con las confirmaciones, dicho como es.
+
+    Tiene tres estados y no dos desde el 2026-09-12: antes bastaba con mirar el
+    modo confianza, porque el sistema siempre acababa preguntando. Ahora hay un
+    interruptor por encima —ver el ADR 0005— y con él apagado esta pieza estaría
+    diciendo en verde que lo irreversible pide un sí, que es exactamente la
+    clase de mentira que un panel no puede contar: se lee de un vistazo y no se
+    comprueba.
+    """
+    if not politica.CONFIRMACIONES:
+        return Pieza(
+            "confianza",
+            "Confirmaciones",
+            AVISO,
+            "Apagadas: nada se para a pedir un sí, tampoco lo que no se puede "
+            "deshacer. El modo confianza de aquí abajo no cambia nada mientras "
+            "sea así.",
+            "Se rearman con PERSEO_CONFIRMACIONES=1 (ver docs/adr/0005).",
+        )
     hasta = politica.confianza_hasta()
     if hasta is None:
         return Pieza("confianza", "Confirmaciones", OK, "Lo irreversible pide un sí.")
@@ -705,6 +724,9 @@ async def reunir(cfg: Configuracion, router: Router) -> dict[str, Any]:
         "maquina": maquina,
         "presencia": contexto,
         "piezas": [asdict(p) for p in piezas],
+        # Si el sistema para algo alguna vez. El panel lo usa para no
+        # ofrecer un botón que hoy no hace nada. Ver ADR 0005.
+        "confirmaciones": politica.CONFIRMACIONES,
         "trabajos": recuento,
         "version": version_construida(cfg),
         "agentes": sorted(REGISTRO),

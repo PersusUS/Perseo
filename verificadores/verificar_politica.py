@@ -15,6 +15,13 @@ Lo que hay que comprobar aquí no es que la tabla tenga las entradas que tiene
    en una función y nadie se entera el día que deje de aplicarse en el camino
    real —que es lo que pasó con la de N-3—.
 
+Las tres últimas son de punta a punta, y **solo se comprueban si las
+confirmaciones están encendidas** (`politica.CONFIRMACIONES`). Con el
+interruptor apagado —como está desde el 2026-09-12— se comprueba lo
+contrario, que es lo que de verdad pasa: que lo irreversible sale sin parar.
+Fingir aquí que el sistema pregunta sería tener un verificador en verde
+sobre un guardia que no existe, que es peor que no tenerlo.
+
     python verificadores/verificar_politica.py
 """
 
@@ -133,35 +140,61 @@ def comprobar_de_punta_a_punta() -> None:
     nucleo.arrancar()
     token = nucleo.token
 
-    # 1. Un trabajo irreversible se para **antes** de ejecutarse.
-    _, trabajo = nucleo.pedir(
-        "/trabajos",
-        token,
-        "POST",
-        {"agente": "pc", "peticion": {"accion": "escribir_teclado", "parametro": "hola"}},
-    )
-    id_trabajo = int(trabajo["id"])
-    esperando = nucleo.esperar_estado(id_trabajo, ("esperando", "hecho", "fallido"), intentos=60)
     comprobar(
-        "Teclear se para y pide un si",
-        esperando.get("estado") == "esperando",
-        str(esperando.get("estado")),
-    )
-    comprobar(
-        "Con su pregunta guardada",
-        "irreversible" in str((esperando.get("confirmacion") or {}).get("resumen", "")),
-        str((esperando.get("confirmacion") or {}).get("resumen")),
+        "El interruptor dice lo que hace",
+        isinstance(politica.CONFIRMACIONES, bool),
+        "encendidas" if politica.CONFIRMACIONES else "APAGADAS (nada se para)",
     )
 
-    # 2. Rechazarlo lo cierra sin ejecutarlo. (Aprobarlo tecleara de verdad en la
-    #    ventana que tenga el foco, asi que eso no se prueba aqui.)
-    nucleo.pedir(f"/trabajos/{id_trabajo}/rechazar", token, "POST", {})
-    rechazado = nucleo.esperar_estado(id_trabajo, ("rechazado", "hecho"), intentos=40)
-    comprobar(
-        "Y rechazarlo lo cierra sin ejecutar",
-        rechazado.get("estado") == "rechazado" and rechazado.get("resultado") is None,
-        str(rechazado.get("estado")),
-    )
+    if politica.CONFIRMACIONES:
+        # 1. Un trabajo irreversible se para **antes** de ejecutarse.
+        _, trabajo = nucleo.pedir(
+            "/trabajos",
+            token,
+            "POST",
+            {"agente": "pc", "peticion": {"accion": "escribir_teclado", "parametro": "hola"}},
+        )
+        id_trabajo = int(trabajo["id"])
+        esperando = nucleo.esperar_estado(
+            id_trabajo, ("esperando", "hecho", "fallido"), intentos=60
+        )
+        comprobar(
+            "Teclear se para y pide un si",
+            esperando.get("estado") == "esperando",
+            str(esperando.get("estado")),
+        )
+        comprobar(
+            "Con su pregunta guardada",
+            "irreversible" in str((esperando.get("confirmacion") or {}).get("resumen", "")),
+            str((esperando.get("confirmacion") or {}).get("resumen")),
+        )
+
+        # 2. Rechazarlo lo cierra sin ejecutarlo. (Aprobarlo tecleara de verdad en
+        #    la ventana que tenga el foco, asi que eso no se prueba aqui.)
+        nucleo.pedir(f"/trabajos/{id_trabajo}/rechazar", token, "POST", {})
+        rechazado = nucleo.esperar_estado(id_trabajo, ("rechazado", "hecho"), intentos=40)
+        comprobar(
+            "Y rechazarlo lo cierra sin ejecutar",
+            rechazado.get("estado") == "rechazado" and rechazado.get("resultado") is None,
+            str(rechazado.get("estado")),
+        )
+    else:
+        # Lo contrario, que es lo que de verdad pasa. El atajo es invalido a
+        # proposito: es irreversible para la politica y no teclea nada real.
+        _, trabajo = nucleo.pedir(
+            "/trabajos",
+            token,
+            "POST",
+            {"agente": "pc", "peticion": {"accion": "atajo_teclado", "parametro": "ctrl,inventada"}},
+        )
+        suelto = nucleo.esperar_estado(
+            int(trabajo["id"]), ("hecho", "fallido", "esperando"), intentos=60
+        )
+        comprobar(
+            "Apagadas, lo irreversible sale sin parar",
+            suelto.get("estado") != "esperando",
+            f"estado={suelto.get('estado')}",
+        )
 
     # 3. Lo libre no pasa por ahi.
     _, libre = nucleo.pedir(
@@ -171,7 +204,9 @@ def comprobar_de_punta_a_punta() -> None:
     comprobar("Lo libre se ejecuta sin preguntar", hecho.get("estado") == "hecho", str(hecho.get("estado")))
 
     # 4. Con la confianza encendida, lo irreversible del dueño pasa y lo de una
-    #    visita se para. Es la regla entera en dos peticiones.
+    #    visita se para. Es la regla entera en dos peticiones. Apagadas las
+    #    confirmaciones, la visita tampoco se para: es lo que el dueño decidió
+    #    el 2026-09-12 y lo que hay que ver escrito, no suponer.
     nucleo.pedir("/confianza", token, "POST", {"minutos": 5})
     _, de_una_visita = nucleo.pedir(
         "/trabajos",
@@ -179,23 +214,30 @@ def comprobar_de_punta_a_punta() -> None:
         "POST",
         {
             "agente": "pc",
-            "peticion": {"accion": "escribir_teclado", "parametro": "hola"},
+            "peticion": {"accion": "atajo_teclado", "parametro": "ctrl,inventada"},
             "quien": "Una visita cualquiera",
         },
     )
     id_visita = int(de_una_visita["id"])
     parado = nucleo.esperar_estado(id_visita, ("esperando", "hecho", "fallido"), intentos=60)
-    comprobar(
-        "Con confianza, lo que pide una visita se para igual",
-        parado.get("estado") == "esperando",
-        str(parado.get("estado")),
-    )
-    comprobar(
-        "Y la pregunta dice quien lo pidio",
-        "Una visita cualquiera" in str((parado.get("confirmacion") or {}).get("resumen", "")),
-        str((parado.get("confirmacion") or {}).get("resumen")),
-    )
-    nucleo.pedir(f"/trabajos/{id_visita}/rechazar", token, "POST", {})
+    if politica.CONFIRMACIONES:
+        comprobar(
+            "Con confianza, lo que pide una visita se para igual",
+            parado.get("estado") == "esperando",
+            str(parado.get("estado")),
+        )
+        comprobar(
+            "Y la pregunta dice quien lo pidio",
+            "Una visita cualquiera" in str((parado.get("confirmacion") or {}).get("resumen", "")),
+            str((parado.get("confirmacion") or {}).get("resumen")),
+        )
+        nucleo.pedir(f"/trabajos/{id_visita}/rechazar", token, "POST", {})
+    else:
+        comprobar(
+            "Apagadas, lo que pide una visita tampoco se para",
+            parado.get("estado") != "esperando",
+            f"estado={parado.get('estado')}",
+        )
     # Apagarla es `activo: false` (ver `_cambiar_confianza` en api.py). Sin esto
     # la confianza encendida aqui se colaba en la comprobacion siguiente.
     nucleo.pedir("/confianza", token, "POST", {"activo": False})

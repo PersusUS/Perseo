@@ -237,16 +237,40 @@ def test_el_navegador_simulado_avisa(monkeypatch: pytest.MonkeyPatch, datos: Pat
     assert estado._web(cfg).estado == estado.AVISO
 
 
-def test_las_confirmaciones_puestas_son_lo_normal() -> None:
+def test_las_confirmaciones_apagadas_se_dicen() -> None:
+    """El estado de fabrica desde el 2026-09-12, y lo que mas importa que no mienta.
+
+    Un panel se lee de un vistazo y no se comprueba: si esta pieza saliera en
+    verde diciendo que lo irreversible pide un si, seria peor que no tenerla.
+    """
+    assert not politica.CONFIRMACIONES
+    pieza = estado._confianza()
+    assert pieza.estado == estado.AVISO
+    assert "Apagadas" in pieza.detalle
+    assert pieza.arreglo, "una pieza en aviso dice como se arregla"
+
+
+def test_las_confirmaciones_puestas_son_lo_normal(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(politica, "CONFIRMACIONES", True)
     assert estado._confianza().estado == estado.OK
 
 
-def test_el_modo_confianza_encendido_se_ve() -> None:
+def test_el_modo_confianza_encendido_se_ve(monkeypatch: pytest.MonkeyPatch) -> None:
     """Que lo irreversible no pregunte tiene que estar a la vista mientras dure."""
+    monkeypatch.setattr(politica, "CONFIRMACIONES", True)
     politica.activar_confianza(30)
     pieza = estado._confianza()
     assert pieza.estado == estado.AVISO
     assert "sin preguntar" in pieza.detalle
+
+
+def test_apagadas_el_modo_confianza_no_cambia_la_pieza() -> None:
+    """Encender la confianza con el interruptor apagado no cambia nada, y se dice.
+
+    Es lo que justifica que el panel esconda el boton: ver `Panel.tsx`.
+    """
+    politica.activar_confianza(30)
+    assert "Apagadas" in estado._confianza().detalle
 
 
 # --------------------------------------------------------------------------- #
