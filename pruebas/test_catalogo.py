@@ -25,7 +25,7 @@ import comprobar  # noqa: E402
 
 from perseo_core.servicios import catalogo  # noqa: E402
 
-CHAT_PY = RAIZ / "perseo_core" / "agentes" / "chat.py"
+CHAT_PY = RAIZ / "perseo_core" / "agentes" / "chat_herramientas.py"
 PC_PY = RAIZ / "perseo_core" / "agentes" / "pc.py"
 
 

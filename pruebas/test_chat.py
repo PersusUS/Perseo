@@ -14,7 +14,7 @@ import json
 
 import pytest
 
-from perseo_core.agentes import chat
+from perseo_core.agentes import chat, chat_herramientas
 from perseo_core.infra import almacen
 from perseo_core.infra.configuracion import Configuracion
 
@@ -64,7 +64,7 @@ def test_la_politica_deja_pasar_el_turno(db: Configuracion) -> None:
 
 
 def test_resumir_notas_con_ruta() -> None:
-    texto = chat._resumir({
+    texto = chat_herramientas._resumir({
         "notas": [{"titulo": "Proyecto X", "ruta": "X.md", "extracto": "algo"}],
         "titular": "1 nota(s)",
     })
@@ -72,16 +72,16 @@ def test_resumir_notas_con_ruta() -> None:
 
 
 def test_resumir_agenda_vacia_no_es_un_error() -> None:
-    assert "No hay nada" in chat._resumir({"eventos": []})
+    assert "No hay nada" in chat_herramientas._resumir({"eventos": []})
 
 
 def test_resumir_pagina_web_recorta() -> None:
-    texto = chat._resumir({"titulo": "Página", "url": "http://x", "texto": "a" * 9000})
+    texto = chat_herramientas._resumir({"titulo": "Página", "url": "http://x", "texto": "a" * 9000})
     assert len(texto) < 4000 and texto.endswith("…")
 
 
 def test_resumir_vacio_dice_hecho() -> None:
-    assert chat._resumir(None) == "Hecho."
+    assert chat_herramientas._resumir(None) == "Hecho."
 
 
 # --------------------------------------------------------------------------- #
@@ -178,13 +178,13 @@ def chat_listo(db: Configuracion, monkeypatch: pytest.MonkeyPatch):
         capturadas.append((agente, peticion))
         return f"resultado de {agente}"
 
-    monkeypatch.setattr(chat, "_cfg", db)
-    monkeypatch.setattr(chat, "_encolar_y_esperar", falsa_encola)
+    monkeypatch.setattr(chat_herramientas, "_cfg", db)
+    monkeypatch.setattr(chat_herramientas, "_encolar_y_esperar", falsa_encola)
     return capturadas
 
 
 def test_despacho_consultar_agenda(chat_listo) -> None:
-    respuesta = asyncio.run(chat._ejecutar_herramienta("consultar_agenda", {"horas": 12}))
+    respuesta = asyncio.run(chat_herramientas._ejecutar_herramienta("consultar_agenda", {"horas": 12}))
     assert respuesta.startswith("resultado de agenda")
     agente, peticion = chat_listo[-1]
     assert (agente, peticion["accion"]) == ("agenda", "proximos")
@@ -192,12 +192,12 @@ def test_despacho_consultar_agenda(chat_listo) -> None:
 
 
 def test_despacho_pc_y_dev(chat_listo) -> None:
-    asyncio.run(chat._ejecutar_herramienta(
+    asyncio.run(chat_herramientas._ejecutar_herramienta(
         "controlar_pc", {"accion": "abrir_app", "parametro": "notepad"}
     ))
     assert chat_listo[-1][0] == "pc"
 
-    asyncio.run(chat._ejecutar_herramienta(
+    asyncio.run(chat_herramientas._ejecutar_herramienta(
         "encargar_codigo", {"texto": "arregla X", "directorio": "C:\\proy"}
     ))
     agente, peticion = chat_listo[-1]
@@ -205,8 +205,8 @@ def test_despacho_pc_y_dev(chat_listo) -> None:
 
 
 def test_despacho_usar_mcp_exige_servidor(chat_listo) -> None:
-    with pytest.raises(chat.ErrorHerramienta):
-        asyncio.run(chat._ejecutar_herramienta("usar_mcp", {"servidor": "", "herramienta": "x"}))
+    with pytest.raises(chat_herramientas.ErrorHerramienta):
+        asyncio.run(chat_herramientas._ejecutar_herramienta("usar_mcp", {"servidor": "", "herramienta": "x"}))
 
 
 # --------------------------------------------------------------------------- #
@@ -222,7 +222,7 @@ def test_consultar_trabajo_cuenta_lo_hecho_con_su_resultado(db: Configuracion) -
     trabajo = almacen.encolar("dev", {"texto": "crea una carpeta"}, "texto")
     almacen.completar(trabajo["id"], {"texto": "Carpeta creada en el escritorio.", "vueltas": 3})
 
-    respuesta = chat._consultar_trabajo(trabajo["id"])
+    respuesta = chat_herramientas._consultar_trabajo(trabajo["id"])
     assert "TERMINÓ" in respuesta
     assert "Carpeta creada en el escritorio." in respuesta
 
@@ -231,12 +231,12 @@ def test_consultar_trabajo_dice_el_fallo(db: Configuracion) -> None:
     trabajo = almacen.encolar("dev", {"texto": "algo"}, "texto")
     almacen.fallar(trabajo["id"], "la raíz no existe")
 
-    respuesta = chat._consultar_trabajo(trabajo["id"])
+    respuesta = chat_herramientas._consultar_trabajo(trabajo["id"])
     assert "FALLÓ" in respuesta and "la raíz no existe" in respuesta
 
 
 def test_consultar_trabajo_desconocido_no_es_un_error(db: Configuracion) -> None:
-    respuesta = chat._consultar_trabajo(99999)
+    respuesta = chat_herramientas._consultar_trabajo(99999)
     assert "No veo ningún trabajo" in respuesta
 
 
@@ -246,7 +246,7 @@ def test_consultar_trabajo_sin_id_lista_los_encargos(db: Configuracion) -> None:
     turno = almacen.encolar("chat", {"sesion": 1, "mensaje": 1, "texto": "hola"}, "texto")
     almacen.completar(turno["id"], {"turno": "completado"})
 
-    respuesta = chat._consultar_trabajo(None)
+    respuesta = chat_herramientas._consultar_trabajo(None)
     assert "#%d" % dev["id"] in respuesta and "terminado" in respuesta.lower()
     # Los turnos del propio chat son ruido aquí: no salen.
     assert "#%d" % turno["id"] not in respuesta
@@ -277,10 +277,10 @@ def test_despacho_correo_lee_la_base_de_verdad(
     finally:
         conexion.close()
 
-    texto = asyncio.run(chat._ejecutar_herramienta("consultar_correo", {}))
+    texto = asyncio.run(chat_herramientas._ejecutar_herramienta("consultar_correo", {}))
     assert "Asunto real" in texto and "requiere acción" in texto
 
-    detalle = asyncio.run(chat._ejecutar_herramienta("detalle_correo", {"id_mensaje": "m-1"}))
+    detalle = asyncio.run(chat_herramientas._ejecutar_herramienta("detalle_correo", {"id_mensaje": "m-1"}))
     assert "cuerpo" in detalle
 
 

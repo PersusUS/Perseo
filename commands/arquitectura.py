@@ -62,7 +62,6 @@ TECHO_DURO = 900
 EXCEPCIONES_DE_TAMANO: dict[str, int] = {
     "RealTime/src/components/Panel.tsx": 1479,
     "RealTime/src/lib/gemini-live.ts": 1163,
-    "perseo_core/agentes/chat.py": 1050,
     "RealTime/src/App.tsx": 1162,
     "RealTime/src/components/Habitos.tsx": 1056,
 }
