@@ -58,4 +58,4 @@ antes de dar por bueno un hallazgo:
 - Del correo solo se descargan cabeceras y extracto: el cuerpo no se baja.
 
 Hay un verificador por cada una de esas líneas
-(`perseo_core/verificar_pc.py`, `verificar_web.py`, `verificar_politica.py`…).
+(`verificadores/verificar_pc.py`, `verificar_web.py`, `verificar_politica.py`…).

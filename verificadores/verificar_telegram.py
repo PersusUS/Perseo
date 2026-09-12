@@ -10,7 +10,7 @@ queda de verdad —la web— sin que el móvil se entere de más.
 Lo único que este script no puede probar es que la API real se comporte como
 está documentada. Todo lo demás es el código que se va a ejecutar.
 
-    python perseo_core/verificar_telegram.py
+    python verificadores/verificar_telegram.py
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from perseo_core.arnes_pruebas import (  # noqa: E402
+from verificadores.arnes_pruebas import (  # noqa: E402
     Nucleo,
     ServidorFalso,
     comprobar,

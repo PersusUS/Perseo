@@ -4,7 +4,7 @@ Sin red y sin modelo: lo que se prueba aquí son las decisiones —qué herramie
 existen, cómo se despachan a los agentes, cómo se resume un resultado para que
 el modelo lo cuente, y el semáforo de una conversación a la vez—. La conversación
 de punta a punta contra un Gemini de mentira la comprueba
-`perseo_core/verificar_chat.py`.
+`verificadores/verificar_chat.py`.
 """
 
 from __future__ import annotations

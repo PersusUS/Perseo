@@ -9,7 +9,7 @@ Lo que sí hace falta para las comprobaciones del modelo es Ollama levantado. Si
 no lo está, esas se saltan y se dice; el resto —marca de agua, estreno, regla del
 canal, respaldo sin modelo— no depende de él.
 
-    python perseo_core/verificar_fase_d.py
+    python verificadores/verificar_fase_d.py
 """
 
 from __future__ import annotations
@@ -28,9 +28,9 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core import almacen, correo, disparadores, triaje  # noqa: E402
-from perseo_core.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
+from verificadores.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
 from perseo_core.bus import Bus  # noqa: E402
-from perseo_core.verificar_telegram import CHAT, TOKEN_FALSO, FalsoTelegram  # noqa: E402
+from verificadores.verificar_telegram import CHAT, TOKEN_FALSO, FalsoTelegram  # noqa: E402
 
 #: Cada cuánto mira el buzón durante la prueba. En producción son 300 segundos.
 INTERVALO = "2"

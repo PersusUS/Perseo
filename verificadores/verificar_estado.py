@@ -14,7 +14,7 @@ Corre sin Ollama, sin Obsidian y sin credenciales: el núcleo se levanta sobre u
 directorio de datos temporal y las piezas que sondean fuera pueden salir en rojo
 sin que eso sea un fallo de esta verificación. Ejecutar desde la raíz:
 
-    python perseo_core/verificar_estado.py
+    python verificadores/verificar_estado.py
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from perseo_core.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
+from verificadores.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
 
 ESTADOS = {"ok", "aviso", "malo", "apagado"}
 

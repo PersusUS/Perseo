@@ -9,7 +9,7 @@ Y lo primero que se comprueba es justo lo contrario: que **sin** esa variable el
 bucle local está prohibido. Es la protección que impide que "léeme esta página",
 con una URL sacada de un correo, acabe pidiendo cosas dentro de casa.
 
-    python perseo_core/verificar_web.py
+    python verificadores/verificar_web.py
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core import almacen, web  # noqa: E402
-from perseo_core.arnes_pruebas import (  # noqa: E402
+from verificadores.arnes_pruebas import (  # noqa: E402
     ManejadorFalso,
     ServidorFalso,
     comprobar,

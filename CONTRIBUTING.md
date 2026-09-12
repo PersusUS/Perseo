@@ -29,7 +29,7 @@ final de línea.
 
 Si cambias comportamiento, añade o ajusta la prueba que lo cubre. Si cambias
 algo del sistema entero —la cola, la política, un agente— pasa además su
-verificador (`perseo_core/verificar_*.py`).
+verificador (`verificadores/verificar_*.py`).
 
 ## Cómo se escribe aquí
 

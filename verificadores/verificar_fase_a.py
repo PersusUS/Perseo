@@ -7,7 +7,7 @@ Criterio:
 Arranca el núcleo como proceso hijo sobre un directorio de datos temporal, así
 que no toca el estado real ni el puerto por defecto. Ejecutar desde la raíz:
 
-    python perseo_core/verificar_fase_a.py
+    python verificadores/verificar_fase_a.py
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from perseo_core.arnes_pruebas import Escucha, Nucleo, comprobar, resumir  # noqa: E402
+from verificadores.arnes_pruebas import Escucha, Nucleo, comprobar, resumir  # noqa: E402
 
 
 def main() -> None:

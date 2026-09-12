@@ -15,7 +15,7 @@ respaldos solo sirve si los dos cumplen las mismas reglas, y contra HTTP la de
 no salir del vault se comprueba en un sitio distinto: no hay disco que resolver,
 así que la ruta se para antes de mandarla o no se para nunca.
 
-    python perseo_core/verificar_memoria.py
+    python verificadores/verificar_memoria.py
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core import memoria  # noqa: E402
-from perseo_core.arnes_pruebas import (  # noqa: E402
+from verificadores.arnes_pruebas import (  # noqa: E402
     ManejadorFalso,
     Nucleo,
     ServidorFalso,

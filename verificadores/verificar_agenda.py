@@ -5,7 +5,7 @@ relativas a ahora. Lo que se comprueba es lo que no depende del proveedor: que s
 avisa de lo que viene y no de lo que ya pasó, que se avisa **una sola vez**, y
 que por el canal sale la hora pero no el título.
 
-    python perseo_core/verificar_agenda.py
+    python verificadores/verificar_agenda.py
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core import agenda, almacen, disparadores  # noqa: E402
-from perseo_core.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
+from verificadores.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
 from perseo_core.bus import Bus  # noqa: E402
 
 INTERVALO = "2"

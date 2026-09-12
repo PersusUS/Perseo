@@ -374,22 +374,22 @@ funciona. Ninguno toca el estado de verdad: se montan un directorio de datos
 temporal y servidores de mentira.
 
 ```bash
-python perseo_core/verificar_fase_a.py          # el núcleo: cola, reinicios, SSE
-python perseo_core/verificar_aprobaciones.py    # el camino de confirmación
-python perseo_core/verificar_telegram.py        # el canal, contra un Telegram de mentira
-python perseo_core/verificar_router.py          # el router, contra Ollama
-python perseo_core/verificar_fase_d.py          # el triaje de correo, sin Gmail
-python perseo_core/verificar_agenda.py          # los avisos, sin Google Calendar
-python perseo_core/verificar_memoria.py         # el vault, en fichero y por el plugin
-python perseo_core/verificar_pc.py              # intentos de inyección contra `pc`
-python perseo_core/verificar_dev.py             # `dev`, sin gastar suscripción
-python perseo_core/verificar_web.py             # `web`, sin salir a internet
-python perseo_core/verificar_politica.py        # los niveles y el modo confianza
-python perseo_core/verificar_google.py          # Gmail y Calendar, sin cuenta de Google
-python perseo_core/verificar_estado.py          # la pantalla de estado y sus semáforos
-python perseo_core/verificar_correo_mcp.py      # el servidor MCP de correo
-python perseo_core/verificar_biometria.py       # voces y caras: aprender, renombrar, borrar
-python perseo_core/verificar_chat.py            # el chat escrito y sus herramientas
+python verificadores/verificar_fase_a.py          # el núcleo: cola, reinicios, SSE
+python verificadores/verificar_aprobaciones.py    # el camino de confirmación
+python verificadores/verificar_telegram.py        # el canal, contra un Telegram de mentira
+python verificadores/verificar_router.py          # el router, contra Ollama
+python verificadores/verificar_fase_d.py          # el triaje de correo, sin Gmail
+python verificadores/verificar_agenda.py          # los avisos, sin Google Calendar
+python verificadores/verificar_memoria.py         # el vault, en fichero y por el plugin
+python verificadores/verificar_pc.py              # intentos de inyección contra `pc`
+python verificadores/verificar_dev.py             # `dev`, sin gastar suscripción
+python verificadores/verificar_web.py             # `web`, sin salir a internet
+python verificadores/verificar_politica.py        # los niveles y el modo confianza
+python verificadores/verificar_google.py          # Gmail y Calendar, sin cuenta de Google
+python verificadores/verificar_estado.py          # la pantalla de estado y sus semáforos
+python verificadores/verificar_correo_mcp.py      # el servidor MCP de correo
+python verificadores/verificar_biometria.py       # voces y caras: aprender, renombrar, borrar
+python verificadores/verificar_chat.py            # el chat escrito y sus herramientas
 python commands/verificar_palabra_clave.py      # el detector, sin micrófono
 ```
 

@@ -64,7 +64,7 @@ cd RealTime/src-tauri && cargo check --locked
 Las cuatro corren también en CI, en Linux y en Windows.
 
 Si tocaste el comportamiento de verdad —no solo el aspecto— pasa además el
-verificador que le toque: son diecisiete, están en `perseo_core/verificar_*.py`
+verificador que le toque: son diecisiete, están en `verificadores/verificar_*.py`
 y ninguno toca el estado real (se montan un directorio temporal y servidores de
 mentira).
 

@@ -10,7 +10,7 @@ propósito, que es como se comprueba lo que de verdad importa de esta pieza:
 Lo que este script no puede comprobar es que Claude Code entienda el encargo.
 Eso se prueba a mano, una vez, con `PERSEO_DEV_MOTOR` sin poner.
 
-    python perseo_core/verificar_dev.py
+    python verificadores/verificar_dev.py
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core import almacen, dev  # noqa: E402
-from perseo_core.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
+from verificadores.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
 
 #: Lo que tarda el encargo simulado. Suficiente para que el trabajo corto que se
 #: encola detrás tenga que adelantarlo si los carriles funcionan.

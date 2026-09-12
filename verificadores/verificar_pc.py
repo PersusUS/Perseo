@@ -8,7 +8,7 @@ Cada caso es un intento de inyección que la versión de entonces habría
 ejecutado. **Ninguno debe llegar a tocar el sistema**, y ninguno de los que se
 comprueban aquí abre ventanas ni teclea nada: todos se rechazan antes.
 
-    python perseo_core/verificar_pc.py
+    python verificadores/verificar_pc.py
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core import pc  # noqa: E402
-from perseo_core.arnes_pruebas import comprobar, resumir  # noqa: E402
+from verificadores.arnes_pruebas import comprobar, resumir  # noqa: E402
 
 INYECCIONES = [
     ("abrir_app", "notepad & calc", "encadenado con &"),

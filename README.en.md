@@ -380,13 +380,13 @@ cd RealTime/src-tauri && cargo check   # and that the Rust compiles
 data directory and fake servers.
 
 ```bash
-python perseo_core/verificar_fase_a.py          # the core: queue, restarts, SSE
-python perseo_core/verificar_aprobaciones.py    # the confirmation path
-python perseo_core/verificar_politica.py        # the levels and trust mode
-python perseo_core/verificar_pc.py              # injection attempts against `pc`
-python perseo_core/verificar_web.py             # `web`, without touching the internet
-python perseo_core/verificar_biometria.py       # voices and faces: learn, rename, delete
-# …seventeen in total, all in perseo_core/verificar_*.py
+python verificadores/verificar_fase_a.py          # the core: queue, restarts, SSE
+python verificadores/verificar_aprobaciones.py    # the confirmation path
+python verificadores/verificar_politica.py        # the levels and trust mode
+python verificadores/verificar_pc.py              # injection attempts against `pc`
+python verificadores/verificar_web.py             # `web`, without touching the internet
+python verificadores/verificar_biometria.py       # voices and faces: learn, rename, delete
+# …seventeen in total, all in verificadores/verificar_*.py
 ```
 
 The first blocks run on every push

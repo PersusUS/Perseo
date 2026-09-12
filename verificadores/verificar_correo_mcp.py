@@ -16,7 +16,7 @@ comprueba que el camino nuevo dice SIEMPRE la verdad o calla:
 Contra el proceso real: se le arranca igual que lo lanza el núcleo desde
 `mcp.json` y se le habla con el mismo cliente MCP de `perseo_core`.
 
-    python perseo_core/verificar_correo_mcp.py
+    python verificadores/verificar_correo_mcp.py
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core import almacen, mcp  # noqa: E402
-from perseo_core.arnes_pruebas import comprobar, resumir  # noqa: E402
+from verificadores.arnes_pruebas import comprobar, resumir  # noqa: E402
 
 SERVIDOR = Path(__file__).resolve().parent.parent / "commands" / "correo_mcp.py"
 

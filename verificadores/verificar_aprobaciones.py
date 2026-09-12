@@ -5,7 +5,7 @@ sobrevive**: un trabajo puede pararse a mitad, quedar esperando un sí, aguantar
 un reinicio del núcleo, y continuar cuando alguien contesta — desde la web hoy y
 desde Telegram mañana.
 
-    python perseo_core/verificar_aprobaciones.py
+    python verificadores/verificar_aprobaciones.py
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from perseo_core.arnes_pruebas import Escucha, Nucleo, comprobar, resumir  # noqa: E402
+from verificadores.arnes_pruebas import Escucha, Nucleo, comprobar, resumir  # noqa: E402
 
 
 def encolar_simulacro(nucleo: Nucleo, accion: str, detalle: str = "") -> int:

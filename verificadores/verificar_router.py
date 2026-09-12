@@ -9,7 +9,7 @@ devolver prosa: la petición sale con 200, el router marca `disponible = True`, 
 sin embargo cae al respaldo en cada decisión. Por eso aquí se mira el contenido,
 no solo que no haya excepción.
 
-    python perseo_core/verificar_router.py [modelo]
+    python verificadores/verificar_router.py [modelo]
 
 Sin argumento usa `PERSEO_MODELO_ROUTER` (por defecto `qwen3:4b`).
 """
@@ -35,7 +35,7 @@ os.environ.setdefault(
 
 from perseo_core import almacen  # noqa: E402
 from perseo_core.agentes import REGISTRO, Router  # noqa: E402
-from perseo_core.arnes_pruebas import comprobar, resumir  # noqa: E402
+from verificadores.arnes_pruebas import comprobar, resumir  # noqa: E402
 
 #: Casos y el destino que se espera. `None` = cualquiera vale; lo que se
 #: comprueba entonces es solo que la respuesta salga del esquema.

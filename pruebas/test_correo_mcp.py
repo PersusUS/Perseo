@@ -4,7 +4,7 @@ Lo que se prueba aquí son las decisiones —deduplicar lotes, ordenar como lee
 una persona, decir vacío sin rodeos— contra una base temporal. La lógica vive
 en `perseo_core.correo_lectura` (el chat la usa por su lado y el servidor MCP
 es una cáscara); el proceso entero lo comprueba
-`perseo_core/verificar_correo_mcp.py`.
+`verificadores/verificar_correo_mcp.py`.
 """
 
 from __future__ import annotations

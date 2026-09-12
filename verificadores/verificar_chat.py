@@ -17,7 +17,7 @@ Sin clave ni red exterior: PERSEO_GEMINI_API apunta al falso y GEMINI_API_KEY a
 una cadena cualquiera. Si este script gastase cuota de verdad, es que algo está
 muy mal — y el falso no deja de decirlo en pantalla.
 
-    python perseo_core/verificar_chat.py
+    python verificadores/verificar_chat.py
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from perseo_core.arnes_pruebas import (  # noqa: E402
+from verificadores.arnes_pruebas import (  # noqa: E402
     ManejadorFalso,
     Nucleo,
     ServidorFalso,

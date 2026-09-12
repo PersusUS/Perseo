@@ -14,7 +14,7 @@ cuela como si empezara a las doce de la noche.
 Lo único que este script no puede probar es que la API real se comporte como está
 documentada.
 
-    python perseo_core/verificar_google.py
+    python verificadores/verificar_google.py
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core import autorizar_google, google_api  # noqa: E402
-from perseo_core.arnes_pruebas import (  # noqa: E402
+from verificadores.arnes_pruebas import (  # noqa: E402
     ManejadorFalso,
     ServidorFalso,
     comprobar,

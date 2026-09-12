@@ -15,7 +15,7 @@ Lo que hay que comprobar aquí no es que la tabla tenga las entradas que tiene
    en una función y nadie se entera el día que deje de aplicarse en el camino
    real —que es lo que pasó con la de N-3—.
 
-    python perseo_core/verificar_politica.py
+    python verificadores/verificar_politica.py
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core import politica  # noqa: E402
-from perseo_core.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
+from verificadores.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
 
 
 def comprobar_la_tabla() -> None:
