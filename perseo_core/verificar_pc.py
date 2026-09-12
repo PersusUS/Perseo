@@ -23,7 +23,7 @@ from perseo_core.arnes_pruebas import comprobar, resumir  # noqa: E402
 
 INYECCIONES = [
     ("abrir_app", "notepad & calc", "encadenado con &"),
-    ("abrir_app", "spotify && shutdown /s /t 0", "encadenado con &&"),
+    ("abrir_app", "notepad && shutdown /s /t 0", "encadenado con &&"),
     ("abrir_app", "a | del /q C:\\*", "tuberia"),
     ("abrir_app", "cmd", "shell fuera de la lista"),
     ("abrir_app", "powershell", "shell fuera de la lista"),

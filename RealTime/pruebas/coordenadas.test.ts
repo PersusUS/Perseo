@@ -69,7 +69,7 @@ describe('traducirParametroDeRaton', () => {
   });
 
   it('no toca un texto que no es un punto', () => {
-    expect(traducirParametroDeRaton('spotify', PANTALLA)).toBe('spotify');
+    expect(traducirParametroDeRaton('notepad', PANTALLA)).toBe('notepad');
   });
 });
 

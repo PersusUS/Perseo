@@ -383,7 +383,7 @@ def _declaraciones() -> list[dict[str, Any]]:
         {
             "name": "controlar_pc",
             "description": (
-                "Usa el PC de él: abrir apps de una lista permitida (spotify, notepad, calc, paint, "
+                "Usa el PC de él: abrir apps de una lista permitida (notepad, calc, paint, "
                 "explorador, chrome, firefox, edge, obsidian, ajustes, correo, word, excel, powerpoint, "
                 "vscode, whatsapp, telegram, steam), teclear, atajos, clics con coordenadas sobre la "
                 "pantalla (0-1000), volumen y buscar_youtube. Solo con orden suya."

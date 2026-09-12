@@ -191,7 +191,7 @@ def test_despacho_consultar_agenda(chat_listo) -> None:
 
 def test_despacho_pc_y_dev(chat_listo) -> None:
     asyncio.run(chat._ejecutar_herramienta(
-        "controlar_pc", {"accion": "abrir_app", "parametro": "spotify"}
+        "controlar_pc", {"accion": "abrir_app", "parametro": "notepad"}
     ))
     assert chat_listo[-1][0] == "pc"
 

@@ -17,7 +17,7 @@ from perseo_core import pc
     ("accion", "parametro", "motivo"),
     [
         ("abrir_app", "notepad & calc", "encadenado con &"),
-        ("abrir_app", "spotify && shutdown /s /t 0", "encadenado con &&"),
+        ("abrir_app", "notepad && shutdown /s /t 0", "encadenado con &&"),
         ("abrir_app", "a | del /q C:\\*", "tuberia"),
         ("abrir_app", "cmd", "shell fuera de la lista"),
         ("abrir_app", "powershell", "shell fuera de la lista"),

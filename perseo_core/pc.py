@@ -13,7 +13,7 @@ más: un correo entra, lo tría un agente, y su contenido acaba en la cola. Por 
 tanto, aquí dentro:
 
   1. **Nunca se invoca un shell.** Ni `os.system`, ni `shell=True`. El shell es
-     lo que convierte "abrir spotify & formatear" en dos comandos en vez de uno.
+     lo que convierte "abrir notepad & formatear" en dos comandos en vez de uno.
   2. **Nunca se interpola texto del modelo dentro de una cadena de comando.**
      Siempre listas de argumentos, que el sistema operativo no vuelve a parsear.
   3. **Solo objetivos de una lista blanca explícita.** Si no está en la lista, no
@@ -52,7 +52,6 @@ logger = logging.getLogger(__name__)
 # este archivo, porque el modelo podría teclear dentro de él con
 # `escribir_teclado`.
 APLICACIONES_PERMITIDAS: dict[str, tuple[str, str]] = {
-    "spotify": ("uri", "spotify:"),
     "notepad": ("exe", "notepad.exe"),
     "bloc de notas": ("exe", "notepad.exe"),
     "calculadora": ("exe", "calc.exe"),
@@ -99,8 +98,8 @@ MAX_LONGITUD_TEXTO = 500
 
 #: Segundos que se le dan a una aplicación recién abierta para arrancar y tomar
 #: el foco antes del primer teclado. En la llamada del 2026-08-24 el ctrl+l de
-#: la búsqueda en Spotify salió antes de que la ventana estuviera lista y el
-#: atajo se perdió.
+#: la búsqueda de una aplicación recién abierta salió antes de que la ventana
+#: estuviera lista y el atajo se perdió.
 ESPERA_TRAS_ABRIR_APP = 3.0
 
 #: Cuándo se abrió la última aplicación. `None` es "hace tanto que no cuenta".
