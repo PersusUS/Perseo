@@ -80,6 +80,7 @@ pub fn run() {
             commands::anotar_diagnostico,
             nucleo::ejecutar_herramienta,
             nucleo::precalentar_herramientas,
+            nucleo::catalogo_herramientas,
             nucleo::biometria_estado,
             nucleo::biometria_voz,
             nucleo::biometria_cara,

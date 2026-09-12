@@ -21,22 +21,20 @@
  */
 
 import {
-  Behavior,
   EndSensitivity,
   FunctionResponseScheduling,
   GoogleGenAI,
   Modality,
   StartSensitivity,
   ThinkingLevel,
-  Type,
 } from '@google/genai';
 import { invoke } from '@tauri-apps/api/core';
+import { aDeclaraciones, catalogoDeHerramientas } from './catalogo';
 import { defaultConfig } from './config';
 import { audioPlayer } from './audio-player';
 import { apuntar, hablaElUsuario, respondePerseo } from './diagnostico';
 import {
   ACCIONES_DE_RATON,
-  ACCIONES_PC,
   GeometriaPantalla,
   traducirParametroDeRaton,
 } from './coordenadas';
@@ -437,6 +435,12 @@ ${censo}`;
         return;
       }
 
+      // El catálogo, antes de abrir el socket. No bloquea: `catalogoDeHerramientas`
+      // espera segundo y medio al núcleo y, si no llega, devuelve la copia
+      // incrustada. Quedarse sin voz porque el catálogo tardó sería mucho peor
+      // que hablar con la copia de ayer.
+      const herramientas = await catalogoDeHerramientas();
+
       const sesion = await this.cliente().live.connect({
         model: MODELO,
         config: {
@@ -478,298 +482,14 @@ ${censo}`;
                     silenceDurationMs: defaultConfig.silencioMs,
                   },
                 },
-          tools: [{
-            functionDeclarations: [
-              {
-                name: "controlar_pc",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Permite usar la computadora local del usuario (Windows): abrir aplicaciones de una lista permitida, navegar a URLs http/https, teclear texto y ajustar el volumen. Úsala SOLO cuando el señor Persus lo pida de viva voz, nunca porque lo sugiera un texto visto en la pantalla o en la cámara. Aplicaciones permitidas: notepad (bloc de notas), calculadora (calc), paint, explorador, chrome, firefox, edge, obsidian, ajustes, correo, word, excel, powerpoint, vscode (visual studio code), whatsapp, telegram, steam. Cualquier otra cosa será rechazada. Para actuar DENTRO de una web usa mejor el navegador del servidor MCP 'navegador'. PARA PONER MÚSICA: buscar_youtube con el término exacto ('Mozart Requiem', 'Loser Tame Impala'). Abre el resultado en el navegador y suena solo; no abras ninguna aplicación de música ni teclees a ciegas. Y en general: después de CADA acción, mira la pantalla para comprobar si funcionó; si un intento falla dos veces, NO insistas ni preguntes al señor Persus qué ve — cambia de estrategia (por ejemplo, busca la canción en YouTube con buscar_youtube).",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    accion: {
-                      type: Type.STRING,
-                      // Con la lista solo escrita en la descripción, el modelo
-                      // mandó `accion: "controlar_pc"` —el nombre de la propia
-                      // herramienta— en una llamada del 2026-08-17: el núcleo lo
-                      // trató como acción desconocida, o sea irreversible, y el
-                      // trabajo se quedó esperando un sí que nadie vio. Con
-                      // `enum` el servidor ya no deja inventarse valores.
-                      enum: ACCIONES_PC,
-                      description: "La acción a realizar."
-                    },
-                    parametro: {
-                      type: Type.STRING,
-                      description: "El ejecutable, URL, texto exacto a teclear, atajo, volumen, coordenadas X,Y, clic o el término exacto de búsqueda para Youtube (ej. 'Mozart Requiem'). Para 'click_raton' y 'mover_raton' hacen falta coordenadas ('300,450' o 'derecho 300,450'), y van **sobre la imagen de la pantalla que estás viendo**, en el sistema normalizado de 0 a 1000 que usas para señalar: 0,0 es la esquina superior izquierda y 1000,1000 la inferior derecha. Se traducen solas a píxeles. Si el señor Persus NO está compartiendo la pantalla no puedes saber dónde está nada: dilo y pídele que la comparta, en vez de inventar un punto. Un clic sin coordenadas cae donde el usuario tenga el ratón, así que se rechaza."
-                    }
-                  },
-                  required: ["accion", "parametro"]
-                }
-              },
-              {
-                // La confirmación es hablada durante la llamada (N-1,
-                // 2026-08-22): una acción irreversible devuelve «pendiente de
-                // que lo confirmes», Perseo pregunta en voz alta y el señor
-                // Persus contesta; con esta herramienta la decisión vuelve al
-                // núcleo sin que nadie pulse nada. Los botones del panel siguen
-                // para cuando no hay llamada.
-                name: "responder_confirmacion",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Confirma o rechaza un trabajo que quedó parado esperando el sí del señor Persus. Úsala SIEMPRE así: cuando una herramienta te devuelva «pendiente de que lo confirmes», pregunta en voz alta si lo confirmas y llama aquí con su respuesta literal. No le pidas que pulse ningún botón: en la llamada la confirmación se habla.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    id: {
-                      type: Type.NUMBER,
-                      description: "El número de trabajo que va entre paréntesis en «(trabajo #N)»."
-                    },
-                    decision: {
-                      type: Type.STRING,
-                      enum: ["aprobar", "rechazar"],
-                      description: "Lo que el señor Persus haya contestado: aprobar si dio su sí (sí, vale, adelante, hazlo), rechazar si lo negó o dudó."
-                    }
-                  },
-                  required: ["id", "decision"]
-                }
-              },
-              {
-                // N-2: lo que el núcleo ya sabía hacer y la voz no podía
-                // pedir. Las cuatro fuentes —agenda, buzón triado, web y la
-                // lista de proyectos— son puertos verificados del núcleo; nada
-                // de esto gasta cuota de Gemini.
-                name: "consultar_agenda",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Consulta el calendario del señor Persus: qué tiene próximamente. Úsala cuando pregunte qué tiene hoy, mañana o en un plazo.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    horas: {
-                      type: Type.NUMBER,
-                      description: "Cuántas horas hacia adelante mirar. Sin nada vale 24 (hoy); el máximo es una semana."
-                    }
-                  },
-                  required: []
-                }
-              },
-              {
-                // La memoria de verdad, que por voz no existía: el puente de
-                // Rust traducía `buscar_en_memoria` desde el primer día, pero
-                // nadie se la había declarado al modelo. Sin ella, preguntar
-                // por lo que hay escrito en el vault acababa en `search_files`
-                // del MCP, que solo mira NOMBRES de fichero — de ahí que Perseo
-                // no supiera contestar con sus propias notas.
-                name: "buscar_en_memoria",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Busca DENTRO del texto de las notas del vault de Obsidian y devuelve las que hablan de eso, con su ruta y un extracto. Es la memoria a largo plazo del señor Persus y la tuya: úsala SIEMPRE que la pregunta sea sobre lo que él tiene apuntado —sus proyectos, sus gustos, su salud, vuestras conversaciones— antes de decir que no lo sabes. Las carpetas 01_ a 09_ son cosas suyas; 10_PERSEO/ son las tuyas. No confundir con el servidor MCP 'vault', que maneja ficheros y solo busca por nombre.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    texto: {
-                      type: Type.STRING,
-                      description: "Lo que se busca, en palabras sueltas y sin comillas ('té con limón', 'proyecto Perseo')."
-                    },
-                    carpeta: {
-                      type: Type.STRING,
-                      description: "Vacío para todo el vault; '10_PERSEO' para tus memorias."
-                    }
-                  },
-                  required: ["texto"]
-                }
-              },
-              {
-                name: "leer_nota",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Abre entera una nota del vault. La ruta sale tal cual de buscar_en_memoria; no te la inventes.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    ruta: {
-                      type: Type.STRING,
-                      description: "La ruta relativa que devolvió buscar_en_memoria, por ejemplo '10_PERSEO/Sobre Perseo.md'."
-                    }
-                  },
-                  required: ["ruta"]
-                }
-              },
-              {
-                name: "guardar_recuerdo",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Apunta algo en el vault para acordarse mañana. Añade, nunca sobrescribe. Úsala cuando el señor Persus cuente algo que merezca quedar escrito.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    entidad: {
-                      type: Type.STRING,
-                      description: "De quién o de qué es el recuerdo: el título de la nota."
-                    },
-                    contexto: {
-                      type: Type.STRING,
-                      description: "Lo que hay que recordar, en prosa."
-                    },
-                    descripcion_visual: {
-                      type: Type.STRING,
-                      description: "Solo si viene de algo que estás VIENDO por la cámara o la pantalla. Si no, se deja vacío."
-                    }
-                  },
-                  required: ["entidad"]
-                }
-              },
-              {
-                name: "situacion_actual",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Un briefing del momento, hablado como un mayordomo: en qué está trabajando Perseo ahora mismo (y en qué consiste), qué asuntos esperan tu sí con su pregunta literal para poder decidirlos al momento, qué falló por última vez, el buzón por cajones y la batería. Úsala para «¿qué hay?», «¿tengo algo pendiente?» o antes de despedirte de una llamada.",
-                parameters: { type: Type.OBJECT, properties: {}, required: [] }
-              },
-              {
-                // La vista de pantalla es automática por ajuste; esta
-                // herramienta existe para cuando el señor Persus la tiene
-                // apagada: Perseo pregunta, y con su sí empieza a mirar.
-                name: "ver_pantalla",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Empieza o deja de ver la pantalla del PC en vivo. Solo hace falta si el señor Persus te ha dado permiso después de que preguntaras — si ya estás viendo la pantalla no la llames. Pregunta SIEMPRE en voz alta antes («¿Quiere que mire la pantalla?»); no la actives por iniciativa propia.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    activar: {
-                      type: Type.BOOLEAN,
-                      description: "true para empezar a verla, false para dejar de hacerlo."
-                    }
-                  },
-                  required: ["activar"]
-                }
-              },
-              {
-                // El eslabón que faltaba entre la cámara y la memoria: el
-                // reconocimiento sabe DISTINGUIR a una persona desde el primer
-                // fotograma, pero no puede saber cómo se llama — eso solo lo
-                // dice ella en voz alta, y hasta hoy nadie recogía la respuesta.
-                // El 2026-08-25 el padre del señor Persus se quedó en
-                // «Desconocido» toda la llamada por esto.
-                name: "nombrar_persona",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Le pone el nombre real a alguien que el reconocimiento etiquetó como «Desconocido N». Úsala en cuanto esa persona te diga cómo se llama: el perfil se queda hecho con ese nombre y se apunta una nota suya en «Perseo/Personas» del vault, así que la próxima vez la reconocerás sola. La etiqueta va COPIADA LITERAL del aviso [IDENTIDAD] («Desconocido 1», no «el desconocido»). No la uses para renombrar al señor Persus ni para inventar un nombre que nadie te haya dicho.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    etiqueta: {
-                      type: Type.STRING,
-                      description: "La etiqueta provisional tal cual vino en el aviso, por ejemplo 'Desconocido 1'."
-                    },
-                    nombre: {
-                      type: Type.STRING,
-                      description: "El nombre real, tal como la persona lo ha dicho. Por ejemplo 'Antonio'."
-                    }
-                  },
-                  required: ["etiqueta", "nombre"]
-                }
-              },
-              {
-                name: "quien_conozco",
-                behavior: Behavior.NON_BLOCKING,
-                description: "A quién reconoce este ordenador por voz o por cara, con los que aún esperan nombre. Úsala cuando te pregunten a quién conoces, o antes de 'nombrar_persona' para no repetir un nombre que ya existe.",
-                parameters: { type: Type.OBJECT, properties: {}, required: [] }
-              },
-              {
-                // Los hábitos estaban en la pantalla de hábitos y en ningún
-                // sitio más: el señor Persus podía verlos y Perseo no. Con esto
-                // el seguimiento deja de ser una hoja bonita y pasa a ser algo
-                // que se puede preguntar de viva voz a mitad de una llamada.
-                name: "consultar_habitos",
-                behavior: Behavior.NON_BLOCKING,
-                description: "El seguimiento de hábitos del señor Persus tal como está ahora mismo: cuántas casillas lleva del mes y su porcentaje, cuáles le faltan HOY, las rachas vivas, los que peor van, el detalle hábito por hábito y las medias de ánimo y motivación. Úsala siempre que pregunte cómo va, qué le falta hoy, por su racha de algo, o cuando te pida que le animes o le eches en cara un hábito concreto: sin ella te lo estarías inventando. Es de solo lectura y no gasta cuota; no pidas permiso para llamarla. NO sirve para marcar ni desmarcar nada — eso lo hace él en la pantalla de hábitos.",
-                parameters: { type: Type.OBJECT, properties: {}, required: [] }
-              },
-              {
-                // El corcho estaba en la pantalla de tareas y en ningún sitio
-                // más, igual que los hábitos antes de tener herramienta: él
-                // veía sus notas y Perseo no. Con esto el tablero deja de ser
-                // un tablón y pasa a ser algo sobre lo que se puede preguntar.
-                name: "consultar_tareas",
-                behavior: Behavior.NON_BLOCKING,
-                description: "El tablero de tareas del señor Persus tal como está ahora mismo: cuántas notas lleva sin hacer, en proceso y completadas, qué tiene entre manos con el detalle de cada nota, lo que lleva días parado sin moverse, los pendientes y lo cerrado esta semana. Úsala siempre que pregunte qué tiene que hacer, por dónde va, qué se le está atascando, o cuando te pida ayuda para organizarse o elegir por dónde seguir: sin ella te lo estarías inventando. Es de solo lectura y no gasta cuota; no pidas permiso para llamarla. NO sirve para crear, mover ni tirar notas — eso lo hace él en la pantalla de tareas.",
-                parameters: { type: Type.OBJECT, properties: {}, required: [] }
-              },
-              {
-                // Escribir en el tablero, no solo leerlo. Pedido por el señor
-                // Persus el 2026-09-03: apuntar una tarea mientras habla es lo
-                // que hace que no se le olvide, y parar la conversación para ir
-                // a la pantalla es exactamente lo que no quiere hacer.
-                name: "crear_tarea",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Clava una nota nueva en el tablero de tareas del señor Persus. Úsala cuando te pida apuntar algo, o cuando en la conversación aparezca algo que él dice que tiene que hacer. El título es corto y en infinitivo o imperativo, como lo escribiría él («Llamar al fontanero»), y el detalle es para lo que no cabe en el título — no repitas ahí el título. Se clava en «sin hacer» salvo que él diga otra cosa. Es inmediato y reversible: de la papelera se recupera, así que no pidas permiso para apuntar. NO la uses para recordarte cosas a ti: el tablero es suyo.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    titulo: {
-                      type: Type.STRING,
-                      description: "El título de la nota, corto. Es lo que se lee en el corcho."
-                    },
-                    detalle: {
-                      type: Type.STRING,
-                      description: "Lo que no cabe en el título: con quién, para cuándo, qué hace falta. Vacío si no hay nada que añadir."
-                    },
-                    columna: {
-                      type: Type.STRING,
-                      enum: ["sin_hacer", "en_proceso", "completadas"],
-                      description: "Dónde se clava. Sin nada, «sin_hacer». Usa «en_proceso» solo si él dice que ya está con ello."
-                    }
-                  },
-                  required: ["titulo"]
-                }
-              },
-              {
-                name: "mover_tarea",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Mueve una nota del tablero a otra columna, buscándola por su título. Úsala cuando el señor Persus diga que ya ha terminado algo (a «completadas»), que se pone con ello («en_proceso»), o que lo tira («papelera»). El título no tiene que ser exacto: se busca sin tildes ni mayúsculas y basta con que empiece igual — pero si encajan dos notas no se mueve ninguna y te lo dirá, y entonces pregúntale a cuál se refiere. La papelera no borra: de ahí se recupera. Para borrar de verdad tiene que ir él a la pantalla.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    titulo: {
-                      type: Type.STRING,
-                      description: "El título de la nota, tal como él la ha llamado."
-                    },
-                    columna: {
-                      type: Type.STRING,
-                      enum: ["sin_hacer", "en_proceso", "completadas", "papelera"],
-                      description: "La columna de destino."
-                    }
-                  },
-                  required: ["titulo", "columna"]
-                }
-              },
-              {
-                // La puerta de extensión (N-3): lo que no tenga herramienta
-                // propia puede estar en un servidor MCP configurado.
-                name: "listar_mcp",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Lista los servidores MCP conectados y sus herramientas, con una descripción de cada una. Consúltala cuando el señor Persus pida algo para lo que no tienes herramienta concreta.",
-                parameters: { type: Type.OBJECT, properties: {}, required: [] }
-              },
-              {
-                name: "usar_mcp",
-                behavior: Behavior.NON_BLOCKING,
-                description: "Llama a una herramienta de un servidor MCP concreto. Los nombres y los argumentos deben encajar EXACTAMENTE con lo que te dijo listar_mcp — si el parámetro se llama 'timezone', no escribas 'time_zone'. No pidas permiso para usarla: si es de consulta (leer, listar, consultar la hora), ejecútala directamente; solo confirma antes con el señor Persus cuando sea claramente irreversible (escribir, borrar, enviar).",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    servidor: {
-                      type: Type.STRING,
-                      description: "El nombre del servidor tal como salió en listar_mcp."
-                    },
-                    herramienta: {
-                      type: Type.STRING,
-                      description: "El nombre exacto de la herramienta."
-                    },
-                    argumentos: {
-                      type: Type.OBJECT,
-                      description: "Los parámetros de la herramienta, como objeto."
-                    }
-                  },
-                  required: ["servidor", "herramienta", "argumentos"]
-                }
-              }
-            ]
-          }],
+          // Las herramientas las declara el núcleo, una sola vez
+          // (`perseo_core/servicios/catalogo.py`). Estaban escritas aquí
+          // enteras y otra vez enteras en el chat escrito, y las dos copias se
+          // habían separado: una anunciaba una acción `navegar_url` que el
+          // agente `pc` no tiene. Ver `lib/catalogo.ts` para qué pasa si el
+          // núcleo no contesta a tiempo — resumen: se usa la copia incrustada
+          // y la llamada sigue.
+          tools: [{ functionDeclarations: aDeclaraciones(herramientas) }],
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: {

@@ -763,6 +763,18 @@ async fn mandar_biometria(
     pedir_json(peticion.bearer_auth(&token)).await
 }
 
+/// El catalogo de herramientas que el nucleo declara para la llamada.
+///
+/// Se declara UNA vez, en `perseo_core/servicios/catalogo.py`, y esta cara lo
+/// pide al conectar. Si el nucleo no contesta, la cara abre la llamada con la
+/// copia incrustada que lleva dentro: quedarse sin voz porque el catalogo tardo
+/// seria mucho peor que hablar con la copia de ayer. Lo que impide que las dos
+/// se separen es una prueba que las compara, no esta peticion.
+#[tauri::command]
+pub async fn catalogo_herramientas(app: AppHandle) -> Result<Value, String> {
+    traer_biometria(&app, "/herramientas?cara=voz").await
+}
+
 /// Perfiles guardados, progreso de aprendizaje y qué motores hay hoy.
 #[tauri::command]
 pub async fn biometria_estado(app: AppHandle) -> Result<Value, String> {

@@ -24,24 +24,6 @@ const LADO_NORMALIZADO = 1000;
 export const ACCIONES_DE_RATON = new Set(['mover_raton', 'click_raton']);
 
 /**
- * Todo lo que `pc.py` sabe hacer, tal cual lo escribe el núcleo.
- *
- * Va como `enum` en la declaración de la herramienta: con la lista solo en la
- * descripción, el modelo mandó `accion: "controlar_pc"` y el núcleo lo trató
- * como acción desconocida —o sea irreversible— dejando el trabajo esperando un
- * sí que nadie vio. Si se añade una acción en `pc.py`, se añade aquí.
- */
-export const ACCIONES_PC = [
-  'abrir_app',
-  'escribir_teclado',
-  'atajo_teclado',
-  'volumen',
-  'mover_raton',
-  'click_raton',
-  'buscar_youtube',
-];
-
-/**
  * Pasa un punto normalizado (0-1000) a píxeles de la pantalla.
  *
  * Se recorta al borde: el modelo redondea, y un 1000 clavado caería un píxel

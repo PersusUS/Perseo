@@ -43,8 +43,10 @@ from aiohttp import web
 from . import estado
 from ..agentes import dev
 from ..infra import almacen, politica
-from ..servicios import biometria, grafo, habitos, proyectos, tareas
+from ..servicios import catalogo, grafo, habitos, proyectos, tareas
 from ..infra.router import REGISTRO, Router
+from . import api_biometria
+from .api_comun import CLAVE_BUS, CLAVE_CFG, CLAVE_ROUTER, cuerpo_json, fallo
 from ..infra.bus import Bus
 
 logger = logging.getLogger(__name__)
@@ -56,9 +58,6 @@ logger = logging.getLogger(__name__)
 # que nada avise. Se ha renombrado antes de que pasara.
 DIRECTORIO_WEB = Path(__file__).resolve().parent / "interfaz"
 
-CLAVE_CFG: web.AppKey[almacen.Configuracion] = web.AppKey("cfg")
-CLAVE_BUS: web.AppKey[Bus] = web.AppKey("bus")
-CLAVE_ROUTER: web.AppKey[Router] = web.AppKey("router")
 
 COOKIE_SESION = "perseo_sesion"
 
@@ -122,7 +121,7 @@ async def _autenticar(peticion: web.Request, handler):
     cfg = peticion.app[CLAVE_CFG]
     # compare_digest evita filtrar el token por diferencias de tiempo.
     if not secrets.compare_digest(_token_de_peticion(peticion), cfg.token):
-        raise _fallo(web.HTTPUnauthorized, "Token ausente o incorrecto")
+        raise fallo(web.HTTPUnauthorized, "Token ausente o incorrecto")
     return await handler(peticion)
 
 
@@ -164,6 +163,22 @@ async def _salud(peticion: web.Request) -> web.Response:
             "trabajos": recuento,
         }
     )
+
+
+async def _herramientas(peticion: web.Request) -> web.Response:
+    """El catálogo de herramientas de una cara, declarado una sola vez.
+
+    Lo pide la app de voz al conectar. **No bloquea la llamada**: la cara lleva
+    una copia incrustada de respaldo y abre el socket con ella si el núcleo
+    tarda o no está. Lo que impide que las dos se separen no es este endpoint,
+    sino `pruebas/test_catalogo.py`, que las compara y pone el CI en rojo.
+    """
+    cara = peticion.query.get("cara", "voz")
+    try:
+        declaraciones = catalogo.para(cara)
+    except ValueError as e:
+        raise fallo(web.HTTPBadRequest, str(e))
+    return web.json_response({"cara": cara, "herramientas": declaraciones})
 
 
 async def _estado(peticion: web.Request) -> web.Response:
@@ -220,7 +235,7 @@ async def _abrir_nota_grafo(peticion: web.Request) -> web.Response:
         cuerpo = await peticion.json()
         id_nota = str(cuerpo.get("id", ""))
     except (json.JSONDecodeError, TypeError, AttributeError):
-        raise _fallo(web.HTTPBadRequest, "Cuerpo inválido")
+        raise fallo(web.HTTPBadRequest, "Cuerpo inválido")
 
     from ..agentes import memoria
 
@@ -229,7 +244,7 @@ async def _abrir_nota_grafo(peticion: web.Request) -> web.Response:
         grafo.abrir_nota, memoria.ruta_vault(cfg), id_nota
     )
     if resultado.startswith("Error:"):
-        raise _fallo(web.HTTPBadRequest, resultado)
+        raise fallo(web.HTTPBadRequest, resultado)
     return web.json_response({"resultado": resultado})
 
 
@@ -288,38 +303,18 @@ async def _manifiesto(peticion: web.Request) -> web.Response:
     return web.json_response(_MANIFIESTO, content_type="application/manifest+json")
 
 
-def _fallo(clase: type[web.HTTPException], mensaje: str) -> web.HTTPException:
-    """Un error de la API, en JSON y no en la página HTML de aiohttp.
-
-    Esto estaba escrito treinta y cuatro veces —tres líneas cada una— y el
-    tercio de las veces con el `content_type` en una línea distinta, así que
-    ningún grep encontraba las mismas. Quien consume esta API es una PWA y un
-    puente en Rust: los dos hacen `json()` con lo que reciben, y un `<html>` de
-    aiohttp ahí es un error de parseo en vez de un mensaje.
-    """
-    return clase(text=json.dumps({"error": mensaje}), content_type="application/json")
-
-
-async def _cuerpo_json(peticion: web.Request) -> dict[str, Any]:
-    try:
-        datos = await peticion.json()
-    except json.JSONDecodeError:
-        raise _fallo(web.HTTPBadRequest, "El cuerpo no es JSON válido")
-    if not isinstance(datos, dict):
-        raise _fallo(web.HTTPBadRequest, "Se esperaba un objeto JSON")
-    return datos
 
 
 async def _mensaje(peticion: web.Request) -> web.Response:
     """Entrada conversacional: el router decide si se contesta ya o se encola."""
-    datos = await _cuerpo_json(peticion)
+    datos = await cuerpo_json(peticion)
     texto = str(datos.get("texto", "")).strip()
     if not texto:
-        raise _fallo(web.HTTPBadRequest, "Falta 'texto'")
+        raise fallo(web.HTTPBadRequest, "Falta 'texto'")
 
     origen = datos.get("origen", "texto")
     if origen not in almacen.ORIGENES:
-        raise _fallo(web.HTTPBadRequest, f"Origen inválido. Válidos: {list(almacen.ORIGENES)}")
+        raise fallo(web.HTTPBadRequest, f"Origen inválido. Válidos: {list(almacen.ORIGENES)}")
 
     router = peticion.app[CLAVE_ROUTER]
     bus = peticion.app[CLAVE_BUS]
@@ -344,14 +339,14 @@ async def _mensaje(peticion: web.Request) -> web.Response:
 
 async def _crear_trabajo(peticion: web.Request) -> web.Response:
     """Encola directamente, saltándose el router. Para disparadores y pruebas."""
-    datos = await _cuerpo_json(peticion)
+    datos = await cuerpo_json(peticion)
     agente = str(datos.get("agente", "")).strip()
     if agente not in REGISTRO:
-        raise _fallo(web.HTTPBadRequest, f"Agente desconocido. Disponibles: {sorted(REGISTRO)}")
+        raise fallo(web.HTTPBadRequest, f"Agente desconocido. Disponibles: {sorted(REGISTRO)}")
 
     peticion_agente = datos.get("peticion") or {}
     if not isinstance(peticion_agente, dict):
-        raise _fallo(web.HTTPBadRequest, "'peticion' debe ser un objeto")
+        raise fallo(web.HTTPBadRequest, "'peticion' debe ser un objeto")
 
     origen = datos.get("origen", "texto")
     # Quién lo pidió. Lo manda la cara de la llamada con el perfil que el
@@ -365,7 +360,7 @@ async def _crear_trabajo(peticion: web.Request) -> web.Response:
             almacen.encolar, agente, peticion_agente, origen, quien
         )
     except ValueError as e:
-        raise _fallo(web.HTTPBadRequest, str(e))
+        raise fallo(web.HTTPBadRequest, str(e))
 
     peticion.app[CLAVE_BUS].publicar("trabajo.encolado", trabajo=trabajo)
     return web.json_response(trabajo, status=201)
@@ -389,7 +384,7 @@ async def _cambiar_confianza(peticion: web.Request) -> web.Response:
     Encendido, lo irreversible deja de pedir un sí mientras dura. Caduca solo: un
     interruptor que se queda puesto para siempre es lo que la política evita.
     """
-    datos = await _cuerpo_json(peticion)
+    datos = await cuerpo_json(peticion)
     if datos.get("activo") is False:
         politica.desactivar_confianza()
         return web.json_response({"confianza": False, "hasta": None})
@@ -397,11 +392,11 @@ async def _cambiar_confianza(peticion: web.Request) -> web.Response:
     try:
         minutos = float(datos.get("minutos", politica.MINUTOS_CONFIANZA))
     except (TypeError, ValueError):
-        raise _fallo(web.HTTPBadRequest, "'minutos' debe ser un número")
+        raise fallo(web.HTTPBadRequest, "'minutos' debe ser un número")
     if not math.isfinite(minutos):
         # `NaN` e infinitos atraviesan el `float()` y, sin este guardo, el NaN
         # acababa recortado a "un minuto de confianza" en vez de rechazarse.
-        raise _fallo(web.HTTPBadRequest, "'minutos' debe ser un número finito")
+        raise fallo(web.HTTPBadRequest, "'minutos' debe ser un número finito")
 
     hasta = await asyncio.to_thread(politica.activar_confianza, minutos)
     peticion.app[CLAVE_BUS].publicar("confianza.cambiada", hasta=hasta.isoformat())
@@ -422,13 +417,13 @@ def _id_de_ruta(peticion: web.Request) -> int:
     try:
         return int(peticion.match_info["id"])
     except (KeyError, ValueError):
-        raise _fallo(web.HTTPBadRequest, "Identificador inválido")
+        raise fallo(web.HTTPBadRequest, "Identificador inválido")
 
 
 async def _ver_trabajo(peticion: web.Request) -> web.Response:
     trabajo = await asyncio.to_thread(almacen.obtener, _id_de_ruta(peticion))
     if trabajo is None:
-        raise _fallo(web.HTTPNotFound, "No existe ese trabajo")
+        raise fallo(web.HTTPNotFound, "No existe ese trabajo")
     return web.json_response(_con_progreso(trabajo))
 
 
@@ -443,7 +438,7 @@ async def _ver_actividad(peticion: web.Request) -> web.Response:
     id_trabajo = _id_de_ruta(peticion)
     trabajo = await asyncio.to_thread(almacen.obtener, id_trabajo)
     if trabajo is None:
-        raise _fallo(web.HTTPNotFound, "No existe ese trabajo")
+        raise fallo(web.HTTPNotFound, "No existe ese trabajo")
     actividad = await asyncio.to_thread(dev.actividad_de, id_trabajo)
     return web.json_response({**actividad, "estado": trabajo.get("estado")})
 
@@ -467,9 +462,9 @@ async def _cancelar_trabajo(peticion: web.Request) -> web.Response:
     id_trabajo = _id_de_ruta(peticion)
     actual = await asyncio.to_thread(almacen.obtener, id_trabajo)
     if actual is None:
-        raise _fallo(web.HTTPNotFound, "No existe ese trabajo")
+        raise fallo(web.HTTPNotFound, "No existe ese trabajo")
     if actual["estado"] not in almacen.ABIERTOS:
-        raise _fallo(web.HTTPConflict, f"El trabajo ya está {actual['estado']}")
+        raise fallo(web.HTTPConflict, f"El trabajo ya está {actual['estado']}")
 
     trabajo = await asyncio.to_thread(almacen.cancelar, id_trabajo)
     peticion.app[CLAVE_BUS].publicar("trabajo.cancelado", trabajo=trabajo)
@@ -491,8 +486,8 @@ async def _responder_confirmacion(peticion: web.Request) -> web.Response:
     if trabajo is None:
         actual = await asyncio.to_thread(almacen.obtener, id_trabajo)
         if actual is None:
-            raise _fallo(web.HTTPNotFound, "No existe ese trabajo")
-        raise _fallo(
+            raise fallo(web.HTTPNotFound, "No existe ese trabajo")
+        raise fallo(
             web.HTTPConflict,
             f"El trabajo no está esperando confirmación (está {actual['estado']})",
         )
@@ -516,16 +511,16 @@ async def _marcar_correo(peticion: web.Request) -> web.Response:
     Gmail: aquí se anota lo que **tú** has hecho, y marcar leído en el buzón es
     otra cosa que además necesitaría un permiso que el testigo no tiene.
     """
-    datos = await _cuerpo_json(peticion)
+    datos = await cuerpo_json(peticion)
     estado = str(datos.get("estado", "")).strip().lower()
     if estado not in almacen.ESTADOS_CORREO:
-        raise _fallo(web.HTTPBadRequest, f"Estado inválido. Válidos: {list(almacen.ESTADOS_CORREO)}")
+        raise fallo(web.HTTPBadRequest, f"Estado inválido. Válidos: {list(almacen.ESTADOS_CORREO)}")
 
     id_mensaje = peticion.match_info["id"]
     try:
         marcado = await asyncio.to_thread(almacen.marcar_correo, id_mensaje, estado)
     except ValueError as e:
-        raise _fallo(web.HTTPBadRequest, str(e))
+        raise fallo(web.HTTPBadRequest, str(e))
 
     peticion.app[CLAVE_BUS].publicar("correo.marcado", correo=marcado)
     return web.json_response(marcado)
@@ -543,7 +538,7 @@ async def _chat_sesiones(peticion: web.Request) -> web.Response:
 
 
 async def _crear_sesion_chat(peticion: web.Request) -> web.Response:
-    datos = await _cuerpo_json(peticion)
+    datos = await cuerpo_json(peticion)
     sesion = await asyncio.to_thread(almacen.crear_sesion_chat, str(datos.get("titulo", "")))
     peticion.app[CLAVE_BUS].publicar("chat.sesion", sesion=sesion)
     return web.json_response(sesion, status=201)
@@ -556,7 +551,7 @@ async def _ver_sesion_chat(peticion: web.Request) -> web.Response:
     id_sesion = _id_de_ruta(peticion)
     sesion = await asyncio.to_thread(almacen.obtener_sesion_chat, id_sesion)
     if sesion is None:
-        raise _fallo(web.HTTPNotFound, "No existe esa conversación")
+        raise fallo(web.HTTPNotFound, "No existe esa conversación")
     mensajes = await asyncio.to_thread(almacen.mensajes_chat, id_sesion)
     return web.json_response({**sesion, "mensajes": mensajes})
 
@@ -566,9 +561,9 @@ async def _borrar_sesion_chat(peticion: web.Request) -> web.Response:
     try:
         borrada = await asyncio.to_thread(almacen.borrar_sesion_chat, id_sesion)
     except ValueError as e:
-        raise _fallo(web.HTTPConflict, str(e))
+        raise fallo(web.HTTPConflict, str(e))
     if not borrada:
-        raise _fallo(web.HTTPNotFound, "No existe esa conversación")
+        raise fallo(web.HTTPNotFound, "No existe esa conversación")
     peticion.app[CLAVE_BUS].publicar("chat.borrado", sesion={"id": id_sesion})
     return web.json_response({"ok": True})
 
@@ -581,19 +576,19 @@ async def _hablar_chat(peticion: web.Request) -> web.Response:
     el trabajo en la cola, como todo lo demás.
     """
     id_sesion = _id_de_ruta(peticion)
-    datos = await _cuerpo_json(peticion)
+    datos = await cuerpo_json(peticion)
     texto = str(datos.get("texto", "")).strip()
     if not texto:
-        raise _fallo(web.HTTPBadRequest, "Falta 'texto'")
+        raise fallo(web.HTTPBadRequest, "Falta 'texto'")
 
     sesion = await asyncio.to_thread(almacen.obtener_sesion_chat, id_sesion)
     if sesion is None:
-        raise _fallo(web.HTTPNotFound, "No existe esa conversación")
+        raise fallo(web.HTTPNotFound, "No existe esa conversación")
 
     try:
         await asyncio.to_thread(almacen.marcar_turno_chat, id_sesion, "ocupado")
     except ValueError as e:
-        raise _fallo(web.HTTPConflict, str(e))
+        raise fallo(web.HTTPConflict, str(e))
 
     try:
         id_usuario = await asyncio.to_thread(almacen.anadir_mensaje_chat, id_sesion, "usuario", texto)
@@ -636,10 +631,10 @@ async def _habitos_espejo(peticion: web.Request) -> web.Response:
     contar nada (ver `habitos.py`): dos contabilidades del mismo dato acaban
     discrepando, y entonces ninguna de las dos vale.
     """
-    cuerpo = await _cuerpo_json(peticion)
+    cuerpo = await cuerpo_json(peticion)
     texto = str(cuerpo.get("texto", "")).strip()
     if not texto:
-        raise _fallo(web.HTTPBadRequest, "Falta 'texto'")
+        raise fallo(web.HTTPBadRequest, "Falta 'texto'")
     cfg = peticion.app[CLAVE_CFG]
     foto = cuerpo.get("foto")
     copia = await asyncio.to_thread(
@@ -665,10 +660,10 @@ async def _tareas_espejo(peticion: web.Request) -> web.Response:
     `tareas.py`): dos contabilidades del mismo tablero acaban discrepando, y
     entonces ninguna de las dos vale.
     """
-    cuerpo = await _cuerpo_json(peticion)
+    cuerpo = await cuerpo_json(peticion)
     texto = str(cuerpo.get("texto", "")).strip()
     if not texto:
-        raise _fallo(web.HTTPBadRequest, "Falta 'texto'")
+        raise fallo(web.HTTPBadRequest, "Falta 'texto'")
     cfg = peticion.app[CLAVE_CFG]
     foto = cuerpo.get("foto")
     copia = await asyncio.to_thread(
@@ -695,142 +690,6 @@ async def _tareas_recoger(peticion: web.Request) -> web.Response:
     cfg = peticion.app[CLAVE_CFG]
     pendientes = await asyncio.to_thread(tareas.recoger, cfg.directorio_datos)
     return web.json_response({"ordenes": pendientes})
-
-
-async def _biometria_estado(peticion: web.Request) -> web.Response:
-    """Perfiles, progreso de aprendizaje y qué motores hay hoy.
-
-    Va autenticado como todo: los nombres de los perfiles son gente real, y la
-    lista de quién conoces no se le enseña a nadie sin token.
-    """
-    cfg = peticion.app[CLAVE_CFG]
-    return web.json_response(
-        await asyncio.to_thread(biometria.estado_completo, cfg.directorio_datos)
-    )
-
-
-async def _biometria_voz(peticion: web.Request) -> web.Response:
-    """Un trozo de PCM 16k mono (base64) entra, un nombre o un progreso sale.
-
-    Es la ruta que llama la app de voz con el mismo micrófono que ya alimenta
-    a Gemini. Cuando aquí nace un perfil nuevo —un desconocido que por fin
-    acumuló voz suficiente— se publica al bus, para que quien escuche sepa que
-    hay alguien nuevo en la casa.
-    """
-    cuerpo = await _cuerpo_json(peticion)
-    audio = str(cuerpo.get("audio", ""))
-    if not audio:
-        raise _fallo(web.HTTPBadRequest, "Falta 'audio'")
-
-    cfg = peticion.app[CLAVE_CFG]
-    resultado = await asyncio.to_thread(
-        biometria.identificar_voz, cfg.directorio_datos, audio
-    )
-    if resultado.get("aprendido"):
-        peticion.app[CLAVE_BUS].publicar(
-            "biometria.perfil",
-            nombre=resultado.get("nombre"),
-            via="voz",
-        )
-    return web.json_response(resultado)
-
-
-async def _biometria_cara(peticion: web.Request) -> web.Response:
-    """Un JPEG (base64) entra; caras con nombre y caja salen.
-
-    Igual que la voz: cuando una cara desconocida se fija como perfil, evento.
-    """
-    cuerpo = await _cuerpo_json(peticion)
-    imagen = str(cuerpo.get("imagen", ""))
-    if not imagen:
-        raise _fallo(web.HTTPBadRequest, "Falta 'imagen'")
-
-    cfg = peticion.app[CLAVE_CFG]
-    resultado = await asyncio.to_thread(
-        biometria.identificar_cara, cfg.directorio_datos, imagen
-    )
-    for cara in resultado.get("caras", []):
-        if cara.get("aprendido"):
-            peticion.app[CLAVE_BUS].publicar(
-                "biometria.perfil", nombre=cara.get("nombre"), via="cara"
-            )
-    return web.json_response(resultado)
-
-
-async def _biometria_enrolar(peticion: web.Request) -> web.Response:
-    """Crea o refuerza un perfil con una muestra traída a propósito."""
-    cuerpo = await _cuerpo_json(peticion)
-    nombre = str(cuerpo.get("nombre", ""))
-    audio = cuerpo.get("audio")
-    imagen = cuerpo.get("imagen")
-    if not nombre:
-        raise _fallo(web.HTTPBadRequest, "Falta 'nombre'")
-    if not audio and not imagen:
-        raise _fallo(web.HTTPBadRequest, "Hace falta 'audio' o 'imagen'")
-
-    cfg = peticion.app[CLAVE_CFG]
-    resultado = await asyncio.to_thread(
-        biometria.enrolar,
-        cfg.directorio_datos,
-        nombre,
-        str(audio) if audio else None,
-        str(imagen) if imagen else None,
-    )
-    if resultado.get("ok") and resultado.get("añadido"):
-        peticion.app[CLAVE_BUS].publicar(
-            "biometria.perfil", nombre=nombre, via="+".join(resultado["añadido"])
-        )
-    estado_http = 200 if resultado.get("ok") else 400
-    return web.json_response(resultado, status=estado_http)
-
-
-async def _biometria_renombrar(peticion: web.Request) -> web.Response:
-    """Le pone nombre real a un «Desconocido N»."""
-    cuerpo = await _cuerpo_json(peticion)
-    cfg = peticion.app[CLAVE_CFG]
-    resultado = await asyncio.to_thread(
-        biometria.renombrar,
-        cfg.directorio_datos,
-        peticion.match_info["nombre"],
-        str(cuerpo.get("nuevo_nombre", "")),
-    )
-    if resultado.get("ok"):
-        peticion.app[CLAVE_BUS].publicar(
-            "biometria.perfil", nombre=resultado.get("nombre"), via="renombrado"
-        )
-        # Ponerle nombre a un «Desconocido 3» es el momento en que esa voz pasa
-        # a ser alguien. Los vectores no dicen nada a un humano; la nota sí, y
-        # se puede corregir a mano. No bloquea la respuesta ni la tumba: si el
-        # vault no está, se apunta y se sigue.
-        asyncio.create_task(
-            _anotar_persona(str(peticion.match_info["nombre"]), str(resultado["nombre"]))
-        )
-    estado_http = 200 if resultado.get("ok") else 400
-    return web.json_response(resultado, status=estado_http)
-
-
-async def _anotar_persona(antes: str, ahora: str) -> None:
-    """Deja en `10_PERSEO/Personas/` que esta voz o esta cara ya tiene nombre."""
-    from ..agentes import memoria
-
-    try:
-        await memoria.anotar_persona(antes, ahora)
-    except Exception as e:  # noqa: BLE001 - un apunte que falla no rompe nada
-        logger.warning("No se pudo anotar a %s en el vault: %s", ahora, e)
-
-
-async def _biometria_borrar(peticion: web.Request) -> web.Response:
-    """Borra el perfil y sus vectores. No hay copia: eso es lo pedido."""
-    cfg = peticion.app[CLAVE_CFG]
-    resultado = await asyncio.to_thread(
-        biometria.borrar, cfg.directorio_datos, peticion.match_info["nombre"]
-    )
-    if resultado.get("ok"):
-        peticion.app[CLAVE_BUS].publicar(
-            "biometria.perfil", nombre=peticion.match_info["nombre"], via="borrado"
-        )
-    estado_http = 200 if resultado.get("ok") else 400
-    return web.json_response(resultado, status=estado_http)
 
 
 # La ruta `/clave-voz` vivía aquí y se fue con la pestaña Voz del móvil
@@ -879,7 +738,7 @@ async def _abrir_proyecto(peticion: web.Request) -> web.Response:
         proyectos.abrir, cfg.directorio_datos, peticion.match_info["id"]
     )
     if resultado.startswith("Error:"):
-        raise _fallo(web.HTTPBadRequest, resultado)
+        raise fallo(web.HTTPBadRequest, resultado)
     return web.json_response({"resultado": resultado})
 
 
@@ -949,6 +808,7 @@ def crear_app(cfg: almacen.Configuracion, bus: Bus, router: Router) -> web.Appli
             web.get("/apple-touch-icon-precomposed.png", _icono),
             web.get("/salud", _salud),
             web.get("/estado", _estado),
+            web.get("/herramientas", _herramientas),
             web.post("/sesion", _abrir_sesion),
             web.post("/mensaje", _mensaje),
             web.post("/trabajos", _crear_trabajo),
@@ -976,12 +836,12 @@ def crear_app(cfg: almacen.Configuracion, bus: Bus, router: Router) -> web.Appli
             web.post("/tareas", _tareas_espejo),
             web.get("/tareas", _tareas_ver),
             web.post("/tareas/recoger", _tareas_recoger),
-            web.get("/biometria", _biometria_estado),
-            web.post("/biometria/voz", _biometria_voz),
-            web.post("/biometria/cara", _biometria_cara),
-            web.post("/biometria/perfiles", _biometria_enrolar),
-            web.post("/biometria/perfiles/{nombre}", _biometria_renombrar),
-            web.delete("/biometria/perfiles/{nombre}", _biometria_borrar),
+            web.get("/biometria", api_biometria.biometria_estado),
+            web.post("/biometria/voz", api_biometria.biometria_voz),
+            web.post("/biometria/cara", api_biometria.biometria_cara),
+            web.post("/biometria/perfiles", api_biometria.biometria_enrolar),
+            web.post("/biometria/perfiles/{nombre}", api_biometria.biometria_renombrar),
+            web.delete("/biometria/perfiles/{nombre}", api_biometria.biometria_borrar),
             web.get("/eventos", _eventos),
         ]
     )

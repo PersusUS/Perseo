@@ -272,6 +272,78 @@ def imprimir_cuentas(argumentos: list[str] | None = None) -> int:
 
 
 # ==========================================================================
+# La copia del catálogo que lleva la cara de la voz
+# ==========================================================================
+#: Dónde vive la copia incrustada. La cara pide el catálogo al núcleo al
+#: conectar, pero arranca sin él más veces de las que parece —abrir la app antes
+#: de que el núcleo termine de levantarse es lo normal— y una llamada sin
+#: herramientas sería peor que una llamada con las de ayer.
+COPIA_DEL_CATALOGO = RAIZ / "RealTime" / "src" / "lib" / "catalogo-incrustado.ts"
+
+_CABECERA_COPIA = """\
+/**
+ * GENERADO. No se edita a mano.
+ *
+ *     python commands/perseo.py catalogo --incrustar
+ *
+ * La copia de respaldo del catálogo de herramientas. La fuente es
+ * `perseo_core/servicios/catalogo.py`; esto es lo que la llamada usa cuando el
+ * núcleo no contesta a tiempo, que pasa cada vez que se abre la app antes de que
+ * el núcleo termine de levantarse.
+ *
+ * Que exista una copia es el precio de no bloquear el socket esperando. Lo que
+ * impide que envejezca es `pruebas/test_catalogo.py`, que la compara con el
+ * núcleo y pone el CI en rojo si difieren.
+ */
+
+import type { HerramientaNeutra } from './catalogo';
+
+export const CATALOGO_INCRUSTADO: HerramientaNeutra[] = """
+
+
+def _catalogo_del_nucleo(cara: str = "voz") -> list[dict]:
+    sys.path.insert(0, str(RAIZ))
+    from perseo_core.servicios import catalogo
+
+    return catalogo.para(cara)
+
+
+def texto_de_la_copia() -> str:
+    """El contenido exacto que debe tener el fichero incrustado."""
+    cuerpo = json.dumps(_catalogo_del_nucleo(), ensure_ascii=False, indent=2)
+    return _CABECERA_COPIA + cuerpo + ";\n"
+
+
+def incrustar_catalogo() -> bool:
+    """Reescribe la copia. Devuelve si hizo falta cambiarla."""
+    nuevo = texto_de_la_copia()
+    viejo = COPIA_DEL_CATALOGO.read_text(encoding="utf-8") if COPIA_DEL_CATALOGO.exists() else ""
+    if nuevo == viejo:
+        return False
+    COPIA_DEL_CATALOGO.write_text(nuevo, encoding="utf-8")
+    return True
+
+
+def catalogo_cli(argumentos: list[str] | None = None) -> int:
+    argumentos = argumentos or []
+    if "--incrustar" in argumentos:
+        cambio = incrustar_catalogo()
+        print("Copia regenerada." if cambio else "La copia ya decía lo mismo que el núcleo.")
+        return 0
+    for cara in ("voz", "chat"):
+        herramientas = _catalogo_del_nucleo(cara)
+        print(f"\n{cara} ({len(herramientas)})")
+        for h in herramientas:
+            obligatorios = h["parameters"].get("required") or []
+            argumentos_ = ", ".join(
+                n + ("*" if n in obligatorios else "")
+                for n in (h["parameters"].get("properties") or {})
+            )
+            print(f"  {h['name']}({argumentos_})")
+    return 0
+
+
+# ==========================================================================
 # El cuadro de mandos de la estructura
 # ==========================================================================
 def cuadro_de_mandos() -> None:

@@ -63,6 +63,7 @@ iconos. `/salud` no devuelve nada sensible.
 | `GET /salud` | Que está vivo, y qué agentes carga |
 | `GET /estado` | De qué está capado el sistema hoy: piezas, cuota, disparadores, **la máquina** (CPU, RAM, disco, red, batería) y **la presencia**. Con token: junta, esa información es el mapa de por dónde entrar |
 | `GET /eventos` | Flujo SSE con todo lo que pasa |
+| `GET /herramientas` | El catálogo de herramientas de una cara (`?cara=voz` o `?cara=chat`): nombre, descripción y esquema de cada una. Está declarado **una sola vez** en el núcleo; la app de voz lo pide al conectar y lleva una copia incrustada por si el núcleo tarda |
 
 ### El correo triado
 

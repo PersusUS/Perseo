@@ -23,6 +23,7 @@ cuando quieres mirar si está todo en pie sin acordarte de las cinco rutas.
     perseo actualizar construye la app después de tocar la interfaz, y la sella
     perseo comprobar  pasa todo lo que tiene que estar verde antes de un commit
     perseo cuentas    los números que cita la documentación, medidos
+    perseo catalogo   las herramientas que ve cada cara; --incrustar regenera la copia
 
 `perseo` a secas sigue siendo `perseo on`, que es como se ha escrito siempre en
 esta bitácora.
@@ -767,6 +768,12 @@ def _cuentas() -> None:
     raise SystemExit(modulo.imprimir_cuentas(sys.argv[2:]))
 
 
+def _catalogo() -> None:
+    import comprobar as modulo
+
+    raise SystemExit(modulo.catalogo_cli(sys.argv[2:]))
+
+
 #: Las órdenes, con sus sinónimos. `on` y `off` son las que pidió el señor
 #: Persus el 2026-08-21; `perseo` a secas se queda como `on` porque es lo que
 #: dice la bitácora entera, y `parar` porque apagar dejando el detector vivo
@@ -785,6 +792,7 @@ ORDENES = {
     "construir": actualizar,
     "comprobar": _comprobar,
     "cuentas": _cuentas,
+    "catalogo": _catalogo,
 }
 
 
