@@ -30,25 +30,14 @@ etiquetas, y la gramática le impide salirse aunque le convenzan.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import Any
 
 import aiohttp
 
-from. import almacen, identidad, modelo_local
+from . import almacen, identidad, modelo_local
+from .dominio.clasificacion import CLASES, IGNORAR, NO_SEGURO, Clasificacion
 
 logger = logging.getLogger(__name__)
-
-IGNORAR = "ignorar"
-INTERESANTE = "interesante"
-REQUIERE_ACCION = "requiere_accion"
-NO_SEGURO = "no_seguro"
-
-CLASES = (IGNORAR, INTERESANTE, REQUIERE_ACCION, NO_SEGURO)
-
-#: Clases que merecen un aviso. `no_seguro` está dentro a propósito: ante la
-#: duda, que lo mire una persona.
-RELEVANTES = (INTERESANTE, REQUIERE_ACCION, NO_SEGURO)
 
 #: Cuánto del cuerpo se le enseña al modelo. Un extracto basta para clasificar y
 #: mantiene la ventana pequeña, que es lo que hace que un 4B conteste en segundos.
@@ -101,21 +90,6 @@ pide nada de esta persona.
 #: versión de la regla de la Fase 1 aplicada al correo, que es donde de verdad
 #: llega texto escrito por un desconocido.
 _INSTRUCCIONES = _TAREA
-
-
-@dataclass(frozen=True)
-class Clasificacion:
-    """El resultado de triar un mensaje."""
-
-    clase: str
-    motivo: str
-    #: Falso cuando la etiqueta no la puso el modelo sino el respaldo. Se guarda
-    #: porque un día de triaje entero sin modelo local se tiene que notar.
-    del_modelo: bool = True
-
-    @property
-    def relevante(self) -> bool:
-        return self.clase in RELEVANTES
 
 
 class Triaje:

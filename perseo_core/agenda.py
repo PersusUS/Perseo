@@ -27,57 +27,18 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
-from . import almacen, disparadores
+from . import almacen, disparadores, google_api
 from .agentes import registrar
+from .dominio.evento import Evento
 
 logger = logging.getLogger(__name__)
 
 #: Cuántos eventos entran como mucho en un aviso.
 TOPE_LOTE = 20
-
-
-@dataclass(frozen=True)
-class Evento:
-    """Un evento del calendario. `inicio` es ISO-8601; con zona, mejor."""
-
-    id: str
-    titulo: str
-    inicio: str
-    fin: str = ""
-    lugar: str = ""
-
-    def a_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-    @classmethod
-    def desde_dict(cls, crudo: dict[str, Any]) -> "Evento":
-        return cls(
-            id=str(crudo.get("id", "")),
-            titulo=str(crudo.get("titulo", "")),
-            inicio=str(crudo.get("inicio", "")),
-            fin=str(crudo.get("fin", "")),
-            lugar=str(crudo.get("lugar", "")),
-        )
-
-    @property
-    def momento(self) -> datetime | None:
-        """El inicio como fecha, o `None` si no se puede leer.
-
-        Se normaliza a UTC: el sistema acabará repartido entre varias máquinas y
-        comparar horas locales entre ellas es una fuente de errores gratuita.
-        """
-        try:
-            leido = datetime.fromisoformat(self.inicio.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-        if leido.tzinfo is None:
-            leido = leido.astimezone()
-        return leido.astimezone(timezone.utc)
 
 
 class Calendario(Protocol):
@@ -124,8 +85,6 @@ def abrir_calendario(cfg: almacen.Configuracion) -> Calendario | None:
         return CalendarioFalso(Path(cfg.agenda_falsa))
 
     if cfg.agenda_origen == "google":
-        from . import google_api
-
         try:
             return google_api.CalendarioGoogle(google_api.credenciales(cfg))
         except google_api.SinCredenciales as e:

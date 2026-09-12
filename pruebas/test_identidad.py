@@ -13,6 +13,7 @@ menciona este fichero.
 from __future__ import annotations
 
 from perseo_core import agentes, identidad, triaje
+from perseo_core.dominio.clasificacion import CLASES
 
 
 def test_el_nucleo_dice_quien_es() -> None:
@@ -74,7 +75,7 @@ def test_el_triaje_sabe_de_quien_es_el_buzon() -> None:
 
 
 def test_el_triaje_conserva_sus_cuatro_cajones() -> None:
-    for clase in triaje.CLASES:
+    for clase in CLASES:
         assert clase in triaje._INSTRUCCIONES
 
 

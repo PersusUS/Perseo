@@ -28,6 +28,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core import almacen, correo, disparadores, triaje  # noqa: E402
+from perseo_core.dominio.clasificacion import CLASES, Clasificacion, IGNORAR, NO_SEGURO, REQUIERE_ACCION  # noqa: E402
 from verificadores.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
 from perseo_core.bus import Bus  # noqa: E402
 from verificadores.verificar_telegram import CHAT, TOKEN_FALSO, FalsoTelegram  # noqa: E402
@@ -102,8 +103,8 @@ def comprobar_en_proceso() -> None:
     #    recuento porque es lo unico que se le pasa.
     recuento = triaje.recontar(
         [
-            triaje.Clasificacion(triaje.REQUIERE_ACCION, "hay que contestar"),
-            triaje.Clasificacion(triaje.IGNORAR, "publicidad"),
+            Clasificacion(REQUIERE_ACCION, "hay que contestar"),
+            Clasificacion(IGNORAR, "publicidad"),
         ]
     )
     texto = correo.titular(recuento) or ""
@@ -112,11 +113,11 @@ def comprobar_en_proceso() -> None:
 
     # 2. Si no hay nada relevante no se molesta. Un canal que avisa de nada se
     #    silencia, y entonces tampoco avisa de lo que importa.
-    solo_basura = triaje.recontar([triaje.Clasificacion(triaje.IGNORAR, "publicidad")])
+    solo_basura = triaje.recontar([Clasificacion(IGNORAR, "publicidad")])
     comprobar("Sin nada relevante no hay titular", correo.titular(solo_basura) is None)
 
     # 3. `no_seguro` cuenta como relevante: ante la duda, que lo mire una persona.
-    dudoso = triaje.recontar([triaje.Clasificacion(triaje.NO_SEGURO, "no lo tengo claro")])
+    dudoso = triaje.recontar([Clasificacion(NO_SEGURO, "no lo tengo claro")])
     comprobar("Un correo sin decidir tambien avisa", correo.titular(dudoso) is not None)
 
     # 4. Sin modelo local, el triaje escala en vez de descartar. Es la diferencia
@@ -130,7 +131,7 @@ def comprobar_en_proceso() -> None:
     os.environ.clear()
     os.environ.update(entorno)
 
-    async def sin_modelo() -> triaje.Clasificacion:
+    async def sin_modelo() -> Clasificacion:
         clasificador = triaje.Triaje(cfg)
         try:
             return await clasificador.clasificar(NUEVO)
@@ -140,7 +141,7 @@ def comprobar_en_proceso() -> None:
     clasificacion = asyncio.run(sin_modelo())
     comprobar(
         "Sin modelo local se escala a no_seguro",
-        clasificacion.clase == triaje.NO_SEGURO,
+        clasificacion.clase == NO_SEGURO,
         clasificacion.clase,
     )
     comprobar("Y queda anotado que no lo decidio el modelo", clasificacion.del_modelo is False)
@@ -231,7 +232,7 @@ def main() -> None:
     comprobar("Se tria solo el correo nuevo", len(clasificados) == 1, f"{len(clasificados)}")
     if clasificados:
         clase = clasificados[0].get("clase")
-        comprobar("Con una clase del vocabulario", clase in triaje.CLASES, str(clase))
+        comprobar("Con una clase del vocabulario", clase in CLASES, str(clase))
         if con_modelo:
             comprobar(
                 "Y la pone el modelo local, no el respaldo",

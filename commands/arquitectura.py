@@ -41,12 +41,13 @@ CAPAS: tuple[str, ...] = ("dominio", "infra", "servicios", "agentes", "caras")
 # capas pasará a cubrir el paquete entero sin tocar una línea.
 SIN_CAPA = ""
 
-# El único ciclo que había el día que se escribió esta regla: `google_api`
-# importa `Evento` de `agenda` y `Mensaje` de `correo`, y esos dos importan
-# `google_api` **dentro de una función** para que Python no se queje al
-# arrancar. El truco funciona y es deuda: sacar los dos tipos a `dominio/` lo
-# deshace. Igual que la lista de tamaños, esta **solo puede encoger**.
-CICLOS_CONOCIDOS: tuple[tuple[str, ...], ...] = (("agenda", "correo", "google_api"),)
+# Vacía, y así se queda. El único ciclo que hubo —`google_api` importaba `Evento`
+# de `agenda` y `Mensaje` de `correo`, y esos dos importaban `google_api` dentro
+# de una función para que Python no se quejara al arrancar— murió al bajar los
+# dos tipos a `dominio/`. Si algo vuelve a aparecer aquí, es que se ha vuelto a
+# pagar un ciclo con un truco; igual que la lista de tamaños, **solo puede
+# encoger**.
+CICLOS_CONOCIDOS: tuple[tuple[str, ...], ...] = ()
 
 
 # ==========================================================================

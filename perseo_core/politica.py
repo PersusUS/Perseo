@@ -52,23 +52,9 @@ from pathlib import Path
 from typing import Any
 
 from . import identidad
+from .dominio.niveles import CRITICO, IRREVERSIBLE, LIBRE, NIVELES, REVERSIBLE
 
 logger = logging.getLogger(__name__)
-
-LIBRE = "libre"
-REVERSIBLE = "reversible"
-IRREVERSIBLE = "irreversible"
-
-#: Como irreversible, pero **el modo confianza no lo tapa**. Es para lo que no
-#: se puede deshacer con nada: borrar ficheros, tocar el registro, matar
-#: procesos. Nació el 2026-08-27 de un caso concreto: la llamada de voz enciende
-#: la confianza al conectar (N-3), así que durante una llamada NADA preguntaba;
-#: Perseo dijo de su cosecha «¿confirma que ejecuto el comando?», nadie
-#: contestó, y el comando salió igual porque el sistema nunca llegó a
-#: preguntarlo. Tener delante a alguien hablando no es su sí a esta orden.
-CRITICO = "critico"
-
-NIVELES = (LIBRE, REVERSIBLE, IRREVERSIBLE, CRITICO)
 
 #: Qué nivel tiene cada cosa. La clave es el agente, o `agente.accion` cuando el
 #: agente hace cosas de niveles distintos. Lo que no esté aquí es irreversible.

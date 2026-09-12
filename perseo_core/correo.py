@@ -32,12 +32,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from . import almacen, disparadores, triaje
+from . import almacen, disparadores, google_api, triaje
 from .agentes import registrar
+from .dominio.clasificacion import Clasificacion, IGNORAR, INTERESANTE, NO_SEGURO, REQUIERE_ACCION
+from .dominio.mensaje import Mensaje
 
 logger = logging.getLogger(__name__)
 
@@ -45,34 +46,6 @@ logger = logging.getLogger(__name__)
 #: semanas sin mirarse, sin tope el primer arranque encolaría un trabajo de
 #: cientos de clasificaciones que tardaría media hora en terminar.
 TOPE_LOTE = 20
-
-
-@dataclass(frozen=True)
-class Mensaje:
-    """Lo mínimo que hace falta para triar. Deliberadamente no es el correo entero."""
-
-    id: str
-    remitente: str
-    asunto: str
-    extracto: str = ""
-    fecha: str = ""
-    #: El hilo al que pertenece, cuando el buzón lo sabe. Lo usa el borrador para
-    #: que la respuesta cuelgue de la conversación en vez de nacer suelta.
-    hilo: str = ""
-
-    def a_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-    @classmethod
-    def desde_dict(cls, crudo: dict[str, Any]) -> "Mensaje":
-        return cls(
-            id=str(crudo.get("id", "")),
-            remitente=str(crudo.get("remitente", "")),
-            asunto=str(crudo.get("asunto", "")),
-            extracto=str(crudo.get("extracto", "")),
-            fecha=str(crudo.get("fecha", "")),
-            hilo=str(crudo.get("hilo", "")),
-        )
 
 
 class Buzon(Protocol):
@@ -122,10 +95,6 @@ def abrir_buzon(cfg: almacen.Configuracion) -> Buzon | None:
         return BuzonFalso(Path(cfg.correo_falso))
 
     if cfg.correo_buzon == "gmail":
-        # Se importa aquí y no arriba para no arrastrar el módulo de Google
-        # —ni su ciclo con `correo`— cuando no se usa.
-        from . import google_api
-
         try:
             return google_api.BuzonGmail(google_api.credenciales(cfg))
         except google_api.SinCredenciales as e:
@@ -193,7 +162,7 @@ async def _correo(trabajo: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("El triaje no está iniciado; falta llamar a correo.iniciar().")
 
     clasificados: list[dict[str, Any]] = []
-    clasificaciones: list[triaje.Clasificacion] = []
+    clasificaciones: list[Clasificacion] = []
     for mensaje in mensajes:
         clasificacion = await _triaje.clasificar(mensaje.a_dict())
         clasificaciones.append(clasificacion)
@@ -212,10 +181,10 @@ async def _correo(trabajo: dict[str, Any]) -> dict[str, Any]:
     logger.info(
         "Triados %d correo(s): %d requieren acción, %d interesantes, %d ignorables, %d sin decidir.",
         recuento["total"],
-        recuento[triaje.REQUIERE_ACCION],
-        recuento[triaje.INTERESANTE],
-        recuento[triaje.IGNORAR],
-        recuento[triaje.NO_SEGURO],
+        recuento[REQUIERE_ACCION],
+        recuento[INTERESANTE],
+        recuento[IGNORAR],
+        recuento[NO_SEGURO],
     )
     # El titular viaja por Telegram y los clasificados no. Se compone aquí, que
     # es donde se sabe qué es contenido del correo y qué es un recuento.
@@ -315,9 +284,9 @@ def titular(recuento: dict[str, Any]) -> str | None:
     nada — llenar el móvil de "0 correos interesantes" es la forma más rápida de
     que se silencie el canal.
     """
-    accion = int(recuento.get(triaje.REQUIERE_ACCION, 0))
-    interesantes = int(recuento.get(triaje.INTERESANTE, 0))
-    dudosos = int(recuento.get(triaje.NO_SEGURO, 0))
+    accion = int(recuento.get(REQUIERE_ACCION, 0))
+    interesantes = int(recuento.get(INTERESANTE, 0))
+    dudosos = int(recuento.get(NO_SEGURO, 0))
     if accion + interesantes + dudosos == 0:
         return None
 

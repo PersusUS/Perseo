@@ -9,14 +9,15 @@ from pathlib import Path
 import pytest
 
 from perseo_core import correo, triaje
+from perseo_core.dominio.clasificacion import CLASES, Clasificacion, IGNORAR, NO_SEGURO, REQUIERE_ACCION
 
 
 def test_el_titular_cuenta_y_no_suelta_asuntos() -> None:
     """Lo que sale por Telegram es un recuento, nunca el asunto."""
     recuento = triaje.recontar(
         [
-            triaje.Clasificacion(triaje.REQUIERE_ACCION, "hay que contestar"),
-            triaje.Clasificacion(triaje.IGNORAR, "publicidad"),
+            Clasificacion(REQUIERE_ACCION, "hay que contestar"),
+            Clasificacion(IGNORAR, "publicidad"),
         ]
     )
     texto = correo.titular(recuento)
@@ -27,24 +28,24 @@ def test_el_titular_cuenta_y_no_suelta_asuntos() -> None:
 
 def test_sin_nada_relevante_no_hay_titular() -> None:
     """Un canal que avisa de nada acaba silenciado."""
-    recuento = triaje.recontar([triaje.Clasificacion(triaje.IGNORAR, "publicidad")])
+    recuento = triaje.recontar([Clasificacion(IGNORAR, "publicidad")])
     assert correo.titular(recuento) is None
 
 
 def test_lo_dudoso_tambien_avisa() -> None:
-    recuento = triaje.recontar([triaje.Clasificacion(triaje.NO_SEGURO, "ni idea")])
+    recuento = triaje.recontar([Clasificacion(NO_SEGURO, "ni idea")])
     assert correo.titular(recuento) is not None
 
 
 def test_el_titular_concuerda_en_singular() -> None:
-    recuento = triaje.recontar([triaje.Clasificacion(triaje.REQUIERE_ACCION, "x")])
+    recuento = triaje.recontar([Clasificacion(REQUIERE_ACCION, "x")])
     assert correo.titular(recuento) == "1 correo: 1 requiere acción"
 
 
 def test_recontar_siempre_trae_todas_las_claves() -> None:
     """Quien lo lee no debe distinguir entre «cero» y «no vino ese campo»."""
     recuento = triaje.recontar([])
-    for clase in triaje.CLASES:
+    for clase in CLASES:
         assert recuento[clase] == 0
     assert recuento["total"] == 0
 
@@ -83,7 +84,7 @@ def test_abrir_buzon_sin_configurar_devuelve_nada(cfg) -> None:
 def test_el_agente_tria_un_lote(monkeypatch) -> None:
     class TriajeFalso:
         async def clasificar(self, mensaje):
-            return triaje.Clasificacion(triaje.REQUIERE_ACCION, "porque si")
+            return Clasificacion(REQUIERE_ACCION, "porque si")
 
     monkeypatch.setattr(correo, "_triaje", TriajeFalso())
     resultado = asyncio.run(
@@ -100,7 +101,7 @@ def test_el_agente_tria_un_lote(monkeypatch) -> None:
     )
 
     assert resultado["recuento"]["total"] == 1
-    assert resultado["clasificados"][0]["clase"] == triaje.REQUIERE_ACCION
+    assert resultado["clasificados"][0]["clase"] == REQUIERE_ACCION
     # El detalle se queda en la cola; el titular es lo que sale por Telegram.
     assert resultado["clasificados"][0]["asunto"] == "Presupuesto"
     assert "Presupuesto" not in resultado["titular"]

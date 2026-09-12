@@ -41,8 +41,8 @@ from typing import Any
 import aiohttp
 
 from . import almacen
-from .agenda import Evento
-from .correo import Mensaje
+from .dominio.evento import Evento
+from .dominio.mensaje import Mensaje
 
 logger = logging.getLogger(__name__)
 
