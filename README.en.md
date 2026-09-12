@@ -46,7 +46,7 @@ Raspberry Pi tomorrow without rewriting a line of interface code.
 | 📬 **Mail triaged before you read it** | Every message lands in a bucket — ignore, interesting, needs action, not sure — decided by a **local** model, on your GPU |
 | 🧠 **Real memory** | Markdown notes in your Obsidian vault. It searches, reads and **appends**; never overwrites, never deletes |
 | 👤 **It knows who's talking** | Recognises voices and faces with local models, and learns people it hasn't met. Off by default |
-| 🛑 **It asks first** | Three confirmation levels enforced in the worker, not in the prompt. Anything irreversible stops and waits for your yes |
+| 🛑 **It asks first, and knows who asked** | Four confirmation levels enforced in the worker, not in the prompt. Anything irreversible stops and waits for your yes — and an order from a guest stops even while you are right there |
 | 📱 **It follows you to your phone** | A PWA over your home VPN: chat, queue, mail and status. No build step, one single file |
 | 🤖 **It delegates code** | Hands tasks to sub-agents (Claude Code or opencode) and tells you how they're going while they work |
 | 🔌 **It speaks MCP** | Its own client for local and remote servers: vault, browser, Windows, triaged mail, sub-agents |
@@ -208,9 +208,19 @@ three levels enforced **in the worker**, before the agent runs:
 | `reversible` | Append to the vault, edit code | Runs, and is logged |
 | `irreversible` | Typing blind — and **anything not classified** | Stops and asks for a yes |
 
+There is a fourth one, `critico` — deleting, touching the registry, killing
+processes — that **always** asks, trust mode or not.
+
 You give the yes from the web app, from the Telegram alert, or **out loud
 during the call**. *Trust mode* lowers irreversible to reversible while you're
-sitting there, and expires on its own.
+sitting there, and expires on its own: during a call it is renewed by your
+voice, so it switches itself off if you walk away.
+
+**Who asked counts too.** Every job travels with the profile of whoever spoke —
+set by the voice recognition running on your own machine — and an order from
+someone who isn't you stops even with trust mode on. Your yes also covers exact
+repeats of the same request for ten minutes: dictating an address is six
+identical orders, and asking six times teaches you to say yes without reading.
 
 ---
 

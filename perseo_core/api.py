@@ -334,7 +334,11 @@ async def _mensaje(peticion: web.Request) -> web.Response:
             {"destino": "responder", "respuesta": ruta.respuesta, "motivo": ruta.motivo}
         )
 
-    trabajo = await asyncio.to_thread(almacen.encolar, ruta.agente, {"texto": texto}, origen)
+    quien = datos.get("quien")
+    quien = str(quien).strip() if isinstance(quien, str) else None
+    trabajo = await asyncio.to_thread(
+        almacen.encolar, ruta.agente, {"texto": texto}, origen, quien
+    )
     bus.publicar("trabajo.encolado", trabajo=trabajo)
     return web.json_response(
         {"destino": "encolar", "motivo": ruta.motivo, "trabajo": trabajo}, status=202
@@ -359,8 +363,16 @@ async def _crear_trabajo(peticion: web.Request) -> web.Response:
         )
 
     origen = datos.get("origen", "texto")
+    # Quién lo pidió. Lo manda la cara de la llamada con el perfil que el
+    # reconocimiento de voz tenga puesto en ese momento; el panel y los
+    # disparadores no mandan nada, y entonces la política se comporta como
+    # siempre. Un valor que no sea texto se ignora en vez de romper la cola.
+    quien = datos.get("quien")
+    quien = str(quien).strip() if isinstance(quien, str) else None
     try:
-        trabajo = await asyncio.to_thread(almacen.encolar, agente, peticion_agente, origen)
+        trabajo = await asyncio.to_thread(
+            almacen.encolar, agente, peticion_agente, origen, quien
+        )
     except ValueError as e:
         raise web.HTTPBadRequest(
             text=json.dumps({"error": str(e)}), content_type="application/json"

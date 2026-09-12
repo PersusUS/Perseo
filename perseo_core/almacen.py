@@ -67,6 +67,11 @@ CREATE TABLE IF NOT EXISTS trabajos (
     estado          TEXT    NOT NULL,
     agente          TEXT    NOT NULL,
     origen          TEXT    NOT NULL,
+    -- Quién lo pidió, con el nombre del perfil que puso el reconocimiento de
+    -- voz («Persus», «Javi»), o NULL cuando no se sabe. `origen` dice por qué
+    -- puerta entró el trabajo; esta columna, de quién es la voz que lo pidió, y
+    -- es lo que mira la política para no dejar que una visita mueva las manos.
+    quien           TEXT,
     peticion        TEXT    NOT NULL,
     resultado       TEXT,
     error           TEXT,
@@ -131,7 +136,7 @@ CREATE INDEX IF NOT EXISTS idx_chat_mensajes ON chat_mensajes (sesion, id);
 #: Columnas añadidas después de que hubiera bases de datos por ahí. `CREATE
 #: TABLE IF NOT EXISTS` no las añade a una tabla que ya existe, así que hay que
 #: mirarlo a mano al abrir.
-_COLUMNAS_NUEVAS = {"confirmacion": "TEXT"}
+_COLUMNAS_NUEVAS = {"confirmacion": "TEXT", "quien": "TEXT"}
 
 
 # --------------------------------------------------------------------------- #
@@ -647,19 +652,39 @@ def _a_dict(fila: sqlite3.Row) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 
-def encolar(agente: str, peticion: dict[str, Any], origen: str = "texto") -> dict[str, Any]:
-    """Añade un trabajo a la cola y devuelve el trabajo creado."""
+def encolar(
+    agente: str,
+    peticion: dict[str, Any],
+    origen: str = "texto",
+    quien: str | None = None,
+) -> dict[str, Any]:
+    """Añade un trabajo a la cola y devuelve el trabajo creado.
+
+    `quien` es el perfil de la persona que lo pidió, si el reconocimiento de voz
+    lo sabe. Sin él la cola no puede distinguir una orden del dueño de una de
+    una visita, que es lo que pasaba hasta el 2026-09-12: `origen` decía «voz» y
+    ahí se acababa la información.
+    """
     if origen not in ORIGENES:
         raise ValueError(f"Origen desconocido: {origen!r}. Válidos: {ORIGENES}")
 
+    quien = (quien or "").strip() or None
     momento = _ahora()
     with _cerrojo:
         cursor = _db().execute(
             """
-            INSERT INTO trabajos (estado, agente, origen, peticion, creado_en, actualizado_en)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO trabajos (estado, agente, origen, quien, peticion, creado_en, actualizado_en)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (PENDIENTE, agente, origen, json.dumps(peticion, ensure_ascii=False), momento, momento),
+            (
+                PENDIENTE,
+                agente,
+                origen,
+                quien,
+                json.dumps(peticion, ensure_ascii=False),
+                momento,
+                momento,
+            ),
         )
         _db().commit()
         creado = obtener(int(cursor.lastrowid))

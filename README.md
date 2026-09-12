@@ -41,7 +41,7 @@ Raspberry Pi sin reescribir una línea de la interfaz.
 | 📬 **Correo triado antes de que lo leas** | Cada mensaje cae en un cajón —ignorar, interesante, requiere acción, no seguro— decidido por un modelo **local**, en tu GPU |
 | 🧠 **Memoria de verdad** | Notas Markdown en tu vault de Obsidian. Busca, lee y **añade**; nunca sobrescribe ni borra |
 | 👤 **Sabe quién habla** | Reconoce voces y caras con modelos locales, y aprende solo a quien no conoce. Apagado de fábrica |
-| 🛑 **Pide permiso** | Tres niveles de confirmación aplicados en el trabajador, no en el prompt. Lo irreversible se para y espera tu sí |
+| 🛑 **Pide permiso, y sabe a quién** | Cuatro niveles de confirmación aplicados en el trabajador, no en el prompt. Lo irreversible se para y espera tu sí — y una orden de una visita se para aunque estés delante |
 | 📱 **Te sigue al móvil** | Una PWA por la VPN de casa: chat, cola, correo y estado. Sin build y en un solo fichero |
 | 🤖 **Delega código** | Encarga tareas a subagentes (Claude Code u opencode) y te cuenta por dónde van mientras trabajan |
 | 🔌 **Habla MCP** | Cliente propio para servidores locales y remotos: vault, navegador, Windows, correo triado, subagentes |
@@ -204,9 +204,20 @@ agente se ejecute:
 | `reversible` | Anotar en el vault, editar código | Se ejecuta y queda registrado |
 | `irreversible` | Teclear a ciegas, y **todo lo que no esté clasificado** | Se para y pide un sí |
 
+Y hay un cuarto, `critico` —borrar, tocar el registro, matar procesos—, que
+pregunta **siempre**, con modo confianza o sin él.
+
 El sí se da desde la web, desde el aviso de Telegram o **en voz alta durante la
 llamada**. El *modo confianza* baja lo irreversible a reversible mientras estás
-delante, y caduca solo.
+delante, y caduca solo: durante una llamada se renueva con tu voz, así que se
+apaga sola si te levantas.
+
+**Quién lo pide también cuenta.** Cada trabajo viaja con el perfil de quien
+habló —lo pone el reconocimiento de voz, que corre en tu ordenador—, y una
+orden de alguien que no eres tú se para aunque la confianza esté encendida. Un
+sí tuyo vale además para las repeticiones exactas de lo mismo durante diez
+minutos: dictar una dirección son seis órdenes idénticas, y preguntar seis
+veces enseña a decir que sí sin leer.
 
 ---
 

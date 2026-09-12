@@ -326,18 +326,28 @@ class Trabajador:
         # número siete se olvide de preguntar: el agente decide qué hace, no si
         # tiene permiso. Tras aprobar, el trabajo vuelve a la cola y pasa por
         # esta misma comprobación con la decisión ya puesta.
-        if not aprobado(trabajo) and politica.pide_confirmacion(nombre, trabajo.get("peticion")):
+        quien = trabajo.get("quien")
+        if aprobado(trabajo):
+            # Un sí que llega hasta aquí vale también para las repeticiones
+            # exactas de lo mismo durante unos minutos: dictar una dirección
+            # son seis `escribir_teclado` idénticos, y preguntar seis veces
+            # enseña a decir que sí sin leer. Ver MINUTOS_REPETICION.
+            politica.recordar_aprobacion(nombre, trabajo.get("peticion"), quien)
+        if not aprobado(trabajo) and politica.pide_confirmacion(
+            nombre, trabajo.get("peticion"), quien
+        ):
             esperando = await asyncio.to_thread(
                 almacen.pedir_confirmacion,
                 id_trabajo,
-                politica.resumir(nombre, trabajo.get("peticion")),
+                politica.resumir(nombre, trabajo.get("peticion"), quien),
                 json.dumps(trabajo.get("peticion") or {}, ensure_ascii=False),
             )
             self._bus.publicar("trabajo.espera_confirmacion", trabajo=esperando)
             logger.info(
-                "Trabajo %d parado por la política (%s): espera confirmación.",
+                "Trabajo %d parado por la política (%s, lo pide %s): espera confirmación.",
                 id_trabajo,
                 politica.nivel(nombre, trabajo.get("peticion")),
+                quien or "sin identificar",
             )
             return
 

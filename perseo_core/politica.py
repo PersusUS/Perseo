@@ -16,6 +16,13 @@ funciona hasta que se escribe el agente número siete y se olvida una de las tre
 Aquí está en un sitio, en forma de tabla, y **se aplica en el trabajador**, antes
 de que el agente llegue a ejecutarse.
 
+**Y desde el 2026-09-12, una dimensión más: quién lo pide.** Cada trabajo puede
+traer el perfil de la persona que habló —lo pone el reconocimiento de voz de la
+llamada— y una orden de alguien que no es el dueño se para aunque el modo
+confianza esté encendido. La confianza dice «hay alguien delante», no
+«cualquiera que hable manda»: sin esta regla, tener una visita en la sala
+convertía la llamada en un mando a distancia para cualquiera.
+
 Dos decisiones que conviene entender:
 
 1. **Lo que no está en la tabla es irreversible.** Un agente nuevo, o una acción
@@ -25,17 +32,26 @@ Dos decisiones que conviene entender:
 2. **El modo confianza baja el tercer nivel al segundo, y caduca solo.** Es para
    cuando estás delante del PC: dictar por voz sin que cada frase pida permiso.
    Que caduque no es un detalle — un interruptor que se queda encendido para
-   siempre es exactamente lo que esta política quiere evitar.
+   siempre es exactamente lo que esta política quiere evitar. Durante una
+   llamada, la cara lo renueva con la voz del dueño en ventanas cortas, así que
+   se apaga solo cuando el que habla deja de ser él.
+3. **Un sí vale para la repetición exacta de lo mismo durante unos minutos.**
+   Ver `MINUTOS_REPETICION`. No es una rendija: la petición tiene que ser
+   idéntica hasta el último parámetro, lo crítico nunca entra, y apagar la
+   confianza borra los síes guardados.
 
 
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+from . import identidad
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +128,20 @@ MINUTOS_CONFIANZA = 60
 #: Tope duro. Aunque se pidan mil minutos, no se conceden más que estos.
 MAX_MINUTOS_CONFIANZA = 480
 
+#: Cuánto vale un sí para las repeticiones EXACTAS de lo mismo. Dictar una
+#: dirección letra a letra son seis `escribir_teclado` idénticos en dos minutos,
+#: y preguntar seis veces por lo mismo no protege de nada: enseña a decir que sí
+#: sin leer, que es el peor sitio al que puede llegar una confirmación.
+#:
+#: Tres cosas la mantienen estrecha: solo cuenta si la petición es **idéntica**
+#: —mismo agente, misma acción, mismos parámetros—, nunca se aplica a lo
+#: crítico, y vive en memoria, así que reiniciar el núcleo la borra.
+MINUTOS_REPETICION = 10
+
+#: Huella de cada sí reciente y hasta cuándo vale. En memoria a propósito: ver
+#: arriba.
+_repeticiones: dict[str, datetime] = {}
+
 _fichero: Path | None = None
 
 #: Quien tenga niveles propios —hoy, los servidores MCP— registra aquí una
@@ -177,6 +207,10 @@ def activar_confianza(minutos: float = MINUTOS_CONFIANZA) -> datetime:
 
 
 def desactivar_confianza() -> None:
+    # Apagar la confianza es decir «vuelve a preguntármelo todo», así que los
+    # síes recientes se van con ella. Si no, quedaría una ventana de diez
+    # minutos en la que lo irreversible seguiría pasando solo.
+    olvidar_repeticiones()
     if _fichero is not None and _fichero.exists():
         _fichero.unlink()
         logger.info("Modo confianza apagado.")
@@ -211,28 +245,110 @@ def hay_confianza() -> bool:
 
 
 # --------------------------------------------------------------------------- #
+# «Igual que el anterior»
+# --------------------------------------------------------------------------- #
+
+
+def _huella(agente: str, peticion: dict[str, Any] | None) -> str:
+    """La misma orden dicha dos veces da la misma huella, y una parecida no.
+
+    `sort_keys` es lo que hace que dos diccionarios con las claves en otro orden
+    cuenten como lo mismo; cualquier diferencia en un parámetro —una letra del
+    texto que se teclea— da una huella distinta y vuelve a preguntar.
+    """
+    return agente + "|" + json.dumps(peticion or {}, sort_keys=True, ensure_ascii=False)
+
+
+def recordar_aprobacion(
+    agente: str, peticion: dict[str, Any] | None = None, quien: str | None = None
+) -> None:
+    """Apunta que esto acaba de aprobarse, para no preguntarlo otra vez enseguida.
+
+    Se llama desde el trabajador, en el mismo sitio donde se aplica la política:
+    un sí que no llegó a ejecutarse no vale, y tener las dos cosas en una sola
+    función es lo que evita que el día de mañana alguien añada un camino de
+    aprobación y se olvide de este.
+    """
+    if nivel(agente, peticion) != IRREVERSIBLE:
+        # Lo crítico no se acumula: cada vez es cada vez. Y lo libre o
+        # reversible no pregunta, así que no hay nada que recordar.
+        return
+    if quien is not None and not identidad.es_el_dueno(quien):
+        return
+    _repeticiones[_huella(agente, peticion)] = _ahora() + timedelta(minutes=MINUTOS_REPETICION)
+
+
+def hay_repeticion(agente: str, peticion: dict[str, Any] | None = None) -> bool:
+    """Si esto mismo se aprobó hace poco. Limpia lo caducado al pasar."""
+    huella = _huella(agente, peticion)
+    hasta = _repeticiones.get(huella)
+    if hasta is None:
+        return False
+    if hasta <= _ahora():
+        _repeticiones.pop(huella, None)
+        return False
+    return True
+
+
+def olvidar_repeticiones() -> None:
+    """Borra los síes recientes. Lo usa el apagado del modo confianza: quien lo
+    apaga está diciendo «vuelve a preguntármelo todo»."""
+    _repeticiones.clear()
+
+
+# --------------------------------------------------------------------------- #
 # La decisión
 # --------------------------------------------------------------------------- #
 
 
-def pide_confirmacion(agente: str, peticion: dict[str, Any] | None = None) -> bool:
-    """Si esta petición hay que parar y preguntar."""
+def pide_confirmacion(
+    agente: str, peticion: dict[str, Any] | None = None, quien: str | None = None
+) -> bool:
+    """Si esta petición hay que parar y preguntar.
+
+    `quien` es el perfil de la persona que la pidió, tal y como lo etiquetó el
+    reconocimiento de voz («Persus», «Javi», «Desconocido 3»), o `None` cuando
+    no se sabe. Es lo que separa una orden del dueño de una de una visita, y
+    llega hasta aquí desde la llamada por `almacen.encolar`.
+    """
     en_juego = nivel(agente, peticion)
+    if en_juego == LIBRE:
+        # Leer no cambia nada, tampoco pedido por una visita. Que se cuente o
+        # no delante de ella es harina de otro costal, y esa decisión es del
+        # modelo, con las reglas de trato que ya lleva en sus instrucciones.
+        return False
+    if quien is not None and not identidad.es_el_dueno(quien):
+        # Una visita no mueve las manos de esta casa. Ni con el modo confianza
+        # encendido: la confianza dice «hay alguien delante», no «cualquiera
+        # que hable manda». Es la otra mitad de la lección de N-3, que en la
+        # cabecera de `CRITICO` se cuenta desde el otro lado.
+        return True
     if en_juego == CRITICO:
         # Lo crítico pregunta siempre, con confianza o sin ella. Es la única
         # puerta que no se queda abierta durante una llamada.
         return True
     if en_juego != IRREVERSIBLE:
         return False
+    if hay_repeticion(agente, peticion):
+        # Esto mismo, palabra por palabra, se aprobó hace menos de
+        # MINUTOS_REPETICION. Ver la constante.
+        return False
     # El modo confianza baja lo irreversible a reversible mientras dura.
     return not hay_confianza()
 
 
-def resumir(agente: str, peticion: dict[str, Any] | None = None) -> str:
+def resumir(
+    agente: str, peticion: dict[str, Any] | None = None, quien: str | None = None
+) -> str:
     """La pregunta que se enseña. Corta: sale por Telegram, donde solo va el titular."""
     peticion = peticion or {}
     accion = str(peticion.get("accion", "")).strip()
     que = f"{agente} · {accion}" if accion else agente
+    if quien is not None and not identidad.es_el_dueno(quien):
+        # Quién lo pidió es LO que hay que decidir aquí, así que va en el
+        # titular y no en el detalle: una visita pidiendo teclear no es la
+        # misma pregunta que la de siempre.
+        return f"Lo pide {quien}, que no eres tú. ¿Lo autorizas? ({que})"
     if nivel(agente, peticion) == CRITICO:
         return f"¿Confirmas algo que no se puede deshacer? ({que})"
     return f"¿Confirmas una acción irreversible? ({que})"

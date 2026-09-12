@@ -57,6 +57,8 @@ texto y no un fichero compartido a mano.
 from __future__ import annotations
 
 import os
+import re
+import unicodedata
 
 
 def _ajuste(variable: str, por_defecto: str) -> str:
@@ -104,3 +106,69 @@ def con_identidad(instrucciones: str) -> str:
     respuesta.
     """
     return f"{NUCLEO}\n\n{instrucciones.strip()}\n"
+
+
+# --------------------------------------------------------------------------- #
+# Quién es el dueño, dicho en nombres de perfil
+# --------------------------------------------------------------------------- #
+#
+# El reconocimiento de personas etiqueta cada voz y cada cara con el nombre de
+# un perfil («Persus», «Javi», «Desconocido 3»). La cara de la llamada ya sabía
+# traducir eso a trato —`RealTime/src/lib/quien-hay.ts`—, pero esa decisión se
+# quedaba en el prompt: la política del núcleo no se enteraba de quién había
+# pedido un trabajo, así que una orden de una visita y una del señor Persus
+# valían exactamente lo mismo. Aquí está la misma regla, del lado que decide.
+
+
+#: El perfil biométrico que se considera el del dueño. Se cambia con
+#: `PERSEO_PERFIL_DUENO`; por defecto, el apodo con el que se le trata.
+PERFIL_DUENO = _ajuste("PERSEO_PERFIL_DUENO", "Persus")
+
+
+def _sin_tildes(texto: str) -> str:
+    """Minúsculas y sin tildes: comparar nombres, no bytes."""
+    descompuesto = unicodedata.normalize("NFD", texto.strip().lower())
+    return "".join(c for c in descompuesto if unicodedata.category(c) != "Mn")
+
+
+#: Nombres que se dan por suyos aunque el perfil se llame de otra forma. El
+#: reconocimiento aprende solo y el perfil puede acabar llamándose «Jesús»
+#: porque así lo dijo él al enrolarse; tratarle de visita por una letra sería
+#: peor que la suposición. Sale de `DUENO` y de `PERFIL_DUENO`, así que quien
+#: clone el repositorio no tiene que tocar ninguna lista.
+def _alias() -> frozenset[str]:
+    nombres = {_sin_tildes(PERFIL_DUENO), _sin_tildes(DUENO)}
+    primero = _sin_tildes(DUENO).split(" ")[0]
+    if primero:
+        nombres.add(primero)
+    # El trato sin artículo —«señor Persus»— también vale como alias: es lo que
+    # dice el propio prompt y lo que una persona escribiría a mano.
+    trato = re.sub(r"^(el|la|los|las)\s+", "", _sin_tildes(USUARIO))
+    if trato:
+        nombres.add(trato)
+    return frozenset(n for n in nombres if n)
+
+
+#: Una etiqueta que puso el reconocimiento porque aún no sabe el nombre.
+_PROVISIONAL = re.compile(r"^desconocido\s+\d+$", re.IGNORECASE)
+
+
+def es_provisional(nombre: str) -> bool:
+    return bool(_PROVISIONAL.match(nombre.strip()))
+
+
+def es_el_dueno(nombre: str | None) -> bool:
+    """Si este perfil es el del dueño.
+
+    `None` —nadie identificado— NO es él, pero tampoco es una visita: quien
+    llama decide qué hacer con eso. Hoy lo hace `politica.pide_confirmacion`,
+    que sin nombre se comporta como siempre: el panel y el chat escrito se usan
+    desde el propio ordenador, y exigir allí un reconocimiento que puede estar
+    apagado dejaría el sistema pidiendo permisos a nadie.
+    """
+    if not nombre:
+        return False
+    limpio = _sin_tildes(nombre)
+    if not limpio or es_provisional(nombre):
+        return False
+    return limpio in _alias()

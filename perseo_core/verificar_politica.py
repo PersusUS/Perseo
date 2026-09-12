@@ -9,6 +9,11 @@ Lo que hay que comprobar aquí no es que la tabla tenga las entradas que tiene
    quede esperando no puede haber hecho ya la mitad.
 3. Que el **modo confianza caduca**. Un interruptor que se queda encendido para
    siempre es exactamente lo que esta política existe para evitar.
+4. Que **una visita no manda**. Desde el 2026-09-12 cada trabajo puede traer el
+   perfil de quien habló, y lo que pida alguien que no es el dueño se para
+   aunque la confianza esté encendida. Sin esta comprobación, la regla vive solo
+   en una función y nadie se entera el día que deje de aplicarse en el camino
+   real —que es lo que pasó con la de N-3—.
 
     python perseo_core/verificar_politica.py
 """
@@ -164,6 +169,36 @@ def comprobar_de_punta_a_punta() -> None:
     )
     hecho = nucleo.esperar_estado(int(libre["id"]), ("hecho", "esperando", "fallido"), intentos=40)
     comprobar("Lo libre se ejecuta sin preguntar", hecho.get("estado") == "hecho", str(hecho.get("estado")))
+
+    # 4. Con la confianza encendida, lo irreversible del dueño pasa y lo de una
+    #    visita se para. Es la regla entera en dos peticiones.
+    nucleo.pedir("/confianza", token, "POST", {"minutos": 5})
+    _, de_una_visita = nucleo.pedir(
+        "/trabajos",
+        token,
+        "POST",
+        {
+            "agente": "pc",
+            "peticion": {"accion": "escribir_teclado", "parametro": "hola"},
+            "quien": "Una visita cualquiera",
+        },
+    )
+    id_visita = int(de_una_visita["id"])
+    parado = nucleo.esperar_estado(id_visita, ("esperando", "hecho", "fallido"), intentos=60)
+    comprobar(
+        "Con confianza, lo que pide una visita se para igual",
+        parado.get("estado") == "esperando",
+        str(parado.get("estado")),
+    )
+    comprobar(
+        "Y la pregunta dice quien lo pidio",
+        "Una visita cualquiera" in str((parado.get("confirmacion") or {}).get("resumen", "")),
+        str((parado.get("confirmacion") or {}).get("resumen")),
+    )
+    nucleo.pedir(f"/trabajos/{id_visita}/rechazar", token, "POST", {})
+    # Apagarla es `activo: false` (ver `_cambiar_confianza` en api.py). Sin esto
+    # la confianza encendida aqui se colaba en la comprobacion siguiente.
+    nucleo.pedir("/confianza", token, "POST", {"activo": False})
 
     # 4. El interruptor, por la API.
     codigo, sin_token = nucleo.pedir("/confianza", None)

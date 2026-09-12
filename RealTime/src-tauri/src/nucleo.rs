@@ -400,11 +400,17 @@ pub(crate) async fn pedir_json(
 ///
 /// El origen es `voz` porque esta cara es la de la llamada: asi se distingue en
 /// la cola de la web lo que pediste hablando de lo que escribiste.
+///
+/// `quien` es el perfil de la persona que acaba de hablar, si el reconocimiento
+/// de voz lo sabe. Viaja hasta la politica del nucleo, que con el separa una
+/// orden del dueno de una de una visita: el origen dice por que puerta entro el
+/// trabajo, no de quien es la voz.
 #[tauri::command]
 pub async fn ejecutar_herramienta(
     app: AppHandle,
     tool_name: String,
     argumentos: String,
+    quien: Option<String>,
 ) -> Result<String, String> {
     let args: Value =
         serde_json::from_str(&argumentos).map_err(|e| format!("Argumentos JSON invalidos: {e}"))?;
@@ -434,7 +440,12 @@ pub async fn ejecutar_herramienta(
         cliente
             .post(format!("{base}/trabajos"))
             .bearer_auth(&token)
-            .json(&json!({ "agente": agente, "peticion": peticion, "origen": "voz" })),
+            .json(&json!({
+                "agente": agente,
+                "peticion": peticion,
+                "origen": "voz",
+                "quien": quien,
+            })),
     )
     .await?;
 
