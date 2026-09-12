@@ -65,7 +65,6 @@ EXCEPCIONES_DE_TAMANO: dict[str, int] = {
     "perseo_core/agentes/chat.py": 1050,
     "RealTime/src/App.tsx": 1162,
     "RealTime/src/components/Habitos.tsx": 1056,
-    "perseo_core/servicios/mcp.py": 1054,
 }
 
 # Dónde se mide. La bitácora, el vault y lo que no escribimos se quedan fuera.

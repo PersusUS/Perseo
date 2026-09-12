@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core.infra import almacen  # noqa: E402
-from perseo_core.servicios import mcp  # noqa: E402
+from perseo_core.servicios import mcp, mcp_transportes  # noqa: E402
 from verificadores.arnes_pruebas import comprobar, resumir  # noqa: E402
 
 SERVIDOR = Path(__file__).resolve().parent.parent / "commands" / "correo_mcp.py"
@@ -158,7 +158,7 @@ async def guion() -> None:
         "env": {"PERSEO_DATOS": str(directorio)},
         "tope_segundos": 30.0,
     }
-    servidor = mcp.ServidorMcp("correo", mcp.definiciones["correo"])
+    servidor = mcp_transportes.ServidorMcp("correo", mcp.definiciones["correo"])
     await servidor.arrancar()
     try:
         nombres = sorted(h.get("name") for h in servidor.herramientas)
@@ -199,13 +199,13 @@ async def guion() -> None:
         **mcp.definiciones["correo"],
         "env": {"PERSEO_DATOS": str(Path(tempfile.gettempdir()) / "perseo_no_existe_nunca")},
     }
-    solitario = mcp.ServidorMcp("correo", mcp.definiciones["correo"])
+    solitario = mcp_transportes.ServidorMcp("correo", mcp.definiciones["correo"])
     await solitario.arrancar()
     try:
         try:
             respuesta = await solitario.llamar("correos_triados", {})
             texto = respuesta
-        except mcp.ErrorMcp as e:
+        except mcp_transportes.ErrorMcp as e:
             texto = str(e)
         comprobar(
             "Sin base de datos se admite el límite, no se inventa",

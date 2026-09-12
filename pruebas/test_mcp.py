@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from perseo_core.infra import politica
-from perseo_core.servicios import mcp
+from perseo_core.servicios import mcp, mcp_transportes, mcp_argumentos
 
 MENTIRA = Path(__file__).resolve().parent / "servidor_mcp_mentira.py"
 
@@ -71,16 +71,16 @@ def test_los_valores_por_defecto(tmp_path: Path) -> None:
     assert cargado["nivel"] == politica.IRREVERSIBLE
     assert cargado["herramientas"] == []
     assert cargado["env"] == {}
-    assert cargado["tope_segundos"] == mcp.TOPE_POR_DEFECTO
+    assert cargado["tope_segundos"] == mcp_transportes.TOPE_POR_DEFECTO
 
 
 # -- El cliente contra el servidor de mentira -------------------------------- #
 
 
-async def _servidor_vivo() -> tuple[mcp.ServidorMcp, dict]:
+async def _servidor_vivo() -> tuple[mcp_transportes.ServidorMcp, dict]:
     mcp.definiciones.clear()
     mcp.definiciones["mentira"] = definicion()
-    servidor = mcp.ServidorMcp("mentira", mcp.definiciones["mentira"])
+    servidor = mcp_transportes.ServidorMcp("mentira", mcp.definiciones["mentira"])
     await servidor.arrancar()
     return servidor, mcp.definiciones["mentira"]
 
@@ -112,7 +112,7 @@ def test_la_herramienta_desconocida_es_error_propio() -> None:
     async def guion() -> None:
         servidor, _ = await _servidor_vivo()
         try:
-            with pytest.raises(mcp.ErrorMcp):
+            with pytest.raises(mcp_transportes.ErrorMcp):
                 await servidor.llamar("no_existo", {})
         finally:
             await servidor.detener()
@@ -127,10 +127,10 @@ def test_la_lista_de_permitidas_manda() -> None:
     async def guion() -> None:
         mcp.definiciones.clear()
         mcp.definiciones["mentira"] = definicion(herramientas=["tarda"])
-        servidor = mcp.ServidorMcp("mentira", mcp.definiciones["mentira"])
+        servidor = mcp_transportes.ServidorMcp("mentira", mcp.definiciones["mentira"])
         await servidor.arrancar()
         try:
-            with pytest.raises(mcp.ErrorMcp):
+            with pytest.raises(mcp_transportes.ErrorMcp):
                 await servidor.llamar("eco", {})
         finally:
             await servidor.detener()
@@ -166,7 +166,7 @@ def test_lo_que_falta_se_dice_con_la_firma_y_sin_viajar() -> None:
     async def guion() -> None:
         servidor, _ = await _servidor_vivo()
         try:
-            with pytest.raises(mcp.ErrorMcp) as fallo:
+            with pytest.raises(mcp_transportes.ErrorMcp) as fallo:
                 await servidor.llamar("estricto", {"command": "echo"})
         finally:
             await servidor.detener()
@@ -185,7 +185,7 @@ def test_el_rechazo_del_servidor_trae_la_firma_pegada() -> None:
         # Se salta la comprobación de casa para llegar al rechazo del servidor.
         servidor.herramientas = [{"name": "estricto", "description": "", "inputSchema": {}}]
         try:
-            with pytest.raises(mcp.ErrorMcp) as fallo:
+            with pytest.raises(mcp_transportes.ErrorMcp) as fallo:
                 await servidor.llamar("estricto", {})
         finally:
             await servidor.detener()
@@ -202,7 +202,7 @@ def test_el_fichero_pone_lo_que_el_modelo_no_sabe() -> None:
         mcp.definiciones["mentira"] = definicion(
             argumentos_por_defecto={"estricto": {"path": "C:/Users/ejemplo/Documents/vault"}}
         )
-        servidor = mcp.ServidorMcp("mentira", mcp.definiciones["mentira"])
+        servidor = mcp_transportes.ServidorMcp("mentira", mcp.definiciones["mentira"])
         await servidor.arrancar()
         try:
             respuesta = await servidor.llamar("estricto", {"command": "buscar"})
@@ -215,7 +215,7 @@ def test_el_fichero_pone_lo_que_el_modelo_no_sabe() -> None:
 
 def test_el_catalogo_ensena_los_parametros() -> None:
     """Sin la firma, el modelo adivina los nombres — y adivina en español."""
-    firma = mcp._firma(
+    firma = mcp_argumentos._firma(
         {
             "name": "estricto",
             "description": "Prueba.",
@@ -235,10 +235,10 @@ def test_un_servidor_que_no_contesta_muere_a_plazo(tmp_path: Path) -> None:
     async def guion() -> None:
         mcp.definiciones.clear()
         mcp.definiciones["mentira"] = definicion(tope_segundos=5)
-        servidor = mcp.ServidorMcp("mentira", mcp.definiciones["mentira"])
+        servidor = mcp_transportes.ServidorMcp("mentira", mcp.definiciones["mentira"])
         await servidor.arrancar()
         try:
-            with pytest.raises(mcp.ErrorMcp):
+            with pytest.raises(mcp_transportes.ErrorMcp):
                 await servidor.llamar("tarda", {})
             assert not servidor.vivo
         finally:
@@ -382,7 +382,7 @@ def test_los_argumentos_en_texto_tambien_valen(cfg) -> None:
 
 def test_llamar_sin_servidor_es_error_claro(cfg) -> None:
     _agente_con_servidor(cfg)
-    with pytest.raises(mcp.ErrorMcp):
+    with pytest.raises(mcp_transportes.ErrorMcp):
         asyncio.run(
             mcp._mcp({"peticion": {"accion": "llamar", "servidor": "fantasma", "herramienta": "x"}})
         )
@@ -413,14 +413,14 @@ def test_un_servidor_con_url_vale(datos: Path) -> None:
 
 def test_un_remoto_abre_el_cliente_de_http(datos: Path) -> None:
     servidores = _escribir_mcp(datos, {"lejos": {"url": "https://mcp.ejemplo.com/mcp"}})
-    servidor = mcp.abrir_servidor("lejos", servidores["lejos"])
-    assert isinstance(servidor, mcp.ServidorMcpRemoto)
+    servidor = mcp_transportes.abrir_servidor("lejos", servidores["lejos"])
+    assert isinstance(servidor, mcp_transportes.ServidorMcpRemoto)
 
 
 def test_lo_de_siempre_sigue_siendo_un_proceso_hijo(datos: Path) -> None:
     servidores = _escribir_mcp(datos, {"cerca": {"comando": ["python", "servidor.py"]}})
-    servidor = mcp.abrir_servidor("cerca", servidores["cerca"])
-    assert isinstance(servidor, mcp.ServidorMcp)
+    servidor = mcp_transportes.abrir_servidor("cerca", servidores["cerca"])
+    assert isinstance(servidor, mcp_transportes.ServidorMcp)
 
 
 @pytest.mark.parametrize(
@@ -436,7 +436,7 @@ def test_lo_de_siempre_sigue_siendo_un_proceso_hijo(datos: Path) -> None:
 )
 def test_en_claro_solo_contra_casa(url: str, vale: bool) -> None:
     """Por ahí viajan argumentos que Perseo compone leyendo correos y pantallas."""
-    assert mcp._url_aceptable(url) is vale
+    assert mcp_transportes._url_aceptable(url) is vale
 
 
 def test_un_remoto_en_claro_y_lejos_se_descarta(datos: Path) -> None:
@@ -454,4 +454,4 @@ def test_las_cabeceras_del_testigo_se_conservan(datos: Path) -> None:
 
 def test_un_remoto_sin_haber_saludado_no_esta_vivo(datos: Path) -> None:
     servidores = _escribir_mcp(datos, {"lejos": {"url": "https://mcp.ejemplo.com/mcp"}})
-    assert mcp.abrir_servidor("lejos", servidores["lejos"]).vivo is False
+    assert mcp_transportes.abrir_servidor("lejos", servidores["lejos"]).vivo is False
