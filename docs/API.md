@@ -90,6 +90,7 @@ iconos. `/salud` no devuelve nada sensible.
 | `GET /proyectos` | Los otros programas que se pueden abrir |
 | `POST /proyectos/{id}/abrir` | Abre uno. Por aquí viaja **cuál**, nunca qué ejecutar |
 | `GET /grafo` · `GET /grafo/datos` | El grafo del vault |
+| `POST /grafo/abrir` | Abre una nota en Obsidian. Por aquí viaja **cuál**, y el id se busca entre los ficheros reales del vault |
 
 ### Biometría
 

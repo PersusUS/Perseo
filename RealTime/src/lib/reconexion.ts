@@ -37,7 +37,7 @@ export interface CierreConexion {
   motivo?: string;
 }
 
-export interface PlanReintento {
+interface PlanReintento {
   esperaMs: number;
   /** `limite` cuando el servidor está diciendo que hemos pedido demasiado. */
   causa: 'limite' | 'normal';

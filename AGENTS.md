@@ -61,18 +61,23 @@ Rutas de la maqueta: `/` el panel, `#tareas` el tablero, `#habitos` y
 ## Antes de dar algo por bueno
 
 ```bash
-python -m pytest                        # 724 pruebas
-python -m ruff check .
-cd RealTime && npx tsc --noEmit && npm test   # 138 pruebas
-cd RealTime/src-tauri && cargo check --locked
+python commands/perseo.py comprobar
 ```
 
-Las cuatro corren también en CI, en Linux y en Windows.
+Eso es pytest, ruff, `tsc`, las pruebas del frontend y `cargo check`, en orden
+de coste: lo que tarda segundos primero. Las cinco corren también en CI, en
+Linux y en Windows. `--rapido` se salta Rust, que es la que tarda.
+
+Está escrito en **un solo sitio** a propósito. Antes eran cuatro bloques
+copiados —aquí, en el README y en el fichero del CI— y los recuentos de pruebas
+que llevaban dentro ya no coincidían en ninguno. Los números que cita la
+documentación salen ahora de `perseo cuentas`, y `perseo cuentas --arreglar` los
+reescribe; hay una prueba que compara.
 
 Si tocaste el comportamiento de verdad —no solo el aspecto— pasa además el
-verificador que le toque: son diecisiete, están en `verificadores/verificar_*.py`
-y ninguno toca el estado real (se montan un directorio temporal y servidores de
-mentira).
+verificador que le toque. Están en `verificadores/`, menos el de la palabra
+clave, que vive en `commands/` porque necesita micrófono. Ninguno toca el estado
+real: se montan un directorio temporal y servidores de mentira.
 
 ## Trampas que cuestan una hora
 

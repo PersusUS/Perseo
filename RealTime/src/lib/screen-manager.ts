@@ -15,7 +15,7 @@ import { geminiClient } from './gemini-live';
 import { defaultConfig } from './config';
 import { apuntar } from './diagnostico';
 
-export class ScreenManager {
+class ScreenManager {
   private intervalId: number | null = null;
   private isCapturing = false;
   private isRunning = false;

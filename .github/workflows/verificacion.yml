@@ -43,10 +43,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r perseo_core/requirements.txt
-          pip install pytest
+          pip install pytest ruff vulture
 
       - name: Pruebas
         run: python -m pytest
+
+      - name: Estilo
+        run: python -m ruff check .
+
+      # Lo que no llama nadie. Las excepciones, con su porque, en
+      # verificadores/vulture_permitidos.py -- y una excepcion sin porque no vale.
+      - name: Codigo muerto
+        run: >
+          python -m vulture perseo_core commands verificadores pruebas
+          verificadores/vulture_permitidos.py --min-confidence 60
 
   tipos:
     name: Tipos y build del frontend
@@ -71,6 +81,13 @@ jobs:
       - name: Pruebas del frontend
         working-directory: RealTime
         run: npm test
+
+      # El equivalente de vulture para la interfaz: ficheros, exportaciones y
+      # dependencias que ya no usa nadie. La configuracion, comentada, en
+      # RealTime/knip.jsonc.
+      - name: Codigo muerto
+        working-directory: RealTime
+        run: npm run muertos
 
       - name: Build
         working-directory: RealTime

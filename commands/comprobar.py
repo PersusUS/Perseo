@@ -49,11 +49,30 @@ def _pasos(rapido: bool) -> list[tuple[str, list[str], Path]]:
     pasos: list[tuple[str, list[str], Path]] = [
         ("pruebas del núcleo", [sys.executable, "-m", "pytest"], RAIZ),
         ("estilo", [sys.executable, "-m", "ruff", "check", "."], RAIZ),
+        # Lo que no llama nadie. La lista de excepciones, con el porqué de cada
+        # una, está en `verificadores/vulture_permitidos.py`.
+        (
+            "código muerto del núcleo",
+            [
+                sys.executable,
+                "-m",
+                "vulture",
+                "perseo_core",
+                "commands",
+                "verificadores",
+                "pruebas",
+                "verificadores/vulture_permitidos.py",
+                "--min-confidence",
+                "60",
+            ],
+            RAIZ,
+        ),
     ]
     if npx:
         pasos.append(("tipos del frontend", [npx, "tsc", "--noEmit"], RAIZ / "RealTime"))
     if npm:
         pasos.append(("pruebas del frontend", [npm, "test"], RAIZ / "RealTime"))
+        pasos.append(("código muerto de la interfaz", [npm, "run", "muertos"], RAIZ / "RealTime"))
     if cargo and not rapido:
         pasos.append(
             ("rust", [cargo, "check", "--locked"], RAIZ / "RealTime" / "src-tauri")
@@ -93,18 +112,28 @@ def _pruebas_de_python() -> int:
     Se lo pregunta a pytest en vez de contar `def test_` a mano porque una
     parametrizada son varias pruebas, y ese es el número que sale en el README.
     """
+    # Sin `-q` aquí: `pytest.ini` ya lo pone, y un segundo `-q` cambia el formato
+    # del resumen a una lista por fichero sin total. Costó un «0 pruebas».
     salida = subprocess.run(
-        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider"],
+        [sys.executable, "-m", "pytest", "--collect-only", "-p", "no:cacheprovider"],
         cwd=RAIZ,
         capture_output=True,
         text=True,
     )
+    # Un fichero que no importa se recoge como error y pytest **sigue contando**
+    # el resto: el número saldría bajo y parecería que faltan pruebas. Pasó al
+    # escribir esto mismo, y el README se quedó con una cifra de menos.
+    if salida.returncode != 0:
+        raise RuntimeError(
+            "pytest no pudo recoger las pruebas; arregla eso antes de contar:\n"
+            + salida.stdout[-1500:]
+        )
     for linea in reversed(salida.stdout.splitlines()):
         # La última línea útil es «742 tests collected in 0.55s».
         trozos = linea.split()
         if len(trozos) >= 2 and trozos[1].startswith("test") and trozos[0].isdigit():
             return int(trozos[0])
-    return 0
+    raise RuntimeError("pytest no dijo cuántas pruebas recoge:\n" + salida.stdout[-800:])
 
 
 def _pruebas_del_frontend() -> int:
@@ -126,10 +155,15 @@ def _pruebas_del_frontend() -> int:
 
 
 def _verificadores() -> int:
-    carpeta = RAIZ / "verificadores"
-    if carpeta.exists():
-        return len(list(carpeta.glob("verificar_*.py")))
-    return len(list((RAIZ / "perseo_core").glob("verificar_*.py")))
+    """Cuántos hay, los dieciséis de `verificadores/` y el que vive en `commands/`.
+
+    El de la palabra clave está allí y no aquí porque necesita la voz de Windows
+    y un modelo de audio: no lo puede correr el CI, y arrastrarlo a la carpeta de
+    los que sí corren haría pensar que se pasa con los demás.
+    """
+    return len(list((RAIZ / "verificadores").glob("verificar_*.py"))) + len(
+        list((RAIZ / "commands").glob("verificar_*.py"))
+    )
 
 
 def cuentas() -> dict[str, int]:
@@ -149,13 +183,91 @@ def cuentas() -> dict[str, int]:
     }
 
 
+#: Dónde está escrito a mano cada recuento, y con qué medida tiene que cuadrar.
+#: El patrón lleva **un solo grupo**: el número. Con eso se hacen las dos cosas
+#: —comprobar que coincide y reescribirlo— sin tener la frase escrita dos veces.
+#:
+#: La forma exacta de cada frase va aquí a propósito. Si alguien la reescribe, el
+#: patrón deja de encontrarla y `test_documentacion.py` falla diciéndolo, en vez
+#: de dejar de vigilar en silencio, que es como envejecen estas cosas.
+CITAS: tuple[tuple[str, str, str], ...] = (
+    ("README.md", r"!\[(\d+) pruebas\]", "pruebas_total"),
+    ("README.md", r"badge/pruebas-(\d+)-black", "pruebas_total"),
+    ("README.md", r"Dicen \*qué\* se ha roto: \*\*(\d+)\*\* en total", "pruebas_total"),
+    ("README.md", r"python -m pytest\s+# (\d+), el núcleo", "pruebas_python"),
+    ("README.md", r"npm test\s+# (\d+), la interfaz", "pruebas_frontend"),
+    ("README.md", r"líneas, (\d+) pruebas", "pruebas_total"),
+    ("README.md", r"pruebas y (\d+) verificadores", "verificadores"),
+    ("README.en.md", r"!\[(\d+) tests\]", "pruebas_total"),
+    ("README.en.md", r"badge/tests-(\d+)-black", "pruebas_total"),
+    ("README.en.md", r"you \*what\* broke: \*\*(\d+)\*\* in total", "pruebas_total"),
+    ("README.en.md", r"python -m pytest\s+# (\d+), core", "pruebas_python"),
+    ("README.en.md", r"npm test\s+# (\d+), the interface", "pruebas_frontend"),
+    ("README.en.md", r"lines, (\d+) tests", "pruebas_total"),
+    ("README.en.md", r"tests and (\d+) verifiers", "verificadores"),
+)
+
+
+def revisar_citas(medidas: dict[str, int] | None = None) -> list[str]:
+    """Qué cifras escritas a mano no cuadran con la realidad. Vacío es bueno."""
+    import re
+
+    medidas = medidas or cuentas()
+    errores: list[str] = []
+    for fichero, patron, clave in CITAS:
+        texto = (RAIZ / fichero).read_text(encoding="utf-8")
+        encontrado = re.search(patron, texto)
+        if encontrado is None:
+            errores.append(f"{fichero}: ya no está la frase que dice «{clave}» ({patron})")
+        elif int(encontrado.group(1)) != medidas[clave]:
+            errores.append(
+                f"{fichero}: dice {encontrado.group(1)} y son {medidas[clave]} ({clave})"
+            )
+    return errores
+
+
+def arreglar_citas() -> list[str]:
+    """Reescribe las cifras con las medidas. Es el arreglo de `revisar_citas`."""
+    import re
+
+    medidas = cuentas()
+    cambios: list[str] = []
+    for fichero, patron, clave in CITAS:
+        ruta = RAIZ / fichero
+        texto = ruta.read_text(encoding="utf-8")
+        valor = str(medidas[clave])
+
+        def poner(encontrado: "re.Match[str]") -> str:
+            return encontrado.group(0).replace(encontrado.group(1), valor, 1)
+
+        nuevo, veces = re.subn(patron, poner, texto)
+        if not veces:
+            cambios.append(f"{fichero}: no encuentro la frase de «{clave}»; míralo a mano")
+        elif nuevo != texto:
+            ruta.write_text(nuevo, encoding="utf-8")
+            cambios.append(f"{fichero}: {clave} -> {valor}")
+    return cambios
+
+
 def imprimir_cuentas(argumentos: list[str] | None = None) -> int:
+    argumentos = argumentos or []
+    if "--arreglar" in argumentos:
+        cambios = arreglar_citas()
+        print("\n".join(cambios) if cambios else "La documentación ya dice lo que hay.")
+        return 0
+
     numeros = cuentas()
-    if argumentos and "--json" in argumentos:
+    if "--json" in argumentos:
         print(json.dumps(numeros, indent=2))
         return 0
     for clave, valor in numeros.items():
         print(f"{clave:20} {valor}")
+    pendientes = revisar_citas(numeros)
+    if pendientes:
+        print("\nLa documentación no dice esto:")
+        for linea in pendientes:
+            print("  " + linea)
+        print("\n  python commands/perseo.py cuentas --arreglar")
     return 0
 
 

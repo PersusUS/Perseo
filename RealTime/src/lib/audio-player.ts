@@ -21,7 +21,7 @@
 
 import { decodePCM, mergeChunks } from './audio-pcm';
 import { apuntar } from './diagnostico';
-export class AudioPlayer {
+class AudioPlayer {
   private ctx: AudioContext | null = null;
   private nextTime = 0;
   private activeNodes: AudioBufferSourceNode[] = [];

@@ -173,7 +173,7 @@ export function racha(
 
 /** Una foto de un hábito en un mes, ya masticada: sin porcentajes que calcular
  *  ni claves que componer. La usan el resumen hablado y el espejo del núcleo. */
-export type FotoHabito = {
+type FotoHabito = {
   nombre: string;
   hechos: number;
   de: number;
@@ -182,7 +182,7 @@ export type FotoHabito = {
   hoy: boolean | null;
 };
 
-export type Foto = {
+type Foto = {
   fecha: string;
   mes: string;
   hechos: number;

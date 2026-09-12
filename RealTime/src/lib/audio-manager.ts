@@ -1,6 +1,6 @@
 import { geminiClient } from './gemini-live';
 
-export class AudioManager {
+class AudioManager {
   private captureContext: AudioContext | null = null;
   private workletNode: AudioWorkletNode | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;

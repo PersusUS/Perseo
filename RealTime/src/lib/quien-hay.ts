@@ -27,7 +27,7 @@ export const PERFIL_PERSUS_POR_DEFECTO = 'Persus';
  * Cambiar esta constante cambia la llamada entera. El prompt largo de la voz
  * es aparte y se edita en Ajustes (`systemPrompt`).
  */
-export const TRATO_DUENO = 'el señor Persus';
+const TRATO_DUENO = 'el señor Persus';
 
 /**
  * Nombres que se dan por suyos aunque el ajuste apunte a otro perfil. El

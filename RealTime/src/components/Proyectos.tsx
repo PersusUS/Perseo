@@ -33,7 +33,7 @@ import { invoke } from '@tauri-apps/api/core';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { defaultConfig, guardarAjuste, type AspectoLive } from '../lib/config';
 
-export type Proyecto = {
+type Proyecto = {
   id: string;
   nombre: string;
   modo: string;

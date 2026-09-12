@@ -310,7 +310,7 @@ export function diasDesde(iso: string, ahora: Date = new Date()): number {
 
 /** Una nota ya masticada: sin fechas ISO que interpretar. La usan el resumen
  *  hablado y el espejo del núcleo, igual que `FotoHabito` en los hábitos. */
-export type FotoTarea = {
+type FotoTarea = {
   titulo: string;
   detalle: string;
   columna: Columna;
@@ -318,7 +318,7 @@ export type FotoTarea = {
   dias: number;
 };
 
-export type Foto = {
+type Foto = {
   fecha: string;
   sinHacer: number;
   enProceso: number;

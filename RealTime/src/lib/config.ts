@@ -18,7 +18,7 @@ export type AspectoLive = 'mira' | 'mando' | 'cartel';
  * en «mira» estorba en «mando», donde la columna izquierda ya tiene
  * instrumentos. Se mueve arrastrando la cabecera del riel.
  */
-export type PosicionRiel = Record<AspectoLive, { x: number; y: number }>;
+type PosicionRiel = Record<AspectoLive, { x: number; y: number }>;
 
 /**
  * Con qué aire se dibuja el seguimiento de hábitos.
@@ -68,7 +68,7 @@ export const SILENCIO_MIN_MS = 300;
 export const SILENCIO_MAX_MS = 1200;
 const SILENCIO_POR_DEFECTO_MS = 600;
 
-export interface PerseoConfig {
+interface PerseoConfig {
   geminiApiKey: string;
   voiceName: string;
   cameraFps: number;

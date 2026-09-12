@@ -131,7 +131,7 @@ const PLANIFICACION: Record<string, FunctionResponseScheduling> = {
   mover_tarea: FunctionResponseScheduling.INTERRUPT,
 };
 
-export class GeminiLiveClient {
+class GeminiLiveClient {
   private ai: GoogleGenAI | null = null;
   private session: any = null;
   /** Fragmento de transcripción. `final` cierra el turno para que el

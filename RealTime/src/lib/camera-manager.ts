@@ -1,7 +1,7 @@
 import { geminiClient } from './gemini-live';
 import { defaultConfig } from './config';
 
-export class CameraManager {
+class CameraManager {
   private stream: MediaStream | null = null;
   private videoElement: HTMLVideoElement | null = null;
   private canvasElement: HTMLCanvasElement | null = null;

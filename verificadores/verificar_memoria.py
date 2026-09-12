@@ -95,7 +95,7 @@ def comprobar_en_proceso(raiz: Path) -> None:
         # La segunda cambia con el sistema: en Linux `..\..\x` no sube ningun
         # directorio, es un nombre de fichero con barras invertidas, y la prueba
         # pasaria por el motivo equivocado.
-        subir_dos = "..\..\secreto.md" if os.name == "nt" else "../../secreto.md"
+        subir_dos = r"..\..\secreto.md" if os.name == "nt" else "../../secreto.md"
         for intento in ("../secreto.md", subir_dos, "Notas/../../fuera.md"):
             try:
                 await vault.leer(intento)
@@ -343,7 +343,7 @@ def comprobar_por_el_plugin() -> None:
         # 6. Y lo que no puede pasar: una ruta con `..` no llega a la red. Sin
         #    disco que resolver, esta comprobacion es la unica que hay.
         antes = len(plugin.peticiones)
-        subir_dos = "..\..\secreto.md" if os.name == "nt" else "../../secreto.md"
+        subir_dos = r"..\..\secreto.md" if os.name == "nt" else "../../secreto.md"
         for intento in ("../secreto.md", subir_dos, "Notas/../../fuera.md"):
             try:
                 await vault.leer(intento)
