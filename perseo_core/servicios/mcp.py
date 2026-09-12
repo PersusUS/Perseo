@@ -40,8 +40,9 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from ..infra import almacen, politica
+from ..infra import politica
 from ..infra.router import registrar
+from ..infra.configuracion import Configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -814,7 +815,7 @@ definiciones: dict[str, dict[str, Any]] = {}
 _activos: dict[str, ServidorMcp] = {}
 
 
-async def iniciar(cfg: almacen.Configuracion) -> None:
+async def iniciar(cfg: Configuracion) -> None:
     """Carga la configuración y registra el nivel de cada servidor en la política.
 
     No arranca ningún proceso aquí: los servidores se lanzan la primera vez que

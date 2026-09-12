@@ -30,6 +30,7 @@ import aiohttp
 
 from . import almacen, identidad, politica
 from .bus import Bus
+from ..infra.configuracion import Configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +175,7 @@ class Ruta:
 class Router:
     """Decide el destino de cada petición usando el modelo local."""
 
-    def __init__(self, cfg: almacen.Configuracion, agente_por_defecto: str = "eco") -> None:
+    def __init__(self, cfg: Configuracion, agente_por_defecto: str = "eco") -> None:
         self._cfg = cfg
         self._agente_por_defecto = agente_por_defecto
         self._sesion: aiohttp.ClientSession | None = None

@@ -49,6 +49,7 @@ from ..infra import almacen, politica
 from ..servicios import triaje
 from ..infra.router import REGISTRO, Router
 from ..infra.disparadores import REGISTRO as DISPARADORES
+from ..infra.configuracion import Configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +149,7 @@ async def _sin_caerse(id: str, nombre: str, hacer: Callable[[], Awaitable[Pieza]
 # --------------------------------------------------------------------------- #
 
 
-async def _ollama(cfg: almacen.Configuracion, http: aiohttp.ClientSession) -> Pieza:
+async def _ollama(cfg: Configuracion, http: aiohttp.ClientSession) -> Pieza:
     """El modelo de casa. Es el que sostiene el triaje diario (§5 del handoff)."""
     try:
         async with http.get(
@@ -191,7 +192,7 @@ async def _ollama(cfg: almacen.Configuracion, http: aiohttp.ClientSession) -> Pi
     )
 
 
-def _suplente(cfg: almacen.Configuracion) -> Pieza:
+def _suplente(cfg: Configuracion) -> Pieza:
     """El de fuera, que solo entra si el de casa no está."""
     if not cfg.modelo_suplente:
         return Pieza(
@@ -223,7 +224,7 @@ def _suplente(cfg: almacen.Configuracion) -> Pieza:
     )
 
 
-async def _vault(cfg: almacen.Configuracion) -> Pieza:
+async def _vault(cfg: Configuracion) -> Pieza:
     """La memoria. Dos respaldos, y solo uno depende de que algo esté abierto."""
     from ..agentes import memoria
 
@@ -264,7 +265,7 @@ async def _vault(cfg: almacen.Configuracion) -> Pieza:
     return Pieza("vault", "Memoria", OK, f"Plugin de Obsidian en {cfg.vault_rest_url}.")
 
 
-async def _google(cfg: almacen.Configuracion) -> Pieza:
+async def _google(cfg: Configuracion) -> Pieza:
     """Gmail y Calendar. Se sondea pidiendo un testigo, que es lo que caduca."""
     from ..servicios import google_api
 
@@ -297,7 +298,7 @@ async def _google(cfg: almacen.Configuracion) -> Pieza:
     return Pieza("google", "Google", OK, f"Credenciales buenas · {' y '.join(pedidos)}.")
 
 
-def _telegram(cfg: almacen.Configuracion) -> Pieza:
+def _telegram(cfg: Configuracion) -> Pieza:
     if not cfg.telegram_configurado:
         return Pieza(
             "telegram",
@@ -320,7 +321,7 @@ def _telegram(cfg: almacen.Configuracion) -> Pieza:
     return Pieza("telegram", "Telegram", OK, f"Avisos al móvil desde {cfg.url_base}. Solo avisa: la decisión se da por voz o en las pantallas.")
 
 
-def _mcp(cfg: almacen.Configuracion) -> Pieza:
+def _mcp(cfg: Configuracion) -> Pieza:
     from ..servicios import mcp as modulo_mcp
 
     if not modulo_mcp.definiciones:
@@ -329,7 +330,7 @@ def _mcp(cfg: almacen.Configuracion) -> Pieza:
     return Pieza("mcp", "MCP", OK, f"{len(modulo_mcp.definiciones)} servidor(es): {nombres}.")
 
 
-def _correo(cfg: almacen.Configuracion) -> Pieza:
+def _correo(cfg: Configuracion) -> Pieza:
     if cfg.correo_buzon == "gmail":
         return Pieza("correo", "Correo", OK, f"Gmail, cada {cfg.intervalos.get('correo', 300):.0f} s.")
     if cfg.correo_buzon == "falso":
@@ -337,7 +338,7 @@ def _correo(cfg: almacen.Configuracion) -> Pieza:
     return Pieza("correo", "Correo", APAGADO, "Sin buzón.", "PERSEO_CORREO=gmail")
 
 
-def _agenda(cfg: almacen.Configuracion) -> Pieza:
+def _agenda(cfg: Configuracion) -> Pieza:
     if cfg.agenda_origen == "google":
         return Pieza(
             "agenda",
@@ -350,7 +351,7 @@ def _agenda(cfg: almacen.Configuracion) -> Pieza:
     return Pieza("agenda", "Agenda", APAGADO, "Sin calendario.", "PERSEO_AGENDA=google")
 
 
-def _dev(cfg: almacen.Configuracion) -> Pieza:
+def _dev(cfg: Configuracion) -> Pieza:
     if cfg.dev_motor == "falso":
         return Pieza(
             "dev",
@@ -362,13 +363,13 @@ def _dev(cfg: almacen.Configuracion) -> Pieza:
     return Pieza("dev", "Encargos de código", OK, f"{cfg.dev_ejecutable} sobre {cfg.dev_raiz}")
 
 
-def _web(cfg: almacen.Configuracion) -> Pieza:
+def _web(cfg: Configuracion) -> Pieza:
     if cfg.web_navegador == "falso":
         return Pieza("web", "Navegador", AVISO, "Navegador simulado: no se lee ninguna página.")
     return Pieza("web", "Navegador", OK, "HTTP de verdad, sin alcanzar la red de casa.")
 
 
-def _chat(cfg: almacen.Configuracion) -> Pieza:
+def _chat(cfg: Configuracion) -> Pieza:
     """El chat escrito vive de la misma clave que el suplente: sin ella no
     hay cabeza para los turnos, y es un «apagado» y no un rojo a propósito."""
     from ..agentes import chat as modulo_chat
@@ -417,7 +418,7 @@ def tope_diario(modelo: str) -> int | None:
     return None
 
 
-def _cuota(cfg: almacen.Configuracion, usos: dict[str, int]) -> dict[str, Any]:
+def _cuota(cfg: Configuracion, usos: dict[str, int]) -> dict[str, Any]:
     """Lo gastado hoy, por modelo. Cuenta por debajo, y lo dice."""
     modelos = sorted(set(usos) | ({cfg.modelo_suplente} if cfg.modelo_suplente else set()))
     return {
@@ -572,7 +573,7 @@ def olvidar_historial() -> None:
 # --------------------------------------------------------------------------- #
 
 
-async def presencia(cfg: almacen.Configuracion) -> dict[str, Any]:
+async def presencia(cfg: Configuracion) -> dict[str, Any]:
     """Qué hay delante ahora mismo: qué se está haciendo, qué correo espera y
     qué toca en la agenda.
 
@@ -639,7 +640,7 @@ async def presencia(cfg: almacen.Configuracion) -> dict[str, Any]:
 NOMBRE_VERSION = "version.json"
 
 
-def version_construida(cfg: almacen.Configuracion) -> dict[str, Any]:
+def version_construida(cfg: Configuracion) -> dict[str, Any]:
     """La marca de la última construcción, o vacío si nunca se construyó.
 
     No es un dato crítico: si el fichero no está o está roto, se contesta con un
@@ -654,7 +655,7 @@ def version_construida(cfg: almacen.Configuracion) -> dict[str, Any]:
     return datos if isinstance(datos, dict) else {}
 
 
-async def reunir(cfg: almacen.Configuracion, router: Router) -> dict[str, Any]:
+async def reunir(cfg: Configuracion, router: Router) -> dict[str, Any]:
     """Todo lo que pinta la pestaña de Estado, en una sola respuesta."""
     async with aiohttp.ClientSession() as http:
         piezas = await asyncio.gather(

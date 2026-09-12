@@ -20,7 +20,7 @@ sys.path.insert(0, str(RAIZ / "commands"))
 import configurar_arranque  # noqa: E402
 import vigilante  # noqa: E402
 
-from perseo_core.infra import almacen  # noqa: E402
+from perseo_core.infra.configuracion import ajustes_guardados, cargar_configuracion  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -29,52 +29,52 @@ from perseo_core.infra import almacen  # noqa: E402
 
 
 def test_sin_fichero_no_hay_ajustes(datos: Path) -> None:
-    assert almacen.ajustes_guardados(datos) == {}
+    assert ajustes_guardados(datos) == {}
 
 
 def test_el_fichero_da_valores_por_defecto(datos: Path) -> None:
     (datos / "entorno.json").write_text(json.dumps({"PERSEO_CORREO": "gmail"}), encoding="utf-8")
-    assert almacen.cargar_configuracion().correo_buzon == "gmail"
+    assert cargar_configuracion().correo_buzon == "gmail"
 
 
 def test_el_entorno_manda_sobre_el_fichero(datos: Path, monkeypatch) -> None:
     """El fichero son los valores de esta instalación, no una orden."""
     (datos / "entorno.json").write_text(json.dumps({"PERSEO_CORREO": "gmail"}), encoding="utf-8")
     monkeypatch.setenv("PERSEO_CORREO", "falso")
-    assert almacen.cargar_configuracion().correo_buzon == "falso"
+    assert cargar_configuracion().correo_buzon == "falso"
 
 
 def test_una_variable_vacia_en_el_entorno_tambien_manda(datos: Path, monkeypatch) -> None:
     """Poner `PERSEO_CORREO=` a mano es apagar el correo, no callarse."""
     (datos / "entorno.json").write_text(json.dumps({"PERSEO_CORREO": "gmail"}), encoding="utf-8")
     monkeypatch.setenv("PERSEO_CORREO", "")
-    assert almacen.cargar_configuracion().correo_buzon == ""
+    assert cargar_configuracion().correo_buzon == ""
 
 
 def test_un_fichero_roto_no_impide_arrancar(datos: Path) -> None:
     """Sin núcleo no hay nada; con la configuración a medias, casi todo."""
     (datos / "entorno.json").write_text("{esto no es json", encoding="utf-8")
-    assert almacen.ajustes_guardados(datos) == {}
-    assert almacen.cargar_configuracion().puerto == 8787
+    assert ajustes_guardados(datos) == {}
+    assert cargar_configuracion().puerto == 8787
 
 
 def test_un_fichero_que_no_es_un_objeto_se_ignora(datos: Path) -> None:
     (datos / "entorno.json").write_text('["una", "lista"]', encoding="utf-8")
-    assert almacen.ajustes_guardados(datos) == {}
+    assert ajustes_guardados(datos) == {}
 
 
 def test_los_numeros_del_fichero_se_leen_como_texto(datos: Path) -> None:
     """JSON permite números; `float(...)` sobre un int no se queja, pero el
     resto del código espera cadenas."""
     (datos / "entorno.json").write_text(json.dumps({"PERSEO_CORE_PUERTO": 9999}), encoding="utf-8")
-    assert almacen.cargar_configuracion().puerto == 9999
+    assert cargar_configuracion().puerto == 9999
 
 
 def test_los_secretos_tambien_salen_del_fichero(datos: Path) -> None:
     (datos / "entorno.json").write_text(
         json.dumps({"PERSEO_TELEGRAM_TOKEN": "de-fichero"}), encoding="utf-8"
     )
-    assert almacen.cargar_configuracion().telegram_token == "de-fichero"
+    assert cargar_configuracion().telegram_token == "de-fichero"
 
 
 def test_el_secreto_del_directorio_gana_al_del_fichero_de_ajustes(datos: Path) -> None:
@@ -85,7 +85,7 @@ def test_el_secreto_del_directorio_gana_al_del_fichero_de_ajustes(datos: Path) -
     (datos / "telegram_chat.txt").write_text("del-fichero", encoding="utf-8")
     # El de `entorno.json` se consulta antes: es configuración explícita de esta
     # instalación, y el .txt es el rastro que dejó el descubrimiento.
-    assert almacen.cargar_configuracion().telegram_chat == "del-json"
+    assert cargar_configuracion().telegram_chat == "del-json"
 
 
 # --------------------------------------------------------------------------- #
@@ -289,7 +289,7 @@ def test_un_entorno_con_bom_se_lee_igual(datos: Path) -> None:
     (datos / "entorno.json").write_text(
         json.dumps({"PERSEO_CORREO": "gmail"}), encoding="utf-8-sig"
     )
-    assert almacen.ajustes_guardados(datos) == {"PERSEO_CORREO": "gmail"}
+    assert ajustes_guardados(datos) == {"PERSEO_CORREO": "gmail"}
 
 
 # --------------------------------------------------------------------------- #
@@ -482,7 +482,7 @@ def _con_salud(monkeypatch, respuesta) -> bool:
         return respuesta
 
     monkeypatch.setattr(urllib.request, "urlopen", falso_urlopen)
-    cfg = almacen.cargar_configuracion()
+    cfg = cargar_configuracion()
     return arranque_nucleo._ya_contesta_otro_nucleo(cfg)
 
 

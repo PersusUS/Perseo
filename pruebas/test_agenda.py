@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from perseo_core.agentes import agenda
-from perseo_core.infra import almacen
+from perseo_core.infra.configuracion import cargar_configuracion
 
 
 def dentro_de(minutos: float) -> str:
@@ -150,7 +150,7 @@ def test_proximos_lee_del_calendario_de_verdad(
     monkeypatch.setenv("PERSEO_AGENDA", "falso")
     monkeypatch.setenv("PERSEO_AGENDA_FALSA", str(fichero))
     asyncio.run(agenda.detener())
-    agenda.iniciar(almacen.cargar_configuracion())
+    agenda.iniciar(cargar_configuracion())
     try:
         resultado = asyncio.run(agenda._agenda({"peticion": {"accion": "proximos"}}))
     finally:
@@ -166,7 +166,7 @@ def test_proximos_recorta_el_horizonte_al_techo(
     monkeypatch.setenv("PERSEO_AGENDA", "falso")
     monkeypatch.setenv("PERSEO_AGENDA_FALSA", str(tmp_path / "vacio.json"))
     asyncio.run(agenda.detener())
-    agenda.iniciar(almacen.cargar_configuracion())
+    agenda.iniciar(cargar_configuracion())
     try:
         resultado = asyncio.run(
             agenda._agenda({"peticion": {"accion": "proximos", "horas": 10_000}})

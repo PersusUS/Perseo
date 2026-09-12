@@ -52,7 +52,7 @@ from typing import Any
 import aiohttp
 
 from . import google_api
-from ..infra import almacen
+from ..infra.configuracion import cargar_configuracion
 
 #: Lo que se pide. Ver la cabecera: `compose` escribe borradores y **no** envía.
 AMBITOS = (
@@ -261,7 +261,7 @@ def autorizar(ruta: Path, abrir_navegador: bool = True) -> str:
 def _sincrono() -> None:  # pragma: no cover - atajo para la línea de comandos
     import sys
 
-    cfg = almacen.cargar_configuracion()
+    cfg = cargar_configuracion()
     ruta = Path(cfg.google_credenciales)
     try:
         autorizar(ruta)

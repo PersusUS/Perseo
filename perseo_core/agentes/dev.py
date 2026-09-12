@@ -68,7 +68,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from ..infra import almacen
 from ..servicios import proyectos
 from ..infra.router import registrar
 from .dev_motores import (
@@ -83,6 +82,7 @@ from .dev_motores import (
     Paso,
 )
 from .dev_sdk import MotorSdk
+from ..infra.configuracion import Configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ def hay_sdk() -> bool:
     return importlib.util.find_spec("claude_agent_sdk") is not None
 
 
-def abrir_motor(cfg: almacen.Configuracion) -> Motor | None:
+def abrir_motor(cfg: Configuracion) -> Motor | None:
     """Devuelve el motor configurado, o `None` si no hay ninguno utilizable.
 
     Sin `PERSEO_DEV_MOTOR` manda **opencode**: es el que no gasta suscripción,
@@ -495,7 +495,7 @@ def actividad_de(id_trabajo: int) -> dict[str, Any]:
     }
 
 
-def iniciar(cfg: almacen.Configuracion) -> Motor | None:
+def iniciar(cfg: Configuracion) -> Motor | None:
     global _motor, _raiz, _raices, _tope, _datos, _ejecutable_claude
     _raiz = Path(cfg.dev_raiz).resolve()
     _raices = raices_permitidas(_raiz)

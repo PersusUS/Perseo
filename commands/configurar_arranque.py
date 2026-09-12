@@ -23,7 +23,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
-from perseo_core.infra import almacen  # noqa: E402
+from perseo_core.infra.configuracion import _directorio_datos, direccion_tailscale  # noqa: E402
 
 
 def _vault_de_verdad() -> Path | None:
@@ -79,8 +79,8 @@ def ajustes_recomendados(datos: Path, hay_tailscale: bool) -> dict[str, str]:
 
 def main() -> int:
     solo_ver = "--ver" in sys.argv
-    datos = Path(almacen._directorio_datos())
-    hay_tailscale = bool(almacen.direccion_tailscale())
+    datos = Path(_directorio_datos())
+    hay_tailscale = bool(direccion_tailscale())
 
     ajustes = ajustes_recomendados(datos, hay_tailscale)
     destino = datos / "entorno.json"

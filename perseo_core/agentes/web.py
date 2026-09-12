@@ -52,8 +52,8 @@ from typing import Any, Protocol
 
 import aiohttp
 
-from ..infra import almacen
 from ..infra.router import registrar
+from ..infra.configuracion import Configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -276,7 +276,7 @@ class NavegadorHttp:
     #: HTML, `buscar` deja de encontrar y `leer` sigue funcionando igual.
     BUSCADOR = "https://html.duckduckgo.com/html/?q="
 
-    def __init__(self, cfg: almacen.Configuracion) -> None:
+    def __init__(self, cfg: Configuracion) -> None:
         self._cfg = cfg
         self._sesion: aiohttp.ClientSession | None = None
         #: Lo que `comprobar_url` dio por bueno, por nombre. La sesión no
@@ -399,7 +399,7 @@ class NavegadorFalso:
 _navegador: Navegador | None = None
 
 
-def iniciar(cfg: almacen.Configuracion) -> Navegador:
+def iniciar(cfg: Configuracion) -> Navegador:
     global _navegador
     if _navegador is None:
         _navegador = NavegadorFalso() if cfg.web_navegador == "falso" else NavegadorHttp(cfg)

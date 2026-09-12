@@ -33,8 +33,8 @@ from typing import Any
 
 import aiohttp
 
-from ..infra import almacen
 from ..infra.bus import Bus, Evento
+from ..infra.configuracion import Configuracion, cargar_configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +168,7 @@ def redactar(evento: Evento, url_base: str) -> tuple[str, list[list[dict[str, An
 class Telegram:
     """Puente de solo salida entre el bus del núcleo y un chat de Telegram."""
 
-    def __init__(self, cfg: almacen.Configuracion, bus: Bus) -> None:
+    def __init__(self, cfg: Configuracion, bus: Bus) -> None:
         self._cfg = cfg
         self._bus = bus
         self._sesion: aiohttp.ClientSession | None = None
@@ -299,7 +299,7 @@ def _nombre_del_chat(chat: dict[str, Any]) -> str:
     return nombre or "sin nombre"
 
 
-async def _pedir(cfg: almacen.Configuracion, metodo: str, **carga: Any) -> dict[str, Any]:
+async def _pedir(cfg: Configuracion, metodo: str, **carga: Any) -> dict[str, Any]:
     """Como `Telegram._llamar`, pero para la línea de comandos: aquí sí se lanza.
 
     En marcha, que Telegram falle no puede tumbar el núcleo. Configurando es al
@@ -324,7 +324,7 @@ def _sincrono() -> None:  # pragma: no cover - atajo para la línea de comandos
     """
     import sys
 
-    cfg = almacen.cargar_configuracion()
+    cfg = cargar_configuracion()
     if not cfg.telegram_token:
         print(
             "No hay token del bot. Lo da @BotFather, y se pone en "

@@ -54,8 +54,8 @@ from typing import Any, Protocol
 
 import aiohttp
 
-from ..infra import almacen
 from ..infra.router import registrar
+from ..infra.configuracion import Configuracion, LOCALES, RAIZ, cargar_configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -440,7 +440,7 @@ def _verificar_certificado(base: str) -> bool:
     trozos = urllib.parse.urlsplit(base)
     if trozos.scheme != "https":
         return True
-    return (trozos.hostname or "") not in almacen.LOCALES
+    return (trozos.hostname or "") not in LOCALES
 
 
 def _ruta_relativa(ruta: str) -> str:
@@ -553,7 +553,7 @@ def _nombre_seguro(texto: str) -> str:
 _vault: Vault | None = None
 
 
-def ruta_vault(cfg: almacen.Configuracion | None = None) -> Path:
+def ruta_vault(cfg: Configuracion | None = None) -> Path:
     """Dónde está el vault. Una sola variable para todo el sistema
 
     El respaldo —`<repositorio>/../obsidian_vault`— es para un clon recién
@@ -565,10 +565,10 @@ def ruta_vault(cfg: almacen.Configuracion | None = None) -> Path:
     """
     if cfg is not None and cfg.vault:
         return Path(cfg.vault)
-    return Path(os.environ.get("OBSIDIAN_VAULT_PATH", almacen.RAIZ.parent / "obsidian_vault"))
+    return Path(os.environ.get("OBSIDIAN_VAULT_PATH", RAIZ.parent / "obsidian_vault"))
 
 
-def iniciar(cfg: almacen.Configuracion) -> Vault:
+def iniciar(cfg: Configuracion) -> Vault:
     global _vault
     if _vault is None:
         _vault = _elegir_respaldo(cfg)
@@ -584,7 +584,7 @@ def respaldo() -> Vault | None:
     return _vault
 
 
-def _elegir_respaldo(cfg: almacen.Configuracion) -> Vault:
+def _elegir_respaldo(cfg: Configuracion) -> Vault:
     """Qué hay detrás del puerto. Ficheros salvo que se pida el plugin.
 
     Pedir el plugin sin dar su clave **no es un error**: se avisa y se sigue con
@@ -839,7 +839,7 @@ def _sincrono() -> None:  # pragma: no cover - atajo para la línea de comandos
     """
     import sys
 
-    cfg = almacen.cargar_configuracion()
+    cfg = cargar_configuracion()
     if not cfg.vault_rest_clave:
         print(
             "No hay clave del plugin. Se pone en PERSEO_VAULT_CLAVE o en "

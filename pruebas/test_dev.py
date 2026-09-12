@@ -12,7 +12,7 @@ import pytest
 from dataclasses import replace
 
 from perseo_core.agentes import dev, dev_motores
-from perseo_core.infra import almacen
+from perseo_core.infra.configuracion import Configuracion, cargar_configuracion
 
 #: Ruta absoluta fuera de la raíz permitida, en cualquiera de los dos sistemas
 #: donde corren las pruebas. Ver la nota de `pruebas/test_memoria.py`.
@@ -20,13 +20,13 @@ FUERA_DEL_DISCO = r"C:\Windows" if os.name == "nt" else "/etc"
 
 
 @pytest.fixture()
-def dev_falso(cfg: almacen.Configuracion, tmp_path: Path, monkeypatch):
+def dev_falso(cfg: Configuracion, tmp_path: Path, monkeypatch):
     """Motor de mentira y una raíz de usar y tirar."""
     raiz = tmp_path / "proyecto"
     (raiz / "dentro").mkdir(parents=True)
     monkeypatch.setenv("PERSEO_DEV_MOTOR", "falso")
     monkeypatch.setenv("PERSEO_DEV_RAIZ", str(raiz))
-    nueva = almacen.cargar_configuracion()
+    nueva = cargar_configuracion()
 
     monkeypatch.setattr(dev, "_motor", None)
     dev.iniciar(nueva)
@@ -61,7 +61,7 @@ def test_del_perfil_no_se_sale(dev_falso, intento: str) -> None:
 
 
 def test_subir_hacia_el_perfil_ahora_vale(
-    cfg: almacen.Configuracion, tmp_path: Path, monkeypatch
+    cfg: Configuracion, tmp_path: Path, monkeypatch
 ) -> None:
     """El cerco es el perfil entero, no la raíz: «..» cae dentro y se permite.
 
@@ -77,7 +77,7 @@ def test_subir_hacia_el_perfil_ahora_vale(
     monkeypatch.setenv("PERSEO_DEV_MOTOR", "falso")
     monkeypatch.setenv("PERSEO_DEV_RAIZ", str(raiz))
     monkeypatch.setattr(dev, "_motor", None)
-    dev.iniciar(almacen.cargar_configuracion())
+    dev.iniciar(cargar_configuracion())
     try:
         destino = dev.resolver_raiz("..")
         assert destino == tmp_path.resolve()
@@ -179,7 +179,7 @@ def test_opencode_no_instalado_da_error_util(dev_falso, monkeypatch) -> None:
 def test_abrir_motor_opencode(monkeypatch) -> None:
     monkeypatch.setenv("PERSEO_DEV_MOTOR", "opencode")
     monkeypatch.setattr(dev.shutil, "which", lambda n: "C:/falso/opencode.exe" if n == "opencode" else None)
-    motor = dev.abrir_motor(almacen.cargar_configuracion())
+    motor = dev.abrir_motor(cargar_configuracion())
     assert isinstance(motor, dev.MotorOpencode)
 
 

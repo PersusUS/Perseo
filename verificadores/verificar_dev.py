@@ -26,7 +26,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core.agentes import dev, dev_motores  # noqa: E402
-from perseo_core.infra import almacen  # noqa: E402
+from perseo_core.infra.configuracion import cargar_configuracion  # noqa: E402
 from verificadores.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
 
 #: Lo que tarda el encargo simulado. Suficiente para que el trabajo corto que se
@@ -41,7 +41,7 @@ def comprobar_en_proceso() -> None:
     with tempfile.TemporaryDirectory(prefix="perseo_dev_") as tmp:
         os.environ["PERSEO_CORE_DATOS"] = tmp
         os.environ["PERSEO_DEV_MOTOR"] = "falso"
-        cfg = almacen.cargar_configuracion()
+        cfg = cargar_configuracion()
     os.environ.clear()
     os.environ.update(previo)
 

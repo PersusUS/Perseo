@@ -31,10 +31,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
-from ..infra import almacen, disparadores
+from ..infra import disparadores
 from ..servicios import google_api
 from ..infra.router import registrar
 from ..dominio.evento import Evento
+from ..infra.configuracion import Configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ class CalendarioFalso:
         return sorted(dentro, key=lambda e: e.momento or ahora)
 
 
-def abrir_calendario(cfg: almacen.Configuracion) -> Calendario | None:
+def abrir_calendario(cfg: Configuracion) -> Calendario | None:
     """Devuelve el calendario configurado, o `None` si no hay ninguno."""
     if cfg.agenda_origen == "falso":
         return CalendarioFalso(Path(cfg.agenda_falsa))
@@ -106,11 +107,11 @@ def abrir_calendario(cfg: almacen.Configuracion) -> Calendario | None:
 HORAS_POR_DEFECTO = 24
 HORAS_MAXIMAS = 24 * 7
 
-_cfg: almacen.Configuracion | None = None
+_cfg: Configuracion | None = None
 _calendario: Calendario | None = None
 
 
-def iniciar(cfg: almacen.Configuracion) -> None:
+def iniciar(cfg: Configuracion) -> None:
     """Guarda la configuración para que el agente pueda abrir el calendario.
 
     Lo mismo que hace `correo.iniciar` con su buzón: la cara que ejecuta

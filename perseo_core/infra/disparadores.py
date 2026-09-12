@@ -32,6 +32,7 @@ from typing import Any, Awaitable, Callable
 
 from . import almacen
 from .bus import Bus
+from ..infra.configuracion import Configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class Contexto:
     —el triaje, un cliente compartido— no obligue a tocar todos los disparadores.
     """
 
-    cfg: almacen.Configuracion
+    cfg: Configuracion
     bus: Bus
 
     async def encolar(self, agente: str, peticion: dict[str, Any]) -> dict[str, Any]:
@@ -145,7 +146,7 @@ class Retirarse(Exception):
 class Planificador:
     """Mantiene en marcha los disparadores activos."""
 
-    def __init__(self, cfg: almacen.Configuracion, bus: Bus) -> None:
+    def __init__(self, cfg: Configuracion, bus: Bus) -> None:
         self._contexto = Contexto(cfg=cfg, bus=bus)
         self._activos = tuple(n for n in cfg.disparadores if n in REGISTRO)
         self._desconocidos = tuple(n for n in cfg.disparadores if n not in REGISTRO)

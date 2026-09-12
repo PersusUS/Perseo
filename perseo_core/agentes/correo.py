@@ -35,11 +35,12 @@ import logging
 from pathlib import Path
 from typing import Any, Protocol
 
-from ..infra import almacen, disparadores
+from ..infra import disparadores
 from ..servicios import google_api, triaje
 from ..infra.router import registrar
 from ..dominio.clasificacion import Clasificacion, IGNORAR, INTERESANTE, NO_SEGURO, REQUIERE_ACCION
 from ..dominio.mensaje import Mensaje
+from ..infra.configuracion import Configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ class BuzonFalso:
         return [Mensaje.desde_dict(m) for m in crudo if isinstance(m, dict)]
 
 
-def abrir_buzon(cfg: almacen.Configuracion) -> Buzon | None:
+def abrir_buzon(cfg: Configuracion) -> Buzon | None:
     """Devuelve el buzón configurado, o `None` si no hay ninguno.
 
     `None` no es un error: es el estado por defecto. Igual que con Telegram, el
@@ -117,10 +118,10 @@ _triaje: triaje.Triaje | None = None
 
 #: La configuración, que el agente necesita para abrir el buzón por su cuenta.
 #: Hasta ahora solo la tenía el disparador, que recibe su contexto en cada vuelta.
-_cfg: almacen.Configuracion | None = None
+_cfg: Configuracion | None = None
 
 
-def iniciar(cfg: almacen.Configuracion) -> triaje.Triaje:
+def iniciar(cfg: Configuracion) -> triaje.Triaje:
     global _triaje, _cfg
     _cfg = cfg
     if _triaje is None:

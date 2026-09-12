@@ -16,6 +16,7 @@ import pytest
 
 from perseo_core.agentes import chat
 from perseo_core.infra import almacen
+from perseo_core.infra.configuracion import Configuracion
 
 
 # --------------------------------------------------------------------------- #
@@ -49,7 +50,7 @@ def test_el_prompt_trae_las_reglas_que_no_se_negocian() -> None:
     assert "señor Persus" in chat.PROMPT_CHAT
 
 
-def test_la_politica_deja_pasar_el_turno(db: almacen.Configuracion) -> None:
+def test_la_politica_deja_pasar_el_turno(db: Configuracion) -> None:
     from perseo_core.infra import politica
 
     # Sin esta entrada en la tabla, cada turno de chat pediría un sí y la
@@ -88,7 +89,7 @@ def test_resumir_vacio_dice_hecho() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_el_semaforo_del_chat(db: almacen.Configuracion) -> None:
+def test_el_semaforo_del_chat(db: Configuracion) -> None:
     sesion = almacen.crear_sesion_chat()
     id_sesion = sesion["id"]
 
@@ -101,7 +102,7 @@ def test_el_semaforo_del_chat(db: almacen.Configuracion) -> None:
     assert almacen.obtener_sesion_chat(id_sesion)["turno"] == "libre"
 
 
-def test_borrar_sesion_ocupada_no_se_permite(db: almacen.Configuracion) -> None:
+def test_borrar_sesion_ocupada_no_se_permite(db: Configuracion) -> None:
     sesion = almacen.crear_sesion_chat()
     almacen.anadir_mensaje_chat(sesion["id"], "usuario", "hola")
     almacen.marcar_turno_chat(sesion["id"], "ocupado")
@@ -112,7 +113,7 @@ def test_borrar_sesion_ocupada_no_se_permite(db: almacen.Configuracion) -> None:
     assert almacen.obtener_sesion_chat(sesion["id"]) is None
 
 
-def test_reiniciar_turnos_al_arrancar(db: almacen.Configuracion) -> None:
+def test_reiniciar_turnos_al_arrancar(db: Configuracion) -> None:
     """Un apagón no puede dejar una conversación ocupada para siempre."""
     sesion = almacen.crear_sesion_chat()
     almacen.marcar_turno_chat(sesion["id"], "ocupado")
@@ -125,7 +126,7 @@ def test_reiniciar_turnos_al_arrancar(db: almacen.Configuracion) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_los_mensajes_viajan_decodificados(db: almacen.Configuracion) -> None:
+def test_los_mensajes_viajan_decodificados(db: Configuracion) -> None:
     sesion = almacen.crear_sesion_chat()  # sin título: lo pone el primer mensaje
     id_usuario = almacen.anadir_mensaje_chat(sesion["id"], "usuario", "¿qué hay?")
     id_perseo = almacen.anadir_mensaje_chat(sesion["id"], "perseo", "", "escribiendo")
@@ -144,7 +145,7 @@ def test_los_mensajes_viajan_decodificados(db: almacen.Configuracion) -> None:
     assert almacen.obtener_sesion_chat(sesion["id"])["titulo"] == "¿qué hay?"
 
 
-def test_el_historial_salta_lo_vacio_y_lo_fallido(db: almacen.Configuracion) -> None:
+def test_el_historial_salta_lo_vacio_y_lo_fallido(db: Configuracion) -> None:
     sesion = almacen.crear_sesion_chat()
     almacen.anadir_mensaje_chat(sesion["id"], "usuario", "uno")
     vacio = almacen.anadir_mensaje_chat(sesion["id"], "perseo", "", "escribiendo")
@@ -165,7 +166,7 @@ def test_el_historial_salta_lo_vacio_y_lo_fallido(db: almacen.Configuracion) -> 
 
 
 @pytest.fixture()
-def chat_listo(db: almacen.Configuracion, monkeypatch: pytest.MonkeyPatch):
+def chat_listo(db: Configuracion, monkeypatch: pytest.MonkeyPatch):
     """El módulo con cfg puesta y las colas interceptadas.
 
     `_capturadas` recibe (agente, peticion) de cada herramienta que encole, así
@@ -217,7 +218,7 @@ def test_despacho_usar_mcp_exige_servidor(chat_listo) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_consultar_trabajo_cuenta_lo_hecho_con_su_resultado(db: almacen.Configuracion) -> None:
+def test_consultar_trabajo_cuenta_lo_hecho_con_su_resultado(db: Configuracion) -> None:
     trabajo = almacen.encolar("dev", {"texto": "crea una carpeta"}, "texto")
     almacen.completar(trabajo["id"], {"texto": "Carpeta creada en el escritorio.", "vueltas": 3})
 
@@ -226,7 +227,7 @@ def test_consultar_trabajo_cuenta_lo_hecho_con_su_resultado(db: almacen.Configur
     assert "Carpeta creada en el escritorio." in respuesta
 
 
-def test_consultar_trabajo_dice_el_fallo(db: almacen.Configuracion) -> None:
+def test_consultar_trabajo_dice_el_fallo(db: Configuracion) -> None:
     trabajo = almacen.encolar("dev", {"texto": "algo"}, "texto")
     almacen.fallar(trabajo["id"], "la raíz no existe")
 
@@ -234,12 +235,12 @@ def test_consultar_trabajo_dice_el_fallo(db: almacen.Configuracion) -> None:
     assert "FALLÓ" in respuesta and "la raíz no existe" in respuesta
 
 
-def test_consultar_trabajo_desconocido_no_es_un_error(db: almacen.Configuracion) -> None:
+def test_consultar_trabajo_desconocido_no_es_un_error(db: Configuracion) -> None:
     respuesta = chat._consultar_trabajo(99999)
     assert "No veo ningún trabajo" in respuesta
 
 
-def test_consultar_trabajo_sin_id_lista_los_encargos(db: almacen.Configuracion) -> None:
+def test_consultar_trabajo_sin_id_lista_los_encargos(db: Configuracion) -> None:
     dev = almacen.encolar("dev", {"texto": "encargo de código"}, "voz")
     almacen.completar(dev["id"], {"titular": "Encargo de código terminado (2 vueltas)"})
     turno = almacen.encolar("chat", {"sesion": 1, "mensaje": 1, "texto": "hola"}, "texto")
@@ -252,7 +253,7 @@ def test_consultar_trabajo_sin_id_lista_los_encargos(db: almacen.Configuracion) 
 
 
 def test_despacho_correo_lee_la_base_de_verdad(
-    chat_listo, db: almacen.Configuracion
+    chat_listo, db: Configuracion
 ) -> None:
     # Un trabajo de correo hecho, como los deja `almacen.completar`: la lectura
     # del chat debe devolver ESTE asunto y no otro.

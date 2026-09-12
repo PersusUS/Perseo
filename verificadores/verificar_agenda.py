@@ -23,9 +23,10 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core.agentes import agenda  # noqa: E402
-from perseo_core.infra import almacen, disparadores  # noqa: E402
+from perseo_core.infra import disparadores  # noqa: E402
 from verificadores.arnes_pruebas import Nucleo, comprobar, resumir  # noqa: E402
 from perseo_core.infra.bus import Bus  # noqa: E402
+from perseo_core.infra.configuracion import cargar_configuracion  # noqa: E402
 
 INTERVALO = "2"
 
@@ -81,7 +82,7 @@ def comprobar_en_proceso(ruta: Path) -> None:
     previo = dict(os.environ)
     os.environ["PERSEO_CORE_DATOS"] = entorno_datos
     os.environ.pop("PERSEO_AGENDA", None)
-    cfg = almacen.cargar_configuracion()
+    cfg = cargar_configuracion()
     os.environ.clear()
     os.environ.update(previo)
 

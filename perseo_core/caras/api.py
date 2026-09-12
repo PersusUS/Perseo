@@ -48,6 +48,7 @@ from ..infra.router import REGISTRO, Router
 from . import api_biometria
 from .api_comun import CLAVE_BUS, CLAVE_CFG, CLAVE_ROUTER, cuerpo_json, fallo
 from ..infra.bus import Bus
+from ..infra.configuracion import Configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -790,7 +791,7 @@ async def _eventos(peticion: web.Request) -> web.StreamResponse:
 # --------------------------------------------------------------------------- #
 
 
-def crear_app(cfg: almacen.Configuracion, bus: Bus, router: Router) -> web.Application:
+def crear_app(cfg: Configuracion, bus: Bus, router: Router) -> web.Application:
     app = web.Application(middlewares=[_autenticar])
     app[CLAVE_CFG] = cfg
     app[CLAVE_BUS] = bus

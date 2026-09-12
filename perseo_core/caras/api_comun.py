@@ -12,13 +12,13 @@ from typing import Any
 
 from aiohttp import web
 
-from ..infra import almacen
 from ..infra.bus import Bus
 from ..infra.router import Router
+from ..infra.configuracion import Configuracion
 
 #: Lo que la aplicación lleva colgado. `AppKey` y no una cadena: con cadenas,
 #: una errata se descubre en producción con un `KeyError` sin contexto.
-CLAVE_CFG: web.AppKey[almacen.Configuracion] = web.AppKey("cfg")
+CLAVE_CFG: web.AppKey[Configuracion] = web.AppKey("cfg")
 CLAVE_BUS: web.AppKey[Bus] = web.AppKey("bus")
 CLAVE_ROUTER: web.AppKey[Router] = web.AppKey("router")
 

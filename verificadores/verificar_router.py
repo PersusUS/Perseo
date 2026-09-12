@@ -33,8 +33,8 @@ os.environ.setdefault(
     "PERSEO_CORE_DATOS", str(Path(tempfile.gettempdir()) / "perseo_verificar_router")
 )
 
-from perseo_core.infra import almacen  # noqa: E402
 from perseo_core.infra.router import REGISTRO, Router  # noqa: E402
+from perseo_core.infra.configuracion import cargar_configuracion  # noqa: E402
 from verificadores.arnes_pruebas import comprobar, resumir  # noqa: E402
 
 #: Casos y el destino que se espera. `None` = cualquiera vale; lo que se
@@ -53,7 +53,7 @@ async def main() -> None:
     # se pierde y un fallo de conexión parece un fallo de decisión.
     logging.basicConfig(level=logging.INFO, format="       %(levelname)s %(message)s")
 
-    cfg = almacen.cargar_configuracion()
+    cfg = cargar_configuracion()
     print(f"Modelo: {cfg.modelo_router}   Ollama: {cfg.url_ollama}\n")
 
     router = Router(cfg)

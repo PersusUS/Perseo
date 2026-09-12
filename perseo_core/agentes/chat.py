@@ -51,6 +51,7 @@ import aiohttp
 from ..infra import almacen, identidad, politica
 from ..servicios import catalogo, correo_lectura, habitos, tareas, triaje
 from ..infra.router import registrar
+from ..infra.configuracion import Configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -997,12 +998,12 @@ async def _conversar_con_respaldo(id_sesion: int, id_mensaje: int, texto_usuario
 # Ciclo de vida y registro
 # --------------------------------------------------------------------------- #
 
-_cfg: almacen.Configuracion | None = None
+_cfg: Configuracion | None = None
 _router = None
 _sesion_http: aiohttp.ClientSession | None = None
 
 
-def iniciar(cfg: almacen.Configuracion, router) -> None:
+def iniciar(cfg: Configuracion, router) -> None:
     global _cfg, _router
     _cfg = cfg
     _router = router

@@ -40,9 +40,9 @@ from typing import Any
 
 import aiohttp
 
-from ..infra import almacen
 from ..dominio.evento import Evento
 from ..dominio.mensaje import Mensaje
+from ..infra.configuracion import Configuracion, cargar_configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -367,16 +367,16 @@ class CalendarioGoogle(ClienteGoogle):
 # --------------------------------------------------------------------------- #
 
 
-def credenciales(cfg: almacen.Configuracion) -> Credenciales:
+def credenciales(cfg: Configuracion) -> Credenciales:
     """Las credenciales configuradas. Lanza `SinCredenciales` si no hay."""
     return Credenciales.desde_fichero(Path(cfg.google_credenciales))
 
 
-async def comprobar(cfg: almacen.Configuracion) -> str:
+async def comprobar(cfg: Configuracion) -> str:
     """Prueba las credenciales pidiendo un testigo. Para usarlo a mano.
 
         python -c "import asyncio;from perseo_core import almacen,google_api as g;\\
-                   print(asyncio.run(g.comprobar(almacen.cargar_configuracion())))"
+                   print(asyncio.run(g.comprobar(cargar_configuracion())))"
     """
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as http:
         sesion = Sesion(credenciales(cfg), http)
@@ -387,7 +387,7 @@ async def comprobar(cfg: almacen.Configuracion) -> str:
 def _sincrono() -> None:  # pragma: no cover - atajo para la línea de comandos
     import sys
 
-    cfg = almacen.cargar_configuracion()
+    cfg = cargar_configuracion()
     try:
         print(asyncio.run(comprobar(cfg)))
     except (SinCredenciales, RuntimeError) as e:

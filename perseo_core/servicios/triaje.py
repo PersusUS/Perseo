@@ -35,8 +35,9 @@ from typing import Any
 import aiohttp
 
 from . import modelo_local
-from ..infra import almacen, identidad
+from ..infra import identidad
 from ..dominio.clasificacion import CLASES, IGNORAR, NO_SEGURO, Clasificacion
+from ..infra.configuracion import Configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ _INSTRUCCIONES = _TAREA
 class Triaje:
     """Clasificador de correo sobre el modelo local."""
 
-    def __init__(self, cfg: almacen.Configuracion) -> None:
+    def __init__(self, cfg: Configuracion) -> None:
         self._cfg = cfg
         self._sesion: aiohttp.ClientSession | None = None
 
