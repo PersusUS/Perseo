@@ -680,7 +680,7 @@ def test_las_cuatro_listas_de_modelos_dicen_lo_mismo() -> None:
     ficheros = (
         raiz / "commands" / "subagentes_mcp.py",
         raiz / "perseo_core" / "caras" / "interfaz" / "index.html",
-        raiz / "RealTime" / "src" / "components" / "Panel.tsx",
+        raiz / "RealTime" / "src" / "components" / "panel" / "AgentesTab.tsx",
     )
     for fichero in ficheros:
         texto = fichero.read_text(encoding="utf-8")
