@@ -198,16 +198,11 @@ PUERTA_AL_NUCLEO = "@tauri-apps/api/core"
 #: cambio que rompe algo que nadie mira hasta la semana siguiente.
 COMPONENTES_QUE_LLAMAN_AL_NUCLEO: frozenset[str] = frozenset(
     {
+        # El ultimo. Sale cuando salgan sus ganchos (`useLlamada`,
+        # `useIdentidad`, `useConfianza`), que es un cambio de comportamiento y
+        # pide la app delante. Ver la excepcion de tamano de este mismo fichero:
+        # los dos problemas de App.tsx son el mismo problema.
         "RealTime/src/App.tsx",
-        "RealTime/src/components/Corteza.tsx",
-        "RealTime/src/components/Escenografia.tsx",
-        "RealTime/src/components/Habitos.tsx",
-        "RealTime/src/components/Panel.tsx",
-        "RealTime/src/components/Proyectos.tsx",
-        "RealTime/src/components/panel/AgentesTab.tsx",
-        "RealTime/src/components/panel/ChatTab.tsx",
-        "RealTime/src/components/panel/comun.ts",
-        "RealTime/src/components/panel/piezas.tsx",
     }
 )
 

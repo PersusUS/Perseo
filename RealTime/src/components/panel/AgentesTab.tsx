@@ -4,7 +4,7 @@
  * Salió de `Panel.tsx` el 2026-09-12: una pestaña, un fichero.
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import * as nucleo from '../../lib/datos/panel';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { ESTADOS_ABIERTOS, REFRESCO, type Trabajo } from './comun';
@@ -92,7 +92,7 @@ export const AgentesTab: React.FC<{ onEncargado: () => void }> = ({ onEncargado 
 
   const cargar = useCallback(async () => {
     try {
-      const datos = await invoke<{ trabajos: Trabajo[] }>('panel_trabajos', { limite: 50 });
+      const datos = { trabajos: await nucleo.trabajos(50) };
       setEncargos(datos.trabajos.filter(t => t.agente === 'dev'));
     } catch (e: any) {
       setAviso(String(e));
@@ -117,7 +117,7 @@ export const AgentesTab: React.FC<{ onEncargado: () => void }> = ({ onEncargado 
     if (motor) peticion.motor = motor;
     if (modelo) peticion.modelo = modelo;
     try {
-      const trabajo = await invoke<Trabajo>('panel_encolar', { agente: 'dev', peticion });
+      const trabajo = await nucleo.encolar('dev', peticion);
       setTarea('');
       setAviso(`Encargo #${trabajo.id} en marcha. Puede tardar minutos: trabaja solo.`);
       onEncargado();
@@ -138,7 +138,7 @@ export const AgentesTab: React.FC<{ onEncargado: () => void }> = ({ onEncargado 
       key={t.id}
       t={t}
       onResponder={(id, d) => {
-        invoke('panel_responder', { id, decision: d }).then(cargar).catch(() => {});
+        nucleo.responder(id, d).then(cargar).catch(() => {});
       }}
       extra={
         <div className="pnl-acciones">

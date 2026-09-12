@@ -19,10 +19,14 @@
  * El precio, y hay que pagarlo a conciencia: lo que se cambie en
  * `perseo_core/caras/interfaz/index.html` hay que traerlo aquí. Son dos pantallas con
  * el mismo trabajo. La del móvil manda: es la que se usa a diario.
+ *
+ * La decisión entera, con lo que haría falta para deshacerla:
+ * `docs/adr/0006-dos-pantallas-para-el-mismo-panel.md`.
  */
 
-import { invoke } from '@tauri-apps/api/core';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import * as nucleo from '../lib/datos/panel';
 
 import { AgentesTab } from './panel/AgentesTab';
 import { ChatTab } from './panel/ChatTab';
@@ -69,7 +73,7 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
 
   const cargarTrabajos = useCallback(async () => {
     try {
-      const datos = await invoke<{ trabajos: Trabajo[] }>('panel_trabajos', { limite: 50 });
+      const datos = { trabajos: await nucleo.trabajos(50) };
       setTrabajos(datos.trabajos);
       setFallo('');
     } catch (e: any) {
@@ -79,7 +83,7 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
 
   const cargarEstado = useCallback(async () => {
     try {
-      setEstado(await invoke<Estado>('panel_estado'));
+      setEstado(await nucleo.estado());
       setFallo('');
     } catch (e: any) {
       setFallo(String(e));
@@ -91,7 +95,7 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
    *  primero lo decide un modelo, lo segundo no lo decide nadie más. */
   const cargarMarcados = useCallback(async () => {
     try {
-      const datos = await invoke<{ marcados: Record<string, string> }>('panel_correos');
+      const datos = { marcados: await nucleo.correos() };
       setMarcados(datos.marcados ?? {});
     } catch {
       // Perder las marcas no es perder los correos: se pintan pendientes.
@@ -124,7 +128,7 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
       return siguiente;
     });
     try {
-      await invoke('panel_marcar_correo', { id, estado });
+      await nucleo.marcarCorreo(id, estado);
     } catch (e: any) {
       setFallo(String(e));
     }
@@ -133,7 +137,7 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
 
   const responder = async (id: number, decision: string) => {
     try {
-      await invoke('panel_responder', { id, decision });
+      await nucleo.responder(id, decision);
     } catch (e: any) {
       // Contestar desde dos sitios a la vez es normal: el núcleo resuelve el
       // empate y el segundo se lleva un 409. Recargar enseña lo que quedó.
@@ -444,7 +448,7 @@ export const Panel: React.FC<{ onCerrar: () => void }> = ({ onCerrar }) => {
                 <button
                   className={`pnl-pildora ${confiando ? 'peligro' : ''}`}
                   onClick={async () => {
-                    await invoke('panel_confianza', { minutos: confiando ? null : 60 });
+                    await nucleo.confianza(confiando ? null : 60);
                     cargarEstado();
                   }}
                 >

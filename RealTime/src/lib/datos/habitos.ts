@@ -19,6 +19,7 @@
  * **espejo** de solo lectura (ver `espejar()`): así el chat escrito y los
  * agentes ven lo mismo que la llamada, sin que haya dos sitios donde marcar.
  */
+import { invoke } from '@tauri-apps/api/core';
 
 /** La clave del almacén. Fuera de la pantalla porque el espejo también la usa. */
 export const ALMACEN = 'perseo.habitos.v1';
@@ -320,6 +321,27 @@ export function resumen(datos: Datos, ahora: Date = new Date()): string {
 
 /** El resumen leyendo el almacén de esta ventana. Es lo que llama la
  *  herramienta de la llamada, que no tiene el estado de React a mano. */
+/** Manda al núcleo una copia de solo lectura de los hábitos.
+ *
+ *  Va en una sola dirección: el núcleo la lee para que el chat escrito y los
+ *  agentes vean lo mismo que la llamada, y nunca la escribe. El almacén de
+ *  verdad sigue siendo el `localStorage` de esta ventana.
+ *
+ *  **Si falla, se calla.** El núcleo apagado es un estado normal de esta app,
+ *  y un aviso rojo por no haber podido mandar una copia que nadie ha pedido
+ *  sería alarmar por nada: el cambio siguiente la manda otra vez.
+ *
+ *  El docstring de arriba lleva nombrando a esta función desde el 2026-08-25;
+ *  hasta el 2026-09-12 el envío vivía dentro de `components/Habitos.tsx` y
+ *  aquí no había nada que se llamara así. */
+export async function espejar(datos: Datos): Promise<void> {
+  try {
+    await invoke('habitos_espejo', { texto: resumen(datos), foto: foto(datos) });
+  } catch (e) {
+    console.debug('[Hábitos] El núcleo no recogió la copia:', e);
+  }
+}
+
 export function resumenGuardado(ahora: Date = new Date()): string {
   return resumen(leer(), ahora);
 }

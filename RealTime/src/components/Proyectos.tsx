@@ -29,7 +29,7 @@
  * núcleo (`perseo_core/servicios/proyectos.py`) y Rust solo hace de puente.
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import * as proyectos from '../lib/datos/proyectos';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { defaultConfig, guardarAjuste, type AspectoLive } from '../lib/datos/config';
 
@@ -231,7 +231,7 @@ export const Proyectos: React.FC<{
       // 950×640: la constelación no pide más. La ventana entera cabe en un
       // portátil sin tapar la mitad del escritorio, y con el encuadre automático
       // del grafo da igual que haya menos sitio: él solo se mira dentro.
-      await invoke('ventana_grafo', { ancho: 950, alto: 640 });
+      await proyectos.ventanaGrafo(950, 640);
     } catch (e) {
       setResultado({ id: 'grafo', texto: String(e), malo: true });
     } finally {
@@ -248,7 +248,7 @@ export const Proyectos: React.FC<{
   useEffect(() => {
     if (!abierto) return;
     let vigente = true;
-    invoke<{ proyectos: Proyecto[]; fichero: string }>('panel_proyectos')
+    proyectos.listar<{ proyectos: Proyecto[]; fichero: string }>()
       .then(d => {
         if (!vigente) return;
         setLista(d.proyectos ?? []);
@@ -281,7 +281,7 @@ export const Proyectos: React.FC<{
     let malo: boolean;
     let texto: string;
     try {
-      const r = await invoke<any>('panel_abrir_proyecto', { id: p.id });
+      const r = await proyectos.abrir<any>(p.id);
       // El núcleo contesta con un texto que empieza por «Éxito» o por «Error»:
       // se enseña tal cual, porque ya está escrito para leerse.
       texto = typeof r === 'string' ? r : r?.resultado ?? r?.detalle ?? 'Hecho';
@@ -306,7 +306,7 @@ export const Proyectos: React.FC<{
     let vivo = false;
     while (!vivo && Date.now() < limite) {
       if (ronda.current !== miRonda) return; // cerraron el riel mientras esperaba
-      const d = await invoke<{ proyectos: Proyecto[] }>('panel_proyectos').catch(() => null);
+      const d = await proyectos.listar<{ proyectos: Proyecto[] }>().catch(() => null);
       if (d?.proyectos.find(x => x.id === p.id)?.vivo === true) {
         vivo = true;
         break;
@@ -324,7 +324,7 @@ export const Proyectos: React.FC<{
       return;
     }
     try {
-      await invoke('ventana_proyecto', {
+      await proyectos.ventanaProyecto({
         url: p.destino,
         titulo: p.nombre,
         color: p.color ?? '',

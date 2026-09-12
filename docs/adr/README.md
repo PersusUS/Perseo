@@ -22,6 +22,7 @@ cocer— y una decisión que solo existe en un disco no gobierna nada.
 | [0003](0003-el-catalogo-se-declara-una-vez.md) | El catálogo de herramientas se declara una vez, con copia de respaldo |
 | [0004](0004-una-copia-deliberada-de-ejecutable-real.md) | Una copia deliberada: `ejecutable_real` |
 | [0005](0005-las-confirmaciones-estan-apagadas.md) | Las confirmaciones están apagadas, y con qué se vuelven a encender |
+| [0006](0006-dos-pantallas-para-el-mismo-panel.md) | Dos pantallas para el mismo panel, y por qué no se pueden juntar |
 
 ## El formato
 

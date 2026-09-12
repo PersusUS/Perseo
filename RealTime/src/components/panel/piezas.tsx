@@ -6,7 +6,7 @@
  * cabecera de `Panel.tsx`.
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import * as nucleo from '../../lib/datos/panel';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { CONSTRUCCION, EN_DESARROLLO } from '../../lib/datos/version';
@@ -404,7 +404,7 @@ export const Bitacora: React.FC<{ id: number; vivo: boolean }> = ({ id, vivo }) 
 
   const cargar = useCallback(async () => {
     try {
-      setActividad(await invoke<Actividad>('panel_actividad', { id }));
+      setActividad(await nucleo.actividad<Actividad>(id));
       setFallo('');
     } catch (e: any) {
       setFallo(String(e));

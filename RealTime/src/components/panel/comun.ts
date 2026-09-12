@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import * as nucleo from '../../lib/datos/panel';
 
 /**
  * Lo que comparten las pestañas del panel: los tipos que viajan del núcleo, las
@@ -170,11 +170,11 @@ export function resumirResultado(resultado: any): string {
 
 /** Encola un trabajo y espera su resultado sondeando. */
 export async function encolarYEsperar(agente: string, peticion: any, segundos = 20): Promise<any> {
-  const trabajo = await invoke<Trabajo>('panel_encolar', { agente, peticion });
+  const trabajo = await nucleo.encolar(agente, peticion);
   const limite = Date.now() + segundos * 1000;
   while (Date.now() < limite) {
     await new Promise(r => setTimeout(r, 400));
-    const actual = await invoke<Trabajo>('panel_trabajo', { id: trabajo.id });
+    const actual = await nucleo.trabajo(trabajo.id);
     if (actual.estado === 'hecho') return actual.resultado;
     if (['fallido', 'cancelado', 'rechazado'].includes(actual.estado)) {
       throw new Error(actual.error || `El trabajo quedó ${actual.estado}`);

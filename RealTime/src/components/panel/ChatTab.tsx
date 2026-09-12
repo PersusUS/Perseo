@@ -4,7 +4,7 @@
  * Salió de `Panel.tsx` el 2026-09-12: una pestaña, un fichero.
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import * as nucleo from '../../lib/datos/panel';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { type Mensaje, type Sesion } from './comun';
@@ -31,7 +31,7 @@ export const ChatTab: React.FC = () => {
 
   const cargarSesiones = useCallback(async (preferir?: number) => {
     try {
-      const datos = await invoke<{ sesiones: Sesion[] }>('chat_sesiones');
+      const datos = { sesiones: await nucleo.chatSesiones<Sesion>() };
       setSesiones(datos.sesiones);
       setSesion(actual => {
         if (actual != null && datos.sesiones.some(s => s.id === actual)) return actual;
@@ -53,7 +53,7 @@ export const ChatTab: React.FC = () => {
 
     const mirar = async () => {
       try {
-        const datos = await invoke<Sesion & { mensajes: Mensaje[] }>('chat_sesion', { id: sesion });
+        const datos = await nucleo.chatSesion<Sesion & { mensajes: Mensaje[] }>(sesion);
         if (!vivo) return;
         setMensajes(datos.mensajes);
         setTurno(datos.turno);
@@ -93,8 +93,8 @@ export const ChatTab: React.FC = () => {
     // Lo que acabas de mandar se ve siempre, aunque estuvieras leyendo arriba.
     pegadoAbajoRef.current = true;
     try {
-      await invoke('chat_hablar', { id: sesion, texto });
-      const datos = await invoke<Sesion & { mensajes: Mensaje[] }>('chat_sesion', { id: sesion });
+      await nucleo.chatHablar(sesion, texto);
+      const datos = await nucleo.chatSesion<Sesion & { mensajes: Mensaje[] }>(sesion);
       setMensajes(datos.mensajes);
       setTurno(datos.turno);
       setAviso('');
@@ -105,7 +105,7 @@ export const ChatTab: React.FC = () => {
 
   const nueva = async () => {
     try {
-      const nueva_sesion = await invoke<Sesion>('chat_crear');
+      const nueva_sesion = await nucleo.chatCrear<Sesion>();
       await cargarSesiones(nueva_sesion.id);
     } catch (err: any) {
       setAviso(String(err));
@@ -114,7 +114,7 @@ export const ChatTab: React.FC = () => {
 
   const borrar = async (id: number) => {
     try {
-      await invoke('chat_borrar', { id });
+      await nucleo.chatBorrar(id);
       await cargarSesiones();
     } catch (err: any) {
       setAviso(String(err));

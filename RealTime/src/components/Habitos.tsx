@@ -65,12 +65,11 @@ import React, {
   useCallback, useEffect, useMemo, useRef, useState,
 } from 'react';
 
-import { invoke } from '@tauri-apps/api/core';
 
 import type { EstiloHabitos } from '../lib/datos/config';
 import {
   DIAS_SEMANA, DIAS_SEMANA_LARGO, MESES, MES_VACIO,
-  acotar, clave, diasDelMes, foto, guardar, leer, porcentaje, racha, resumen, semanaDe,
+  acotar, clave, diasDelMes, espejar, guardar, leer, porcentaje, racha, semanaDe,
   type Datos, type Mes,
 } from '../lib/datos/habitos';
 import '../styles/habitos.css';
@@ -119,8 +118,7 @@ export const Habitos: React.FC<{ onCerrar: () => void; estilo: EstiloHabitos }> 
    *  alarmar por nada. El cambio siguiente la manda otra vez. */
   useEffect(() => {
     const t = setTimeout(() => {
-      invoke('habitos_espejo', { texto: resumen(datos), foto: foto(datos) })
-        .catch(e => console.debug('[Hábitos] El núcleo no recogió la copia:', e));
+      void espejar(datos);
     }, ESPERA_ESPEJO);
     return () => clearTimeout(t);
   }, [datos]);
