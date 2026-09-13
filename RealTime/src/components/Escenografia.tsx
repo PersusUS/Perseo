@@ -13,9 +13,9 @@
  * hace falta para depurar (latencia, kHz, tiempo en pie) es de verdad.
  */
 import React, { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import type { AspectoLive } from '../lib/config';
-import { CONSTRUCCION, EN_DESARROLLO } from '../lib/version';
+import * as nucleo from '../lib/datos/panel';
+import type { AspectoLive } from '../lib/datos/config';
+import { CONSTRUCCION, EN_DESARROLLO } from '../lib/datos/version';
 
 /**
  * En qué punto de la llamada estamos. Manda el dibujo, no el texto.
@@ -138,7 +138,7 @@ const Instrumentos: React.FC = () => {
     let vivo = true;
     const preguntar = async () => {
       try {
-        const datos = await invoke<any>('panel_estado');
+        const datos: any = await nucleo.estado();
         if (vivo) setEstado(datos);
       } catch {
         // Callado a propósito: ver el comentario de arriba.

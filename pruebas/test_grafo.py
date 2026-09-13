@@ -1,6 +1,6 @@
 """El grafo del segundo cerebro: qué es un nodo, qué es una arista, qué no.
 
-Las reglas están en la cabecera de `perseo_core/grafo.py` y son las de
+Las reglas están en la cabecera de `perseo_core/servicios/grafo.py` y son las de
 Obsidian con una excepción (los enlaces a notas sin crear no dibujan nodo).
 Estas pruebas las clavan para que nadie las «simplifique» sin darse cuenta.
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from perseo_core import grafo
+from perseo_core.servicios import grafo
 
 
 def _vault(tmp_path: Path, ficheros: dict[str, str]) -> Path:

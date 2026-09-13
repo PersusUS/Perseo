@@ -19,7 +19,7 @@ import {
   etiquetaPersona,
   PERFIL_PERSUS_POR_DEFECTO,
   sinAvisoDeIdentidad,
-} from '../src/lib/quien-hay';
+} from '../src/lib/identidad/quien-hay';
 
 const SENOR = PERFIL_PERSUS_POR_DEFECTO;
 

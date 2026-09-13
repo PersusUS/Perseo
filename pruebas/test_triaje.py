@@ -4,18 +4,19 @@ from __future__ import annotations
 
 import asyncio
 
-from perseo_core import modelo_local, triaje
+from perseo_core.servicios import modelo_local, triaje
+from perseo_core.dominio.clasificacion import CLASES, Clasificacion, IGNORAR, NO_SEGURO, RELEVANTES, REQUIERE_ACCION
 
 
 def test_el_esquema_solo_admite_las_cuatro_clases() -> None:
     """La gramática garantiza la forma; por eso hay una salida para la duda."""
-    assert triaje.ESQUEMA_TRIAJE["properties"]["clase"]["enum"] == list(triaje.CLASES)
+    assert triaje.ESQUEMA_TRIAJE["properties"]["clase"]["enum"] == list(CLASES)
     assert triaje.ESQUEMA_TRIAJE["required"] == ["clase", "motivo"]
 
 
 def test_lo_dudoso_cuenta_como_relevante() -> None:
-    assert triaje.NO_SEGURO in triaje.RELEVANTES
-    assert triaje.IGNORAR not in triaje.RELEVANTES
+    assert NO_SEGURO in RELEVANTES
+    assert IGNORAR not in RELEVANTES
 
 
 def test_el_mensaje_va_delimitado_para_el_modelo() -> None:
@@ -36,7 +37,7 @@ def test_un_mensaje_sin_campos_no_rompe() -> None:
     assert "(desconocido)" in texto and "(sin asunto)" in texto
 
 
-def _clasificar_con(monkeypatch, respuesta) -> triaje.Clasificacion:
+def _clasificar_con(monkeypatch, respuesta) -> Clasificacion:
     async def falsa(*_args, **_kwargs):
         return respuesta
 
@@ -56,27 +57,27 @@ def _clasificar_con(monkeypatch, respuesta) -> triaje.Clasificacion:
 def test_sin_modelo_local_se_escala(monkeypatch) -> None:
     """Perder un correo cuesta la confianza en el sistema entero."""
     clasificacion = _clasificar_con(monkeypatch, None)
-    assert clasificacion.clase == triaje.NO_SEGURO
+    assert clasificacion.clase == NO_SEGURO
     assert clasificacion.del_modelo is False
 
 
 def test_una_clase_inventada_se_escala(monkeypatch) -> None:
     """Esquema válido y contenido equivocado: el fallo típico de un 4B."""
     clasificacion = _clasificar_con(monkeypatch, {"clase": "urgentisimo", "motivo": "yo lo valgo"})
-    assert clasificacion.clase == triaje.NO_SEGURO
+    assert clasificacion.clase == NO_SEGURO
     assert clasificacion.del_modelo is False
 
 
 def test_una_clase_buena_se_respeta(monkeypatch) -> None:
     clasificacion = _clasificar_con(
-        monkeypatch, {"clase": triaje.REQUIERE_ACCION, "motivo": "hay que pagar"}
+        monkeypatch, {"clase": REQUIERE_ACCION, "motivo": "hay que pagar"}
     )
-    assert clasificacion.clase == triaje.REQUIERE_ACCION
+    assert clasificacion.clase == REQUIERE_ACCION
     assert clasificacion.motivo == "hay que pagar"
     assert clasificacion.del_modelo is True
 
 
 def test_relevante_es_lo_que_merece_un_aviso() -> None:
-    assert triaje.Clasificacion(triaje.REQUIERE_ACCION, "").relevante
-    assert triaje.Clasificacion(triaje.NO_SEGURO, "").relevante
-    assert not triaje.Clasificacion(triaje.IGNORAR, "").relevante
+    assert Clasificacion(REQUIERE_ACCION, "").relevante
+    assert Clasificacion(NO_SEGURO, "").relevante
+    assert not Clasificacion(IGNORAR, "").relevante

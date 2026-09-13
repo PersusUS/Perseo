@@ -1,0 +1,33 @@
+{
+  // Qué código de la interfaz no llama nadie. El equivalente de `vulture` en el
+  // núcleo, y está aquí por lo mismo: el 2026-09-12 se encontraron a mano una
+  // pantalla entera, un ajuste y cuatro reglas de CSS que ya no usaba nadie.
+  // Encontrarlos a mano funciona una vez; en el CI funciona siempre.
+  //
+  //     cd RealTime && npx knip
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+
+  // Por dónde se entra. `src/main.tsx` y `vite.config.ts` los encuentra knip
+  // solo; los demás no, y sin ellos daría por muerta media carpeta:
+  //   · `maqueta/` es la maqueta del panel, que sirve las pantallas de verdad
+  //     con datos de mentira y no pasa por la app.
+  //   · `pruebas/` son las de vitest.
+  //   · los dos `.mjs` son sondas que se ejecutan a mano contra la API de
+  //     Gemini. No forman parte de la app, y se quedan a propósito.
+  "entry": [
+    "maqueta/maqueta.tsx",
+    "pruebas/*.test.ts",
+    "vite.maqueta.config.ts",
+    "probar_live.mjs",
+    "sonda_llamada.mjs"
+  ],
+
+  "project": ["src/**/*.{ts,tsx}", "maqueta/**/*.{ts,tsx}"],
+
+  // La única excepción, y con motivo: `maqueta/tauri.ts` entra por un alias de
+  // Vite (`resolve.alias`), que knip no sigue. Sin esta línea lo daría por
+  // huérfano, y el día que alguien le hiciera caso la maqueta dejaría de
+  // arrancar. Si algún día hay que añadir otra excepción, que venga con su
+  // porqué escrito aquí: una lista sin porqués deja de leerse.
+  "ignore": ["maqueta/tauri.ts"]
+}

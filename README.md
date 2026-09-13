@@ -8,14 +8,15 @@
 voz, panel de escritorio, web en el móvil y avisos al bolsillo.**
 
 Habla contigo por voz en tiempo real, tría tu correo antes de que lo abras,
-escribe en tu memoria, encarga código a otros agentes y te pide permiso
-antes de hacer algo que no tenga vuelta atrás.
+escribe en tu memoria y encarga código a otros agentes. Clasifica por riesgo
+todo lo que hace — en el trabajador, no en el prompt —, y puede parar lo
+irreversible a esperar tu sí. Esa parada viene apagada: [ADR 0005](docs/adr/0005-las-confirmaciones-estan-apagadas.md).
 
 [![Verificación](https://github.com/PersusUS/Perseo/actions/workflows/verificacion.yml/badge.svg)](https://github.com/PersusUS/Perseo/actions/workflows/verificacion.yml)
 [![Licencia MIT](https://img.shields.io/badge/licencia-MIT-black.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-black.svg)](https://www.python.org/)
 [![Tauri 2](https://img.shields.io/badge/tauri-2-black.svg)](https://tauri.app/)
-[![862 pruebas](https://img.shields.io/badge/pruebas-862-black.svg)](#verificación)
+[![919 pruebas](https://img.shields.io/badge/pruebas-919-black.svg)](#verificación)
 
 [Qué es](#qué-es) · [Cómo se ve](#cómo-se-ve) · [Cómo funciona](#cómo-funciona) ·
 [Instalación](#instalación) · [Privacidad](#privacidad) · [English](README.en.md)
@@ -41,7 +42,7 @@ Raspberry Pi sin reescribir una línea de la interfaz.
 | 📬 **Correo triado antes de que lo leas** | Cada mensaje cae en un cajón —ignorar, interesante, requiere acción, no seguro— decidido por un modelo **local**, en tu GPU |
 | 🧠 **Memoria de verdad** | Notas Markdown en tu vault de Obsidian. Busca, lee y **añade**; nunca sobrescribe ni borra |
 | 👤 **Sabe quién habla** | Reconoce voces y caras con modelos locales, y aprende solo a quien no conoce. Apagado de fábrica |
-| 🛑 **Pide permiso** | Tres niveles de confirmación aplicados en el trabajador, no en el prompt. Lo irreversible se para y espera tu sí |
+| 🛑 **Clasifica por riesgo, y sabe quién lo pide** | Cuatro niveles aplicados en el trabajador, no en el prompt. Encendidos, lo irreversible se para y espera tu sí — y una orden de una visita se para aunque estés delante. **Vienen apagados** desde el 2026-09-12: [ADR 0005](docs/adr/0005-las-confirmaciones-estan-apagadas.md) |
 | 📱 **Te sigue al móvil** | Una PWA por la VPN de casa: chat, cola, correo y estado. Sin build y en un solo fichero |
 | 🤖 **Delega código** | Encarga tareas a subagentes (Claude Code u opencode) y te cuenta por dónde van mientras trabajan |
 | 🔌 **Habla MCP** | Cliente propio para servidores locales y remotos: vault, navegador, Windows, correo triado, subagentes |
@@ -204,9 +205,27 @@ agente se ejecute:
 | `reversible` | Anotar en el vault, editar código | Se ejecuta y queda registrado |
 | `irreversible` | Teclear a ciegas, y **todo lo que no esté clasificado** | Se para y pide un sí |
 
+Y hay un cuarto, `critico` —borrar, tocar el registro, matar procesos—, que
+pregunta **siempre**, con modo confianza o sin él.
+
+> **Y un interruptor por encima de todo esto.** Desde el 2026-09-12,
+> `politica.CONFIRMACIONES` está en `False` y la columna de la derecha dice
+> «se ejecuta» en las cuatro filas: nada se para, tampoco lo `critico`. La
+> tabla, los niveles y sus pruebas siguen enteros — lo único que no llega a
+> aplicarse es la parada. El porqué, lo que cuesta y cómo se rearma —una
+> línea, o `PERSEO_CONFIRMACIONES=1`— están en [ADR 0005](docs/adr/0005-las-confirmaciones-estan-apagadas.md).
+
 El sí se da desde la web, desde el aviso de Telegram o **en voz alta durante la
 llamada**. El *modo confianza* baja lo irreversible a reversible mientras estás
-delante, y caduca solo.
+delante, y caduca solo: durante una llamada se renueva con tu voz, así que se
+apaga sola si te levantas.
+
+**Quién lo pide también cuenta.** Cada trabajo viaja con el perfil de quien
+habló —lo pone el reconocimiento de voz, que corre en tu ordenador—, y una
+orden de alguien que no eres tú se para aunque la confianza esté encendida. Un
+sí tuyo vale además para las repeticiones exactas de lo mismo durante diez
+minutos: dictar una dirección son seis órdenes idénticas, y preguntar seis
+veces enseña a decir que sí sin leer.
 
 ---
 
@@ -306,8 +325,8 @@ lleva un `refresh_token`:
 ```
 
 ```bash
-python -m perseo_core.autorizar_google     # abre el consentimiento y guarda el testigo
-python -m perseo_core.google_api           # comprueba que las credenciales valen
+python -m perseo_core.servicios.autorizar_google     # abre el consentimiento y guarda el testigo
+python -m perseo_core.servicios.google_api           # comprueba que las credenciales valen
 PERSEO_CORREO=gmail PERSEO_AGENDA=google python -m perseo_core
 ```
 
@@ -350,11 +369,13 @@ y las rutas de la API en [`docs/API.md`](docs/API.md).
 Nada de esto se comprueba a ojo, y se comprueba de dos maneras.
 
 **Pruebas unitarias** — cada pieza por separado, sin red y sin subprocesos.
-Dicen *qué* se ha roto: **862** en total.
+Dicen *qué* se ha roto: **919** en total.
 
 ```bash
-python -m pytest                       # 724, el núcleo y los comandos
-cd RealTime && npm test                # 138, la interfaz
+python commands/perseo.py comprobar    # todo, en orden de coste
+
+python -m pytest                       # 760, el núcleo y los comandos
+cd RealTime && npm test                # 159, la interfaz
 cd RealTime/src-tauri && cargo check   # y que el Rust compila
 ```
 
@@ -363,22 +384,22 @@ funciona. Ninguno toca el estado de verdad: se montan un directorio de datos
 temporal y servidores de mentira.
 
 ```bash
-python perseo_core/verificar_fase_a.py          # el núcleo: cola, reinicios, SSE
-python perseo_core/verificar_aprobaciones.py    # el camino de confirmación
-python perseo_core/verificar_telegram.py        # el canal, contra un Telegram de mentira
-python perseo_core/verificar_router.py          # el router, contra Ollama
-python perseo_core/verificar_fase_d.py          # el triaje de correo, sin Gmail
-python perseo_core/verificar_agenda.py          # los avisos, sin Google Calendar
-python perseo_core/verificar_memoria.py         # el vault, en fichero y por el plugin
-python perseo_core/verificar_pc.py              # intentos de inyección contra `pc`
-python perseo_core/verificar_dev.py             # `dev`, sin gastar suscripción
-python perseo_core/verificar_web.py             # `web`, sin salir a internet
-python perseo_core/verificar_politica.py        # los niveles y el modo confianza
-python perseo_core/verificar_google.py          # Gmail y Calendar, sin cuenta de Google
-python perseo_core/verificar_estado.py          # la pantalla de estado y sus semáforos
-python perseo_core/verificar_correo_mcp.py      # el servidor MCP de correo
-python perseo_core/verificar_biometria.py       # voces y caras: aprender, renombrar, borrar
-python perseo_core/verificar_chat.py            # el chat escrito y sus herramientas
+python verificadores/verificar_fase_a.py          # el núcleo: cola, reinicios, SSE
+python verificadores/verificar_aprobaciones.py    # el camino de confirmación
+python verificadores/verificar_telegram.py        # el canal, contra un Telegram de mentira
+python verificadores/verificar_router.py          # el router, contra Ollama
+python verificadores/verificar_fase_d.py          # el triaje de correo, sin Gmail
+python verificadores/verificar_agenda.py          # los avisos, sin Google Calendar
+python verificadores/verificar_memoria.py         # el vault, en fichero y por el plugin
+python verificadores/verificar_pc.py              # intentos de inyección contra `pc`
+python verificadores/verificar_dev.py             # `dev`, sin gastar suscripción
+python verificadores/verificar_web.py             # `web`, sin salir a internet
+python verificadores/verificar_politica.py        # los niveles y el modo confianza
+python verificadores/verificar_google.py          # Gmail y Calendar, sin cuenta de Google
+python verificadores/verificar_estado.py          # la pantalla de estado y sus semáforos
+python verificadores/verificar_correo_mcp.py      # el servidor MCP de correo
+python verificadores/verificar_biometria.py       # voces y caras: aprender, renombrar, borrar
+python verificadores/verificar_chat.py            # el chat escrito y sus herramientas
 python commands/verificar_palabra_clave.py      # el detector, sin micrófono
 ```
 
@@ -416,7 +437,7 @@ El detalle, en [`docs/PRIVACIDAD.md`](docs/PRIVACIDAD.md).
 
 Perseo funciona y se usa a diario, pero es un proyecto personal: está pensado
 para **una** persona, en **un** ordenador con Windows, y se nota. Lo que hay
-detrás son unas 48.600 líneas, 862 pruebas y 17 verificadores.
+detrás son unas 49.100 líneas, 919 pruebas y 17 verificadores.
 
 Si lo clonas y algo no arranca, abre un
 [issue](https://github.com/PersusUS/Perseo/issues) — y si lo arreglas, mejor

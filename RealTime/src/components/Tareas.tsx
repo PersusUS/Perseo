@@ -35,7 +35,7 @@ import {
   anadir, avisar, borrar, crear, deColumna, editar, guardar, haceCuanto, leer,
   mover, restaurar, tirar, vaciarPapelera,
   type Color, type Columna, type Datos, type Tarea,
-} from '../lib/tareas';
+} from '../lib/datos/tareas';
 import '../styles/tareas.css';
 
 /** Las tres zonas del corcho. La papelera existe en el dato pero **no es una

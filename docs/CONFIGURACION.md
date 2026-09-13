@@ -21,15 +21,16 @@ modelos. Estas dos lo cambian:
 |---|---|---|
 | `PERSEO_DUENO` | `Jesús Pérez Bazarot` | Para quién trabaja. Aparece en el prompt del router, del triaje y del chat |
 | `PERSEO_TRATO` | `el señor Persus` | Cómo te llama. Va **con artículo**, porque las frases lo necesitan: «la señora Lovelace», «el doctor Chandra» |
+| `PERSEO_PERFIL_DUENO` | `Persus` | El perfil del reconocimiento de voz que eres tú. Es lo que separa tus órdenes de las de una visita: lo que pida un perfil distinto se para y espera tu sí |
 
 Dos sitios más donde vive la identidad, y que no son variables de entorno:
 
 - **El personaje largo de la voz** —el mayordomo, la casa, las mascotas, el
   tono— se edita en la propia aplicación: **Ajustes → Instrucciones del
-  sistema**. Su valor de fábrica está en `RealTime/src/lib/config.ts`.
+  sistema**. Su valor de fábrica está en `RealTime/src/lib/datos/config.ts`.
 - **Los avisos de identidad durante la llamada** («quien habla ahora NO es…»)
   salen de una sola constante, `TRATO_DUENO`, en
-  `RealTime/src/lib/quien-hay.ts`.
+  `RealTime/src/lib/identidad/quien-hay.ts`.
 
 ---
 

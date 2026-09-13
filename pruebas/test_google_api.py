@@ -8,7 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from perseo_core import agenda, correo, google_api
+from perseo_core.agentes import agenda, correo
+from perseo_core.servicios import google_api
 
 
 def escribir(ruta: Path, datos: dict) -> Path:

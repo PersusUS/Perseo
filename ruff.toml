@@ -15,4 +15,9 @@ exclude = [
     # Lo que no escribimos.
     "RealTime/src-tauri/target",
     "node_modules",
+    # La lista de excepciones de `vulture` no es código: son nombres sueltos
+    # para que la herramienta los dé por vivos. Para ruff son veinticuatro
+    # `F821 Undefined name`, que es exactamente lo que este fichero evita
+    # cuando se lee: ruido que tapa los avisos que sí valen.
+    "verificadores/vulture_permitidos.py",
 ]

@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { decodePCM, mergeChunks } from '../src/lib/audio-pcm';
+import { decodePCM, mergeChunks } from '../src/lib/audio/audio-pcm';
 
 /** Arma el base64 de un PCM de 16 bits con signo, que es lo que manda Gemini. */
 function pcmBase64(muestras: number[]): string {

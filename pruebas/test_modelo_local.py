@@ -9,7 +9,7 @@ from typing import Any
 import aiohttp
 import pytest
 
-from perseo_core import modelo_local
+from perseo_core.servicios import modelo_local
 
 
 class RespuestaFalsa:

@@ -400,11 +400,17 @@ pub(crate) async fn pedir_json(
 ///
 /// El origen es `voz` porque esta cara es la de la llamada: asi se distingue en
 /// la cola de la web lo que pediste hablando de lo que escribiste.
+///
+/// `quien` es el perfil de la persona que acaba de hablar, si el reconocimiento
+/// de voz lo sabe. Viaja hasta la politica del nucleo, que con el separa una
+/// orden del dueno de una de una visita: el origen dice por que puerta entro el
+/// trabajo, no de quien es la voz.
 #[tauri::command]
 pub async fn ejecutar_herramienta(
     app: AppHandle,
     tool_name: String,
     argumentos: String,
+    quien: Option<String>,
 ) -> Result<String, String> {
     let args: Value =
         serde_json::from_str(&argumentos).map_err(|e| format!("Argumentos JSON invalidos: {e}"))?;
@@ -434,7 +440,12 @@ pub async fn ejecutar_herramienta(
         cliente
             .post(format!("{base}/trabajos"))
             .bearer_auth(&token)
-            .json(&json!({ "agente": agente, "peticion": peticion, "origen": "voz" })),
+            .json(&json!({
+                "agente": agente,
+                "peticion": peticion,
+                "origen": "voz",
+                "quien": quien,
+            })),
     )
     .await?;
 
@@ -715,7 +726,7 @@ pub async fn precalentar_herramientas(app: AppHandle) -> Result<(), String> {
 // Biometría
 //
 // El reconocimiento de quién habla y quién sale por la cámara vive en el núcleo
-// (perseo_core/biometria.py); la llamada solo transporta los mismos trozos que
+// (perseo_core/servicios/biometria.py); la llamada solo transporta los mismos trozos que
 // ya le manda a Gemini y pinta la etiqueta que vuelve. Estos comandos son rutas
 // CONCRETAS y no un proxy genérico a /{ruta}, por el mismo motivo que panel.rs:
 // si el frontend elige la ruta entera, la ruta la escribe el frontend.
@@ -725,7 +736,12 @@ pub async fn precalentar_herramientas(app: AppHandle) -> Result<(), String> {
 // móvil con un trabajo cada dos segundos la haría ilegible.
 // --------------------------------------------------------------------------- //
 
-async fn traer_biometria(app: &AppHandle, ruta: &str) -> Result<Value, String> {
+/// Un GET con token a una ruta concreta del nucleo.
+///
+/// Se llamaba traer_biometria y desde el 2026-09-12 tambien la usa el
+/// catalogo de herramientas, que no es biometria de nada. El nombre describe
+/// lo que hace -traer JSON del nucleo- y no a su primer cliente.
+async fn traer_del_nucleo(app: &AppHandle, ruta: &str) -> Result<Value, String> {
     let token = token(app)?;
     let cliente = reqwest::Client::new();
     pedir_json(
@@ -752,10 +768,22 @@ async fn mandar_biometria(
     pedir_json(peticion.bearer_auth(&token)).await
 }
 
+/// El catalogo de herramientas que el nucleo declara para la llamada.
+///
+/// Se declara UNA vez, en `perseo_core/servicios/catalogo.py`, y esta cara lo
+/// pide al conectar. Si el nucleo no contesta, la cara abre la llamada con la
+/// copia incrustada que lleva dentro: quedarse sin voz porque el catalogo tardo
+/// seria mucho peor que hablar con la copia de ayer. Lo que impide que las dos
+/// se separen es una prueba que las compara, no esta peticion.
+#[tauri::command]
+pub async fn catalogo_herramientas(app: AppHandle) -> Result<Value, String> {
+    traer_del_nucleo(&app, "/herramientas?cara=voz").await
+}
+
 /// Perfiles guardados, progreso de aprendizaje y qué motores hay hoy.
 #[tauri::command]
 pub async fn biometria_estado(app: AppHandle) -> Result<Value, String> {
-    traer_biometria(&app, "/biometria").await
+    traer_del_nucleo(&app, "/biometria").await
 }
 
 /// Un trozo de PCM 16k mono (base64): ¿de quién es la voz?

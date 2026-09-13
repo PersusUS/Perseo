@@ -21,11 +21,15 @@ import sys
 # tapa al otro. El sintoma es un AttributeError en `web.AppRunner` al arrancar.
 from aiohttp import web as servidor
 
-from . import agenda, almacen, api, chat, correo, dev, mcp, memoria, pc, politica, web
-from .agentes import Router, Trabajador
-from .bus import Bus
-from .disparadores import Planificador
-from .telegram import Telegram
+from .agentes import agenda, chat, correo, dev, memoria, pc, web
+from .caras import api
+from .infra import almacen, politica
+from .servicios import mcp
+from .infra.router import Router, Trabajador
+from .infra.bus import Bus
+from .infra.disparadores import Planificador
+from .caras.telegram import Telegram
+from .infra.configuracion import Configuracion, LOCALES, cargar_configuracion
 
 # Estos siete se importan por sus efectos: al cargarse registran sus agentes —y
 # `correo` y `agenda`, además, sus disparadores—. Sin el import el registro está
@@ -43,7 +47,7 @@ def _configurar_registro() -> None:
     )
 
 
-def _tls(cfg: almacen.Configuracion) -> ssl.SSLContext | None:
+def _tls(cfg: Configuracion) -> ssl.SSLContext | None:
     """El contexto para servir por HTTPS, o `None` para seguir en HTTP.
 
     Esto existe por el micrófono del móvil: el navegador solo deja grabar en un
@@ -71,7 +75,7 @@ def _tls(cfg: almacen.Configuracion) -> ssl.SSLContext | None:
 
 
 def _donde_escuchar(
-    cfg: almacen.Configuracion,
+    cfg: Configuracion,
 ) -> list[tuple[str, int, ssl.SSLContext | None]]:
     """Qué se abre y cómo. El HTTPS **añade**, nunca sustituye.
 
@@ -99,20 +103,20 @@ def _donde_escuchar(
         sitios += [
             (host, cfg.tls_puerto, contexto)
             for host in cfg.hosts
-            if host not in almacen.LOCALES
+            if host not in LOCALES
         ]
     return sitios
 
 
 def _avisar_de_la_escucha(
-    cfg: almacen.Configuracion, sitios: list[tuple[str, int, ssl.SSLContext | None]]
+    cfg: Configuracion, sitios: list[tuple[str, int, ssl.SSLContext | None]]
 ) -> None:
     for host, puerto, contexto in sitios:
         # Una IPv6 sin corchetes deja una línea que no se puede copiar y pegar:
         # `http://fd7a:...:8787` no es una URL válida.
         anfitrion = f"[{host}]" if ":" in host else host
         logger.info("Escuchando en %s://%s:%d", "https" if contexto else "http", anfitrion, puerto)
-        if host in almacen.LOCALES:
+        if host in LOCALES:
             continue
         # No es un error —la Fase B lo requiere— pero sí algo que conviene ver
         # en el registro para no descubrirlo por accidente.
@@ -124,7 +128,7 @@ def _avisar_de_la_escucha(
     logger.info("Token en %s", cfg.directorio_datos / "token.txt")
 
 
-def _ya_contesta_otro_nucleo(cfg: almacen.Configuracion) -> bool:
+def _ya_contesta_otro_nucleo(cfg: Configuracion) -> bool:
     """¿Hay ya un núcleo vivo en el puerto? Entonces este sobra.
 
     Sin esta pregunta, un segundo núcleo hace todo el arranque —base de datos,
@@ -152,7 +156,7 @@ def _ya_contesta_otro_nucleo(cfg: almacen.Configuracion) -> bool:
 
 
 async def arrancar() -> None:
-    cfg = almacen.cargar_configuracion()
+    cfg = cargar_configuracion()
 
     if await asyncio.to_thread(_ya_contesta_otro_nucleo, cfg):
         # Salida limpia a propósito: para el vigilante, un código 0 es una orden

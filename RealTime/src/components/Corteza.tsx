@@ -27,7 +27,7 @@
  * JS remoto podría leerlo.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import * as corteza from '../lib/datos/corteza';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 type DatosCorteza = {
@@ -74,7 +74,7 @@ export const Corteza: React.FC = () => {
   const [completa, setCompleta] = useState(false);
 
   useEffect(() => {
-    invoke<DatosCorteza | null>('corteza_parametros')
+    corteza.parametros<DatosCorteza>()
       .then(d => {
         if (d) setDatos(d);
         else setFallo('Esta ventana no tiene ficha asignada.');
@@ -167,5 +167,3 @@ export const Corteza: React.FC = () => {
     </div>
   );
 };
-
-export default Corteza;

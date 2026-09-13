@@ -15,7 +15,7 @@ import {
   avisoDeEspera,
   esLimite,
   planificarReintento,
-} from '../src/lib/reconexion';
+} from '../src/lib/llamada/reconexion';
 
 describe('esLimite', () => {
   it('reconoce el 1011 que manda Gemini al pasarse de cuota', () => {

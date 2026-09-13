@@ -16,22 +16,29 @@ componente de React, estás en el sitio equivocado.
 
 ## Dónde está cada cosa
 
+El núcleo va en cinco capas, de abajo arriba, y **nadie importa hacia arriba**:
+`dominio/` (los tipos), `infra/` (cola, bus, política, router), `servicios/` (la
+maquinaria), `agentes/` (los que atienden un trabajo) y `caras/` (API, Telegram,
+la web del móvil). No es una costumbre: lo comprueba `pruebas/test_arquitectura.py`.
+
 | Vas a tocar | Mira primero |
 |---|---|
-| La cola, el bus, la API | `perseo_core/api.py`, `bus.py`, `almacen.py` |
-| A qué agente va cada cosa | `perseo_core/agentes.py` (el router) |
-| Un agente concreto | `perseo_core/<nombre>.py` — se llaman como el agente |
-| Qué necesita confirmación | `perseo_core/politica.py` |
-| El prompt compartido | `perseo_core/identidad.py` |
-| La llamada de voz | `RealTime/src/lib/gemini-live.ts` y `RealTime/src/App.tsx` |
+| La cola, el bus, la API | `perseo_core/caras/api.py`, `infra/bus.py`, `infra/almacen.py` |
+| A qué agente va cada cosa | `perseo_core/infra/router.py` (el router) |
+| Un agente concreto | `perseo_core/agentes/<nombre>.py` — se llaman como el agente |
+| Qué necesita confirmación | `perseo_core/infra/politica.py` |
+| El prompt compartido | `perseo_core/infra/identidad.py` |
+| La llamada de voz | `RealTime/src/lib/llamada/gemini-live.ts` y `RealTime/src/App.tsx` |
 | El panel | `RealTime/src/components/Panel.tsx` |
 | Los puentes a Rust | `RealTime/src-tauri/src/commands.rs` y `nucleo.rs` |
-| La web del móvil | `perseo_core/interfaz/index.html` — un solo fichero, sin build |
+| La web del móvil | `perseo_core/caras/interfaz/index.html` — un solo fichero, sin build |
+| Las piezas de la app | `RealTime/src/lib/` en cuatro carpetas: `audio/`, `llamada/`, `datos/`, `identidad/` |
 | Configuración | [`docs/CONFIGURACION.md`](docs/CONFIGURACION.md) |
 
-Los ficheros que pasan de mil líneas —`Panel.tsx`, `dev.py`, `chat.py`,
-`almacen.py`, `gemini-live.ts`, `mcp.py`, `api.py`— se leen **por rangos tras
-un `grep -n`**, no de una sentada.
+Hay un **techo de tamaño**: blando a 600 líneas, duro a 900, con una lista de
+excepciones en `commands/arquitectura.py` que solo puede encoger. Los que hoy
+siguen por encima se leen **por rangos tras un `grep -n`**, no de una sentada.
+`python commands/perseo.py comprobar --arquitectura` dice cuáles son.
 
 ## Ver lo que has cambiado
 
@@ -39,7 +46,7 @@ un `grep -n`**, no de una sentada.
 |---|---|---|
 | `RealTime/src/**` | `python commands/perseo.py actualizar` | **No** — la interfaz va incrustada dentro del binario |
 | `perseo_core/*.py`, `commands/*.py` | Reiniciar el núcleo: `perseo parar` y luego `perseo on` | **No** — el proceso viejo se queda con el código viejo |
-| `perseo_core/interfaz/index.html` | Recargar el navegador | Sí: el núcleo lo sirve del disco |
+| `perseo_core/caras/interfaz/index.html` | Recargar el navegador | Sí: el núcleo lo sirve del disco |
 
 Para el **aspecto** del panel no hace falta pagar los dos minutos de
 reconstrucción: la maqueta sirve las pantallas de verdad con datos de mentira
@@ -55,18 +62,23 @@ Rutas de la maqueta: `/` el panel, `#tareas` el tablero, `#habitos` y
 ## Antes de dar algo por bueno
 
 ```bash
-python -m pytest                        # 724 pruebas
-python -m ruff check .
-cd RealTime && npx tsc --noEmit && npm test   # 138 pruebas
-cd RealTime/src-tauri && cargo check --locked
+python commands/perseo.py comprobar
 ```
 
-Las cuatro corren también en CI, en Linux y en Windows.
+Eso es pytest, ruff, `tsc`, las pruebas del frontend y `cargo check`, en orden
+de coste: lo que tarda segundos primero. Las cinco corren también en CI, en
+Linux y en Windows. `--rapido` se salta Rust, que es la que tarda.
+
+Está escrito en **un solo sitio** a propósito. Antes eran cuatro bloques
+copiados —aquí, en el README y en el fichero del CI— y los recuentos de pruebas
+que llevaban dentro ya no coincidían en ninguno. Los números que cita la
+documentación salen ahora de `perseo cuentas`, y `perseo cuentas --arreglar` los
+reescribe; hay una prueba que compara.
 
 Si tocaste el comportamiento de verdad —no solo el aspecto— pasa además el
-verificador que le toque: son diecisiete, están en `perseo_core/verificar_*.py`
-y ninguno toca el estado real (se montan un directorio temporal y servidores de
-mentira).
+verificador que le toque. Están en `verificadores/`, menos el de la palabra
+clave, que vive en `commands/` porque necesita micrófono. Ninguno toca el estado
+real: se montan un directorio temporal y servidores de mentira.
 
 ## Trampas que cuestan una hora
 
@@ -100,6 +112,31 @@ mentira).
   comentarios.
 - **Nada de secretos en el código.** Si algo necesita una clave, se lee del
   entorno o de `<datos>`, y `<datos>` está en el `.gitignore`.
+
+## Las reglas que no dependen de que te acuerdes
+
+Cinco cosas que antes eran costumbre y ahora las comprueba
+`pruebas/test_arquitectura.py` y `pruebas/test_documentacion.py`. Si alguna se
+pone roja, el arreglo **no** es tocar la prueba:
+
+| Regla | Qué pasa si la rompes | Dónde se afloja |
+|---|---|---|
+| El núcleo va en capas y nadie importa hacia arriba | rojo, con el importe señalado | el orden de `CAPAS` en `commands/arquitectura.py` |
+| Ningún fichero pasa de 900 líneas | rojo, con el fichero y su cuenta | pártelo; la lista de excepciones solo encoge |
+| Un componente no llama al núcleo | rojo, con el componente | pídele los datos a un gancho de `lib/datos/` |
+| `docs/API.md` describe las rutas que existen, y todas | rojo, con la ruta | documéntala o bórrala |
+| Los recuentos que cita el README son los de verdad | rojo, con la cifra | `perseo cuentas --arreglar` |
+
+Las excepciones vivas —dos ficheros grandes y diez componentes— tienen nombre y
+apellidos en `commands/arquitectura.py`, y las dos que necesitan explicación la
+tienen en [`docs/adr/`](docs/adr/). Una excepción sin porqué no vale: si nadie
+sabe explicar por qué algo sigue ahí, la respuesta correcta es quitarlo.
+
+Para ver cómo va todo de un vistazo:
+
+```bash
+python commands/perseo.py comprobar --arquitectura
+```
 
 ## Lo que no hay que hacer
 

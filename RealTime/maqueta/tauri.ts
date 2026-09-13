@@ -22,8 +22,8 @@ const TRABAJOS = [
   },
   {
     id: 270, estado: 'esperando', agente: 'pc', origen: 'voz',
-    peticion: { accion: 'abrir_app', parametro: 'spotify' },
-    confirmacion: { resumen: 'Abrir Spotify', detalle: 'Perseo quiere abrir Spotify y buscar «Loser».' },
+    peticion: { accion: 'abrir_app', parametro: 'notepad' },
+    confirmacion: { resumen: 'Abrir el bloc de notas', detalle: 'Perseo quiere abrir el bloc de notas y escribir en él.' },
   },
   {
     id: 269, estado: 'hecho', agente: 'correo', origen: 'disparador',

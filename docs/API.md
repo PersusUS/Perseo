@@ -41,7 +41,7 @@ iconos. `/salud` no devuelve nada sensible.
 | Ruta | Qué hace |
 |---|---|
 | `POST /mensaje` | Entrada conversacional. **El router decide** si contesta él o encola para un agente |
-| `POST /trabajos` | Encola directamente, saltándose el router: `{"agente": "correo", "instruccion": "…"}` |
+| `POST /trabajos` | Encola directamente, saltándose el router: `{"agente": "pc", "peticion": {"accion": "abrir_app", "parametro": "notepad"}}`. Admite además `origen` (`voz`, `texto` o `disparador`) y `quien` — el perfil de quien lo pidió, que es lo que mira la política para no dejar que una visita mueva las manos |
 | `GET /trabajos` | La cola. Filtros `?estado=` y `?limite=` |
 | `GET /trabajos/{id}` | Uno |
 | `GET /trabajos/{id}/actividad` | Por dónde va un encargo largo, paso a paso |
@@ -63,6 +63,7 @@ iconos. `/salud` no devuelve nada sensible.
 | `GET /salud` | Que está vivo, y qué agentes carga |
 | `GET /estado` | De qué está capado el sistema hoy: piezas, cuota, disparadores, **la máquina** (CPU, RAM, disco, red, batería) y **la presencia**. Con token: junta, esa información es el mapa de por dónde entrar |
 | `GET /eventos` | Flujo SSE con todo lo que pasa |
+| `GET /herramientas` | El catálogo de herramientas de una cara (`?cara=voz` o `?cara=chat`): nombre, descripción y esquema de cada una. Está declarado **una sola vez** en el núcleo; la app de voz lo pide al conectar y lleva una copia incrustada por si el núcleo tarda |
 
 ### El correo triado
 
@@ -90,6 +91,7 @@ iconos. `/salud` no devuelve nada sensible.
 | `GET /proyectos` | Los otros programas que se pueden abrir |
 | `POST /proyectos/{id}/abrir` | Abre uno. Por aquí viaja **cuál**, nunca qué ejecutar |
 | `GET /grafo` · `GET /grafo/datos` | El grafo del vault |
+| `POST /grafo/abrir` | Abre una nota en Obsidian. Por aquí viaja **cuál**, y el id se busca entre los ficheros reales del vault |
 
 ### Biometría
 
@@ -122,10 +124,10 @@ consiga el token consigue encolar, no consigue una consola.
 TOKEN=$(cat perseo_core/datos/token.txt)
 BASE=http://127.0.0.1:8787
 
-# Encola algo irreversible
+# Encola algo irreversible: teclear va a ciegas sobre la ventana con el foco
 curl -s -X POST $BASE/trabajos \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"agente":"pc","instruccion":"Abre el navegador"}'
+  -d '{"agente":"pc","peticion":{"accion":"escribir_teclado","parametro":"hola"}}'
 
 # Se queda esperando
 curl -s "$BASE/trabajos?estado=esperando" -H "Authorization: Bearer $TOKEN"

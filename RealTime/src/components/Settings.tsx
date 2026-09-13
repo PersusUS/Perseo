@@ -22,11 +22,13 @@ import React, { useEffect, useState } from 'react';
 import {
   defaultConfig,
   guardarAjuste,
+  SILENCIO_MAX_MS,
+  SILENCIO_MIN_MS,
   SYSTEM_PROMPT_POR_DEFECTO,
   type AspectoLive,
   type EstiloHabitos,
   type ModoMicro,
-} from '../lib/config';
+} from '../lib/datos/config';
 import {
   borrarPerfil,
   capturarCara,
@@ -35,8 +37,8 @@ import {
   grabarMuestra,
   renombrarPerfil,
   type EstadoBiometria,
-} from '../lib/identidad';
-import { esElSenor } from '../lib/quien-hay';
+} from '../lib/identidad/identidad';
+import { esElSenor } from '../lib/identidad/quien-hay';
 
 interface Props {
   onClose: () => void;
@@ -100,6 +102,7 @@ export const Settings: React.FC<Props> = ({
   const [aspecto, setAspecto] = useState<AspectoLive>(defaultConfig.aspectoLive);
   const [estiloHabitos, setEstiloHabitos] = useState<EstiloHabitos>(defaultConfig.estiloHabitos);
   const [modoMicro, setModoMicro] = useState<ModoMicro>(defaultConfig.modoMicro);
+  const [silencioMs, setSilencioMs] = useState(defaultConfig.silencioMs);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
 
@@ -266,6 +269,7 @@ export const Settings: React.FC<Props> = ({
       await guardarAjuste('aspectoLive', aspecto);
       await guardarAjuste('estiloHabitos', estiloHabitos);
       await guardarAjuste('modoMicro', modoMicro);
+      await guardarAjuste('silencioMs', silencioMs);
       onClose();
     } catch (e) {
       setError(`No se pudo guardar: ${e}`);
@@ -359,6 +363,28 @@ export const Settings: React.FC<Props> = ({
             </p>
             {llamadaActiva && modoMicro !== modoMicroOriginal && (
               <p className="ajustes-nota">El modo del micrófono se aplicará al volver a llamar.</p>
+            )}
+            {modoMicro === 'manos-libres' && (
+              <>
+                <label className="ajustes-etiqueta" htmlFor="silencio">
+                  Cuánto callas para que te dé por terminado: {silencioMs} ms
+                </label>
+                <input
+                  id="silencio"
+                  type="range"
+                  min={SILENCIO_MIN_MS}
+                  max={SILENCIO_MAX_MS}
+                  step={50}
+                  value={silencioMs}
+                  onChange={e => setSilencioMs(Number(e.target.value))}
+                />
+                <p className="ajustes-nota">
+                  Menos, y contesta antes pero se lanza a hablar en cuanto respiras.
+                  Más, y espera educadamente pero parece lento. La espera real de cada
+                  respuesta queda apuntada en el cuaderno de la llamada, así que esto
+                  se ajusta con una cifra delante y no a oído.
+                </p>
+              </>
             )}
           </section>
 

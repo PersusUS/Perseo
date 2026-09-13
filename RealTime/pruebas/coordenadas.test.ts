@@ -12,7 +12,7 @@ import {
   GeometriaPantalla,
   aPixeles,
   traducirParametroDeRaton,
-} from '../src/lib/coordenadas';
+} from '../src/lib/llamada/coordenadas';
 
 const PANTALLA: GeometriaPantalla = {
   ancho_imagen: 1280,
@@ -69,7 +69,7 @@ describe('traducirParametroDeRaton', () => {
   });
 
   it('no toca un texto que no es un punto', () => {
-    expect(traducirParametroDeRaton('spotify', PANTALLA)).toBe('spotify');
+    expect(traducirParametroDeRaton('notepad', PANTALLA)).toBe('notepad');
   });
 });
 

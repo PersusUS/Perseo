@@ -18,7 +18,9 @@ from typing import Any
 import aiohttp
 import pytest
 
-from perseo_core import almacen, estado, politica
+from perseo_core.caras import estado
+from perseo_core.infra import politica
+from perseo_core.infra.configuracion import Configuracion, cargar_configuracion
 
 
 @pytest.fixture(autouse=True)
@@ -27,10 +29,10 @@ def sin_memoria() -> None:
     estado.olvidar()
 
 
-def configuracion(monkeypatch: pytest.MonkeyPatch, datos: Path, **variables: str) -> almacen.Configuracion:
+def configuracion(monkeypatch: pytest.MonkeyPatch, datos: Path, **variables: str) -> Configuracion:
     for nombre, valor in variables.items():
         monkeypatch.setenv(nombre, valor)
-    return almacen.cargar_configuracion()
+    return cargar_configuracion()
 
 
 # --------------------------------------------------------------------------- #
@@ -118,20 +120,20 @@ def test_la_cuota_cuenta_lo_gastado(monkeypatch: pytest.MonkeyPatch, datos: Path
 # --------------------------------------------------------------------------- #
 
 
-def test_ollama_apagado_sale_en_rojo_con_el_arreglo(cfg: almacen.Configuracion) -> None:
+def test_ollama_apagado_sale_en_rojo_con_el_arreglo(cfg: Configuracion) -> None:
     pieza = asyncio.run(estado._ollama(cfg, _Sesion(_Rota())))
     assert pieza.estado == estado.MALO
     assert "ollama serve" in pieza.arreglo
 
 
-def test_ollama_en_pie_con_su_modelo(cfg: almacen.Configuracion) -> None:
+def test_ollama_en_pie_con_su_modelo(cfg: Configuracion) -> None:
     sesion = _Sesion(_Respuesta(200, {"models": [{"name": cfg.modelo_router}]}))
     pieza = asyncio.run(estado._ollama(cfg, sesion))
     assert pieza.estado == estado.OK
     assert cfg.modelo_router in pieza.detalle
 
 
-def test_ollama_en_pie_sin_el_modelo_avisa_de_como_traerlo(cfg: almacen.Configuracion) -> None:
+def test_ollama_en_pie_sin_el_modelo_avisa_de_como_traerlo(cfg: Configuracion) -> None:
     """Es ámbar y no rojo: el servidor está, lo que falta se baja en un comando."""
     sesion = _Sesion(_Respuesta(200, {"models": [{"name": "llama3:8b"}]}))
     pieza = asyncio.run(estado._ollama(cfg, sesion))
@@ -152,7 +154,7 @@ def test_a_ollama_le_vale_otra_etiqueta_del_mismo_modelo(
     assert asyncio.run(estado._ollama(cfg, sesion)).estado == estado.OK
 
 
-def test_ollama_que_responde_mal_no_es_lo_mismo_que_apagado(cfg: almacen.Configuracion) -> None:
+def test_ollama_que_responde_mal_no_es_lo_mismo_que_apagado(cfg: Configuracion) -> None:
     pieza = asyncio.run(estado._ollama(cfg, _Sesion(_Respuesta(500, "boom"))))
     assert pieza.estado == estado.MALO
     assert "500" in pieza.detalle
@@ -163,7 +165,7 @@ def test_ollama_que_responde_mal_no_es_lo_mismo_que_apagado(cfg: almacen.Configu
 # --------------------------------------------------------------------------- #
 
 
-def test_el_suplente_viene_apagado(cfg: almacen.Configuracion) -> None:
+def test_el_suplente_viene_apagado(cfg: Configuracion) -> None:
     """Apagado, no roto: mandar el texto fuera es una decisión, no un defecto."""
     pieza = estado._suplente(cfg)
     assert pieza.estado == estado.APAGADO
@@ -182,7 +184,7 @@ def test_el_suplente_completo(monkeypatch: pytest.MonkeyPatch, datos: Path) -> N
     assert estado._suplente(cfg).estado == estado.OK
 
 
-def test_telegram_sin_configurar(cfg: almacen.Configuracion) -> None:
+def test_telegram_sin_configurar(cfg: Configuracion) -> None:
     assert estado._telegram(cfg).estado == estado.APAGADO
 
 
@@ -221,7 +223,7 @@ def test_el_buzon_de_mentira_no_pasa_por_verde(
     assert estado._correo(cfg).estado == estado.AVISO
 
 
-def test_sin_correo_es_apagado(cfg: almacen.Configuracion) -> None:
+def test_sin_correo_es_apagado(cfg: Configuracion) -> None:
     assert estado._correo(cfg).estado == estado.APAGADO
 
 
@@ -235,16 +237,40 @@ def test_el_navegador_simulado_avisa(monkeypatch: pytest.MonkeyPatch, datos: Pat
     assert estado._web(cfg).estado == estado.AVISO
 
 
-def test_las_confirmaciones_puestas_son_lo_normal() -> None:
+def test_las_confirmaciones_apagadas_se_dicen() -> None:
+    """El estado de fabrica desde el 2026-09-12, y lo que mas importa que no mienta.
+
+    Un panel se lee de un vistazo y no se comprueba: si esta pieza saliera en
+    verde diciendo que lo irreversible pide un si, seria peor que no tenerla.
+    """
+    assert not politica.CONFIRMACIONES
+    pieza = estado._confianza()
+    assert pieza.estado == estado.AVISO
+    assert "Apagadas" in pieza.detalle
+    assert pieza.arreglo, "una pieza en aviso dice como se arregla"
+
+
+def test_las_confirmaciones_puestas_son_lo_normal(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(politica, "CONFIRMACIONES", True)
     assert estado._confianza().estado == estado.OK
 
 
-def test_el_modo_confianza_encendido_se_ve() -> None:
+def test_el_modo_confianza_encendido_se_ve(monkeypatch: pytest.MonkeyPatch) -> None:
     """Que lo irreversible no pregunte tiene que estar a la vista mientras dure."""
+    monkeypatch.setattr(politica, "CONFIRMACIONES", True)
     politica.activar_confianza(30)
     pieza = estado._confianza()
     assert pieza.estado == estado.AVISO
     assert "sin preguntar" in pieza.detalle
+
+
+def test_apagadas_el_modo_confianza_no_cambia_la_pieza() -> None:
+    """Encender la confianza con el interruptor apagado no cambia nada, y se dice.
+
+    Es lo que justifica que el panel esconda el boton: ver `Panel.tsx`.
+    """
+    politica.activar_confianza(30)
+    assert "Apagadas" in estado._confianza().detalle
 
 
 # --------------------------------------------------------------------------- #
@@ -271,7 +297,7 @@ def test_el_plugin_pedido_sin_clave_avisa_de_que_se_sigue_en_ficheros(
     assert "ficheros" in pieza.detalle
 
 
-def test_google_sin_pedir_no_toca_la_red(cfg: almacen.Configuracion) -> None:
+def test_google_sin_pedir_no_toca_la_red(cfg: Configuracion) -> None:
     """Si nadie ha pedido Gmail ni Calendar, no se gasta ni una petición."""
     pieza = asyncio.run(estado._google(cfg))
     assert pieza.estado == estado.APAGADO
@@ -346,7 +372,7 @@ class _RouterFalso:
 
 
 def test_el_panel_trae_todo_lo_que_pinta_la_pantalla(
-    db: almacen.Configuracion, monkeypatch: pytest.MonkeyPatch
+    db: Configuracion, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Un contrato: si desaparece una clave, la pestaña se queda en blanco."""
 
@@ -373,7 +399,7 @@ def test_el_panel_trae_todo_lo_que_pinta_la_pantalla(
 
 
 def test_el_panel_dice_que_disparadores_estan_apagados(
-    db: almacen.Configuracion, monkeypatch: pytest.MonkeyPatch
+    db: Configuracion, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Los registrados y los encendidos no son lo mismo, y la diferencia importa:
     un disparador apagado explica por qué no llega ningún aviso."""

@@ -22,7 +22,7 @@ import {
   ALMACEN, MES_VACIO,
   clave, diasDelMes, foto, guardar, leer, porcentaje, racha, resumen, semanaDe,
   type Datos,
-} from '../src/lib/habitos';
+} from '../src/lib/datos/habitos';
 
 /** Un almacén a medida. Los días marcados se dan por hábito y por mes. */
 function almacen(

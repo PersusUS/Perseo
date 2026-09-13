@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from perseo_core import web
+from perseo_core.agentes import web
 
 
 @pytest.mark.parametrize(

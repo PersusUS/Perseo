@@ -17,19 +17,24 @@ es más de lo que esperaba, así que gracias.
 ## Antes de abrir un PR
 
 ```bash
-python -m pytest
-python -m ruff check .
-cd RealTime && npx tsc --noEmit && npm test
-cd RealTime/src-tauri && cargo check --locked
+python commands/perseo.py comprobar
 ```
 
-Las cuatro tienen que estar en verde. Corren también en CI, en Linux y en
-Windows, así que si fallan allí y aquí no, suele ser una ruta con `\` o un
-final de línea.
+Eso es pytest, ruff, el buscador de código muerto, los tipos y las pruebas del
+frontend, `knip` y `cargo check`, en orden de coste. Todo tiene que estar en
+verde. Corre también en CI, en Linux y en Windows, así que si falla allí y aquí
+no, suele ser una ruta con `\` o un final de línea. `--rapido` se salta Rust.
+
+Algunas de esas comprobaciones no miran lo que hace el código sino **dónde vive**:
+que el núcleo siga en capas, que ningún fichero pase de novecientas líneas, que
+`docs/API.md` describa las rutas que existen y que los recuentos del README sean
+los de verdad. Están explicadas en [`AGENTS.md`](AGENTS.md) y las decisiones que
+hay detrás, en [`docs/adr/`](docs/adr/). Si una se pone roja, el arreglo no es
+tocar la prueba.
 
 Si cambias comportamiento, añade o ajusta la prueba que lo cubre. Si cambias
 algo del sistema entero —la cola, la política, un agente— pasa además su
-verificador (`perseo_core/verificar_*.py`).
+verificador (`verificadores/verificar_*.py`).
 
 ## Cómo se escribe aquí
 

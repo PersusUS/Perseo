@@ -12,7 +12,9 @@ menciona este fichero.
 
 from __future__ import annotations
 
-from perseo_core import agentes, identidad, triaje
+from perseo_core.infra import identidad, router
+from perseo_core.servicios import triaje
+from perseo_core.dominio.clasificacion import CLASES
 
 
 def test_el_nucleo_dice_quien_es() -> None:
@@ -43,12 +45,12 @@ def test_con_identidad_pone_el_nucleo_delante() -> None:
 
 
 def test_el_router_hereda_la_identidad() -> None:
-    assert identidad.NUCLEO in agentes._INSTRUCCIONES_ROUTER
+    assert identidad.NUCLEO in router._INSTRUCCIONES_ROUTER
 
 
 def test_el_router_sigue_admitiendo_su_hueco_de_agentes() -> None:
     """La prueba de la trampa: que el prompt entero siga formateándose."""
-    formateado = agentes._INSTRUCCIONES_ROUTER.format(agentes="eco, memoria")
+    formateado = router._INSTRUCCIONES_ROUTER.format(agentes="eco, memoria")
     assert "eco, memoria" in formateado
     assert "Perseo" in formateado
 
@@ -74,7 +76,7 @@ def test_el_triaje_sabe_de_quien_es_el_buzon() -> None:
 
 
 def test_el_triaje_conserva_sus_cuatro_cajones() -> None:
-    for clase in triaje.CLASES:
+    for clase in CLASES:
         assert clase in triaje._INSTRUCCIONES
 
 

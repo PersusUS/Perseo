@@ -13,7 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from perseo_core import almacen, estado
+from perseo_core.caras import estado
+from perseo_core.infra import almacen
+from perseo_core.infra.configuracion import Configuracion, cargar_configuracion
 
 
 def test_sin_psutil_la_telemetria_lo_dice_y_no_lanza(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -62,7 +64,7 @@ def test_la_red_da_velocidad_y_no_el_total_desde_el_arranque() -> None:
     assert "/s" in segunda["red"]["legible"]
 
 
-def test_la_presencia_con_la_base_cerrada_no_revienta(cfg: almacen.Configuracion) -> None:
+def test_la_presencia_con_la_base_cerrada_no_revienta(cfg: Configuracion) -> None:
     """El caso de un reinicio a medias: la pantalla pide estado antes de que la
     base esté abierta."""
     import asyncio
@@ -87,11 +89,11 @@ def test_la_presencia_cuenta_solo_lo_que_falta_por_resolver(db, datos: Path) -> 
         ]
     })
 
-    sin_marcar = asyncio.run(estado.presencia(cfg=almacen.cargar_configuracion()))
+    sin_marcar = asyncio.run(estado.presencia(cfg=cargar_configuracion()))
     assert sin_marcar["correo"] == {"requiere_accion": 2}
 
     almacen.marcar_correo("m1", almacen.ATENDIDO)
-    marcado = asyncio.run(estado.presencia(cfg=almacen.cargar_configuracion()))
+    marcado = asyncio.run(estado.presencia(cfg=cargar_configuracion()))
     assert marcado["correo"] == {"requiere_accion": 1}
 
 

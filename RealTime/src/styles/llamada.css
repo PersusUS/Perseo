@@ -287,21 +287,17 @@
   max-width: calc(100% - 56px);
 }
 
-.camera-pip,
-.screen-pip {
+.camera-pip {
   position: relative;
   border: 1px solid var(--border);
   background: #000;
   overflow: hidden;
 }
 
-/* Tamaños fijos: pantalla en 16:9, que es la proporción de lo que ve el
-   modelo; cámara en 4:3, como llega del dispositivo. */
-.screen-pip { width: 256px; height: 144px; }
+/* Tamaño fijo, en 4:3, como llega del dispositivo. */
 .camera-pip { width: 192px; height: 144px; }
 
-.camera-pip video,
-.screen-pip img {
+.camera-pip video {
   display: block;
   width: 100%;
   height: 100%;
@@ -311,8 +307,7 @@
 /* Las esquinas marcadas: la firma de .esc-bloque y .pnl-hud. La imagen va sin
    filtro a propósito: esta caja informa de lo que hay delante, y un preview en
    blanco y negro mentiría sobre lo que el modelo está viendo. */
-.camera-pip::before, .camera-pip::after,
-.screen-pip::before, .screen-pip::after {
+.camera-pip::before, .camera-pip::after {
   content: '';
   position: absolute;
   width: 9px;
@@ -322,8 +317,8 @@
   z-index: 2;
 }
 
-.camera-pip::before, .screen-pip::before { top: 4px; left: 4px; border-top: 1px solid var(--fg); border-left: 1px solid var(--fg); }
-.camera-pip::after, .screen-pip::after { bottom: 4px; right: 4px; border-bottom: 1px solid var(--fg); border-right: 1px solid var(--fg); }
+.camera-pip::before { top: 4px; left: 4px; border-top: 1px solid var(--fg); border-left: 1px solid var(--fg); }
+.camera-pip::after { bottom: 4px; right: 4px; border-bottom: 1px solid var(--fg); border-right: 1px solid var(--fg); }
 
 .pip-etiqueta {
   position: absolute;
@@ -591,6 +586,26 @@
 .ajustes-ficha-que { font-size: 12px; line-height: 1.45; color: var(--fg-dim); }
 .ajustes-ficha.elegida .ajustes-ficha-que { color: var(--fg-muted); }
 
+/* La etiqueta y el deslizador del silencio del micrófono. `accent-color` va al
+   blanco de la casa: el deslizador nativo se pinta azul de Windows dentro del
+   WebView y canta muchísimo sobre este fondo. */
+.ajustes-etiqueta {
+  display: block;
+  margin-top: 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.ajustes input[type='range'] {
+  width: 100%;
+  margin-top: 8px;
+  accent-color: var(--fg);
+  background: transparent;
+}
+
 .ajustes-nota { font-size: 12px; color: var(--fg-dim); line-height: 1.6; margin-top: 10px; }
 .ajustes-nota code {
   font-family: var(--mono);
@@ -819,17 +834,6 @@
 
 .proyecto-ficha { position: relative; overflow: hidden; }
 
-/* La franja de identidad: cada app lleva arriba SU color, declarado en su
-   ficha del disco. Es el único sitio donde el color no es de estado — y va
-   porque así se sabe qué es qué sin leer ni una palabra. */
-.proyecto-franja {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  opacity: 0.881;
-}
 .proyecto-ficha::before { top: 3px; left: 3px; border-top: 1px solid var(--fg); border-left: 1px solid var(--fg); }
 .proyecto-ficha::after { bottom: 3px; right: 3px; border-bottom: 1px solid var(--fg); border-right: 1px solid var(--fg); }
 

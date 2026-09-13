@@ -6,8 +6,8 @@ son también lo que más fácil se rompe sin enterarse: un aviso de más no fall
 solo hace que el canal se silencie. Por eso están fijadas aquí.
 """
 
-from perseo_core.bus import Evento
-from perseo_core.telegram import redactar, resumir_peticion
+from perseo_core.infra.bus import Evento
+from perseo_core.caras.telegram import redactar, resumir_peticion
 
 URL = "http://perseo.tailnet:8787"
 

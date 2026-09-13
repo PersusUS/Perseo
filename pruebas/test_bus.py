@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from perseo_core.bus import Bus, Evento
+from perseo_core.infra.bus import Bus, Evento
 
 
 def test_publicar_sin_suscriptores_no_rompe() -> None:

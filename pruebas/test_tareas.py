@@ -3,7 +3,7 @@
 Lo que se prueba aquí es lo poco que el núcleo hace con las tareas, que es a
 propósito muy poco: guardar la copia que le manda la ventana, devolverla, y
 avisar cuando la copia está pasada. Contar notas no se prueba aquí porque no se
-hace aquí — se hace una sola vez, en `RealTime/src/lib/tareas.ts`, y de eso
+hace aquí — se hace una sola vez, en `RealTime/src/lib/datos/tareas.ts`, y de eso
 responden `RealTime/pruebas/tareas.test.ts`.
 
 Los dos casos que de verdad importan son el del almacén vacío y el de la copia
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from perseo_core import tareas
+from perseo_core.servicios import tareas
 
 
 def test_lo_guardado_vuelve_tal_cual(tmp_path: Path) -> None:
@@ -94,7 +94,7 @@ def test_la_escritura_no_deja_medio_fichero(tmp_path: Path) -> None:
 def test_el_espejo_de_tareas_no_pisa_al_de_habitos(tmp_path: Path) -> None:
     """Los dos buzones comparten directorio. Si compartiesen fichero, abrir la
     pantalla de tareas borraría los hábitos y nadie lo notaría hasta preguntar."""
-    from perseo_core import habitos
+    from perseo_core.servicios import habitos
 
     habitos.guardar(tmp_path, "hábitos")
     tareas.guardar(tmp_path, "tareas")

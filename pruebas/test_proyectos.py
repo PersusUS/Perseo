@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-from perseo_core import proyectos
+from perseo_core.servicios import proyectos
 
 
 def escribir(directorio: Path, entradas: list[dict]) -> None:

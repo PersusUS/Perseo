@@ -372,14 +372,12 @@
 
 /* Los tres puntos mientras piensa. Que mandar un mensaje y esperar se vea
    igual que una app rota fue un fallo caro en el móvil; aquí no se repite. */
-.pnl-pensando { display: flex; align-items: center; gap: 6px; }
-.pnl-pensando span,
 .pnl-burbuja.pensando span {
   width: 5px; height: 5px; border-radius: 50%; background: var(--fg-muted);
   animation: pnl-pulso 1.2s ease-in-out infinite;
 }
-.pnl-burbuja.pensando span:nth-child(2), .pnl-pensando span:nth-child(2) { animation-delay: .18s; }
-.pnl-burbuja.pensando span:nth-child(3), .pnl-pensando span:nth-child(3) { animation-delay: .36s; }
+.pnl-burbuja.pensando span:nth-child(2) { animation-delay: .18s; }
+.pnl-burbuja.pensando span:nth-child(3) { animation-delay: .36s; }
 @keyframes pnl-pulso {
   0%, 100% { opacity: 0.339; transform: translateY(0); }
   50% { opacity: 1; transform: translateY(-2px); }
@@ -453,12 +451,6 @@
   margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere;
   font-family: var(--mono); font-size: 11px; color: var(--fg-dim);
   max-height: 200px; overflow-y: auto;
-}
-
-/* El rótulo de cada campo: versalitas monoespaciadas, la casa de siempre. */
-.pnl-rotulo {
-  font-size: 9px; letter-spacing: .18em; text-transform: uppercase;
-  color: var(--fg-dim);
 }
 
 /* Los ejemplos que se rellenan al pulsarlos: la lección del señor Persus

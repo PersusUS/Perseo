@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from perseo_core import almacen
+from perseo_core.infra import almacen
+from perseo_core.infra import configuracion
+from perseo_core.infra.configuracion import (
+    _resolver_hosts,
+    _url_por_defecto,
+    direccion_tailscale,
+)
 
 
 def test_encolar_nace_pendiente(db) -> None:
@@ -163,26 +169,26 @@ def test_las_fechas_van_en_utc_con_z(db) -> None:
 
 def test_resolver_hosts_nunca_cae_en_todas_las_interfaces() -> None:
     """`tailscale` sin tailnet se queda en local, no abre `0.0.0.0`."""
-    assert almacen._resolver_hosts("127.0.0.1") == ("127.0.0.1",)
-    assert almacen._resolver_hosts("") == ("127.0.0.1",)
-    assert "0.0.0.0" not in almacen._resolver_hosts("tailscale")
+    assert _resolver_hosts("127.0.0.1") == ("127.0.0.1",)
+    assert _resolver_hosts("") == ("127.0.0.1",)
+    assert "0.0.0.0" not in _resolver_hosts("tailscale")
 
 
 def test_resolver_hosts_no_repite() -> None:
     """aiohttp falla si se le repite una interfaz."""
-    assert almacen._resolver_hosts("127.0.0.1, 127.0.0.1") == ("127.0.0.1",)
+    assert _resolver_hosts("127.0.0.1, 127.0.0.1") == ("127.0.0.1",)
 
 
 def test_url_por_defecto_prefiere_lo_que_no_es_local() -> None:
     """El enlace lo abre el móvil: `127.0.0.1` allí es el propio teléfono."""
-    assert almacen._url_por_defecto(("127.0.0.1", "100.64.0.1"), 8787) == (
+    assert _url_por_defecto(("127.0.0.1", "100.64.0.1"), 8787) == (
         "http://100.64.0.1:8787"
     )
 
 
 def test_url_por_defecto_sin_tailnet_se_queda_en_local() -> None:
     """No hay nada mejor que ofrecer, pero el enlace no vale desde fuera."""
-    assert almacen._url_por_defecto(("127.0.0.1",), 8787) == "http://127.0.0.1:8787"
+    assert _url_por_defecto(("127.0.0.1",), 8787) == "http://127.0.0.1:8787"
 
 
 def test_un_enlace_local_se_marca_como_inalcanzable(cfg) -> None:
@@ -283,9 +289,9 @@ def test_tailscale_abre_las_dos_direcciones(monkeypatch: pytest.MonkeyPatch) -> 
     resuelve la IPv6 primero. Escuchando solo en la IPv4, entrar por el nombre
     no llegaba a ninguna parte y por la dirección numérica sí."""
     monkeypatch.setattr(
-        almacen, "direcciones_tailscale", lambda: ("100.64.0.1", "fd7a:115c:a1e0::1")
+        configuracion, "direcciones_tailscale", lambda: ("100.64.0.1", "fd7a:115c:a1e0::1")
     )
-    assert almacen._resolver_hosts("tailscale") == (
+    assert _resolver_hosts("tailscale") == (
         "127.0.0.1",
         "100.64.0.1",
         "fd7a:115c:a1e0::1",
@@ -295,25 +301,25 @@ def test_tailscale_abre_las_dos_direcciones(monkeypatch: pytest.MonkeyPatch) -> 
 def test_sin_tailnet_solo_queda_lo_local(monkeypatch: pytest.MonkeyPatch) -> None:
     """Abrir todas las interfaces por no encontrar una es el fallo que la Fase 3
     quería evitar: si no hay tailnet, se sigue solo en local."""
-    monkeypatch.setattr(almacen, "direcciones_tailscale", tuple)
-    assert almacen._resolver_hosts("tailscale") == ("127.0.0.1",)
+    monkeypatch.setattr(configuracion, "direcciones_tailscale", tuple)
+    assert _resolver_hosts("tailscale") == ("127.0.0.1",)
 
 
 def test_la_direccion_de_los_enlaces_es_la_ipv4(monkeypatch: pytest.MonkeyPatch) -> None:
     """Una IPv6 entre corchetes en el enlace de Telegram solo estorba."""
     monkeypatch.setattr(
-        almacen, "direcciones_tailscale", lambda: ("100.64.0.1", "fd7a:115c:a1e0::1")
+        configuracion, "direcciones_tailscale", lambda: ("100.64.0.1", "fd7a:115c:a1e0::1")
     )
-    assert almacen.direccion_tailscale() == "100.64.0.1"
+    assert direccion_tailscale() == "100.64.0.1"
 
 
 def test_el_enlace_prefiere_la_ipv4_del_tailnet() -> None:
     """Desde se escucha también en la IPv6, y un enlace con una IPv6
     dentro se lee fatal —y hay que acordarse de los corchetes—."""
     hosts = ("127.0.0.1", "100.64.0.1", "fd7a:115c:a1e0::1")
-    assert almacen._url_por_defecto(hosts, 8787) == "http://100.64.0.1:8787"
+    assert _url_por_defecto(hosts, 8787) == "http://100.64.0.1:8787"
 
 
 def test_si_solo_hay_ipv6_se_pone_con_corchetes() -> None:
     hosts = ("127.0.0.1", "fd7a:115c:a1e0::1")
-    assert almacen._url_por_defecto(hosts, 8787) == "http://[fd7a:115c:a1e0::1]:8787"
+    assert _url_por_defecto(hosts, 8787) == "http://[fd7a:115c:a1e0::1]:8787"

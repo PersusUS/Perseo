@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from perseo_core import biometria
+from perseo_core.servicios import biometria
 
 
 # --------------------------------------------------------------------------- #
@@ -364,7 +364,7 @@ def test_ponerle_nombre_deja_nota_en_el_vault(tmp_path) -> None:
     """Los vectores no le dicen nada a nadie; la nota sí, y se corrige a mano."""
     import asyncio
 
-    from perseo_core import memoria
+    from perseo_core.agentes import memoria
 
     vault = memoria.VaultFicheros(tmp_path)
     memoria._vault = vault
@@ -381,7 +381,7 @@ def test_ponerle_nombre_deja_nota_en_el_vault(tmp_path) -> None:
 def test_sin_memoria_iniciada_lo_dice(monkeypatch) -> None:
     import asyncio
 
-    from perseo_core import memoria
+    from perseo_core.agentes import memoria
 
     memoria._vault = None
     try:

@@ -20,6 +20,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
+  // Las pruebas y la maqueta también: escribían TypeScript que nadie
+  // comprobaba, así que un fallo de tipos en una prueba solo salía al
+  // ejecutarla —y en la maqueta, nunca—. Entran limpias, sin un solo error.
+  "include": ["src", "pruebas", "maqueta"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

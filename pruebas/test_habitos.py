@@ -3,7 +3,7 @@
 Lo que se prueba aquí es lo poco que el núcleo hace con los hábitos, que es a
 propósito muy poco: guardar la copia que le manda la ventana, devolverla, y
 avisar cuando la copia está pasada. Contar casillas no se prueba aquí porque no
-se hace aquí — se hace una sola vez, en `RealTime/src/lib/habitos.ts`, y de eso
+se hace aquí — se hace una sola vez, en `RealTime/src/lib/datos/habitos.ts`, y de eso
 responden `RealTime/pruebas/habitos.test.ts`.
 
 El caso que de verdad importa es el tercero: **un almacén vacío tiene que
@@ -17,7 +17,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from perseo_core import habitos
+from perseo_core.servicios import habitos
 
 
 def test_lo_guardado_vuelve_tal_cual(tmp_path: Path) -> None:

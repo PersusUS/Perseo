@@ -22,7 +22,8 @@ import pytest
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
-from perseo_core import almacen, politica  # noqa: E402
+from perseo_core.infra import almacen, politica  # noqa: E402
+from perseo_core.infra.configuracion import Configuracion, cargar_configuracion  # noqa: E402
 
 
 @pytest.fixture()
@@ -67,12 +68,12 @@ def datos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @pytest.fixture()
-def cfg(datos: Path) -> almacen.Configuracion:
-    return almacen.cargar_configuracion()
+def cfg(datos: Path) -> Configuracion:
+    return cargar_configuracion()
 
 
 @pytest.fixture()
-def db(cfg: almacen.Configuracion) -> Iterator[almacen.Configuracion]:
+def db(cfg: Configuracion) -> Iterator[Configuracion]:
     """Base de datos abierta sobre el directorio temporal, y cerrada al salir.
 
     `almacen` guarda la conexión en una global, así que dejarla abierta filtraría
