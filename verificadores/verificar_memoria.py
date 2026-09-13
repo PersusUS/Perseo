@@ -32,6 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from perseo_core.agentes import memoria  # noqa: E402
+from perseo_core.infra import politica  # noqa: E402
 from verificadores.arnes_pruebas import (  # noqa: E402
     ManejadorFalso,
     Nucleo,
@@ -173,24 +174,35 @@ def comprobar_de_punta_a_punta(raiz: Path) -> None:
         f"{len(notas)} nota(s): {rutas[:3]}",
     )
 
-    # 9. Una accion que no existe ni siquiera llega al agente: la politica de §7
-    #    la para antes, porque lo que no esta clasificado es irreversible. Y si
-    #    se aprueba, entonces si falla — sin tumbar al trabajador.
+    # 9. Una accion que no existe falla sin tumbar al trabajador.
+    #
+    #    Con las confirmaciones encendidas no llega ni al agente: la politica de
+    #    §7 la para antes, porque lo que no esta clasificado es irreversible.
+    #    Apagadas —como estan desde el 2026-09-12, ver ADR 0005— llega y falla,
+    #    que es lo que de verdad importa aqui: el trabajador sigue en pie. Se
+    #    comprueba lo que pasa en cada caso, no lo que pasaba en uno.
     _, malo = nucleo.pedir(
         "/trabajos", token, "POST", {"agente": "memoria", "peticion": {"accion": "borrar"}}
     )
     parado = nucleo.esperar_estado(int(malo["id"]), ("esperando", "fallido", "hecho"), intentos=60)
+    if politica.CONFIRMACIONES:
+        comprobar(
+            "Una accion sin clasificar se para y pregunta",
+            parado.get("estado") == "esperando",
+            str(parado.get("estado")),
+        )
+        nucleo.pedir(f"/trabajos/{malo['id']}/aprobar", token, "POST", {})
+        parado = nucleo.esperar_estado(int(malo["id"]), ("fallido", "hecho"), intentos=60)
+    else:
+        comprobar(
+            "Apagadas, una accion sin clasificar no se para",
+            parado.get("estado") != "esperando",
+            str(parado.get("estado")),
+        )
     comprobar(
-        "Una accion sin clasificar se para y pregunta",
-        parado.get("estado") == "esperando",
-        str(parado.get("estado")),
-    )
-    nucleo.pedir(f"/trabajos/{malo['id']}/aprobar", token, "POST", {})
-    fallido = nucleo.esperar_estado(int(malo["id"]), ("fallido", "hecho"), intentos=60)
-    comprobar(
-        "Y aprobada, falla por desconocida",
-        fallido.get("estado") == "fallido",
-        str(fallido.get("error")),
+        "Y falla por desconocida, sin tumbar al trabajador",
+        parado.get("estado") == "fallido",
+        str(parado.get("error")),
     )
     _, salud = nucleo.pedir("/salud")
     comprobar("Y el nucleo sigue en pie", bool(salud), str(salud)[:60])
