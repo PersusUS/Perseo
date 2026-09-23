@@ -88,3 +88,76 @@ export function avisoDeEspera(plan: PlanReintento): string {
     ? `El enlace de voz está limitando las conexiones. Se reintenta en ${cuando}.`
     : `Reconectando en ${cuando}.`;
 }
+
+/**
+ * La ventana de contexto se desliza en vez de llenarse.
+ *
+ * Con la pantalla puesta cada captura son cientos de tokens, y el contexto de
+ * la sesión tiene techo: sin esto, una llamada larga acaba cortándose cuando
+ * se llena. Con la ventana deslizante el servidor olvida lo más viejo y sigue.
+ * Si un día la API la rechazara, `trasElCierre` lo nota y la llamada sigue sin
+ * ella: nunca puede ser la causa de no poder hablar.
+ */
+export const CONTEXTO_DESLIZANTE = { slidingWindow: {} };
+
+interface DecisionCierre {
+  /** El testigo de reanudación no sirve: se tira y se empieza de cero. */
+  tirarTestigo: boolean;
+  /** Reintentar sin la espera larga que tocaría por los fallos. */
+  reintentarYa: boolean;
+  /** El servidor no acepta la ventana deslizante: fuera. */
+  sinCompresion: boolean;
+  porque: string;
+}
+
+/**
+ * Qué hacer tras un cierre del socket, con el testigo y con la compresión.
+ *
+ * Un testigo de sesión caducado no da error: el servidor cierra con 1007
+ * «Invalid session handle», o con 1008 «BidiGenerateContent session not found»
+ * —lo segundo es lo que sale al despertar el portátil, medido en
+ * `llamada.log` el 2026-09-23: dos intentos seguidos perdidos—. Como el testigo
+ * se guardaba igual y el reintento lo volvía a mandar, cada intento fallaba
+ * idéntico. Se tira y se empieza de cero, y se reintenta ya.
+ *
+ * Y el servidor no siempre dice que el testigo es el problema: puede aceptar la
+ * sesión y cerrarla acto seguido. Dos intentos seguidos que ni llegan a
+ * estables con el testigo puesto bastan para sospechar de él: una llamada sin
+ * memoria vale infinitamente más que una llamada que no conecta.
+ */
+export function trasElCierre(cierre: {
+  codigo?: number;
+  motivo: string;
+  hayTestigo: boolean;
+  intentos: number;
+}): DecisionCierre {
+  const { codigo, motivo, hayTestigo, intentos } = cierre;
+  const sinCompresion = /contextWindowCompression|sliding_?window/i.test(motivo);
+  const testigoRechazado =
+    codigo === 1007 ||
+    /session handle/i.test(motivo) ||
+    (codigo === 1008 && /session not found/i.test(motivo));
+
+  if (hayTestigo && testigoRechazado) {
+    return {
+      tirarTestigo: true,
+      reintentarYa: true,
+      sinCompresion,
+      porque: 'El servidor rechazó el testigo de sesión; se empieza de cero.',
+    };
+  }
+  if (hayTestigo && intentos >= 1) {
+    return {
+      tirarTestigo: true,
+      reintentarYa: sinCompresion,
+      sinCompresion,
+      porque: 'Dos sesiones cortas seguidas con testigo; se descarta.',
+    };
+  }
+  return {
+    tirarTestigo: false,
+    reintentarYa: sinCompresion,
+    sinCompresion,
+    porque: sinCompresion ? 'El servidor no acepta la ventana deslizante; se sigue sin ella.' : '',
+  };
+}
