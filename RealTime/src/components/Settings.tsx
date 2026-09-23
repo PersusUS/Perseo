@@ -36,6 +36,7 @@ import {
   estadoBiometria,
   grabarMuestra,
   renombrarPerfil,
+  resumenDeToma,
   type EstadoBiometria,
 } from '../lib/identidad/identidad';
 import { esElSenor } from '../lib/identidad/quien-hay';
@@ -117,6 +118,8 @@ export const Settings: React.FC<Props> = ({
   // El alta tarda (el motor carga la primera vez): sin este estado, cada clic
   // impaciente reenviaba la misma muestra y el núcleo la reforzaba otra vez.
   const [guardandoVoz, setGuardandoVoz] = useState(false);
+  /** Cómo fue la última toma, y si conviene otra. */
+  const [toma, setToma] = useState('');
   // Cara: mismo patrón que la voz — fotograma capturado espera su nombre.
   const [caraGrabada, setCaraGrabada] = useState<string | null>(null);
   const [nombreCara, setNombreCara] = useState('');
@@ -141,11 +144,12 @@ export const Settings: React.FC<Props> = ({
   /** Enseñar la voz: graba seis segundos y deja la muestra esperando nombre. */
   const ensenarVoz = async () => {
     setError('');
+    setToma('');
     setGrabando(true);
     try {
       const audio = await grabarMuestra(6);
       setVozGrabada(audio);
-      setNombreVoz('');
+      // El nombre se queda: la toma siguiente suele ser de la misma persona.
     } catch (e) {
       setError(`No se pudo grabar: ${e}`);
     } finally {
@@ -159,8 +163,8 @@ export const Settings: React.FC<Props> = ({
     try {
       const resultado = await crearPerfil(nombreVoz.trim(), vozGrabada);
       if (resultado.error) { setError(resultado.error); return; }
+      setToma(resumenDeToma(resultado));
       setVozGrabada(null);
-      setNombreVoz('');
       refrescarBiometria();
     } finally {
       setGuardandoVoz(false);
@@ -170,6 +174,7 @@ export const Settings: React.FC<Props> = ({
   /** Enseñar la cara: abre la cámara, dispara un fotograma y espera nombre. */
   const ensenarCara = async () => {
     setError('');
+    setToma('');
     setCapturandoCara(true);
     try {
       const imagen = await capturarCara();
@@ -188,6 +193,7 @@ export const Settings: React.FC<Props> = ({
     try {
       const resultado = await crearPerfil(nombreCara.trim(), undefined, caraGrabada);
       if (resultado.error) { setError(resultado.error); return; }
+      setToma(resumenDeToma(resultado));
       setCaraGrabada(null);
       setNombreCara('');
       refrescarBiometria();
@@ -439,7 +445,10 @@ export const Settings: React.FC<Props> = ({
                     Enseñar mi voz (6 segundos)
                   </button>
                 )}
-                {grabando && <p className="ajustes-nota">Grabando… habla ahora.</p>}
+                {grabando && (
+                  <p className="ajustes-nota">Grabando… habla seguido hasta que acabe, cerca del micrófono.</p>
+                )}
+                {toma && <p className="ajustes-nota">{toma}</p>}
                 {vozGrabada && (
                   <div className="ajustes-fila">
                     <input
@@ -487,9 +496,9 @@ export const Settings: React.FC<Props> = ({
                     )}
                     {bio.aprendiendo.voz && (
                       <p className="ajustes-nota">
-                        Aprendiendo a «{bio.aprendiendo.voz.etiqueta}»:{' '}
-                        {Math.round(bio.aprendiendo.voz.peso)} de {bio.aprendiendo.voz.objetivo} s
-                        de voz.
+                        «{bio.aprendiendo.voz.etiqueta}» espera nombre:{' '}
+                        {Math.round(bio.aprendiendo.voz.peso)} s de voz oídos. Nadie se guarda
+                        hasta que diga cómo se llama.
                       </p>
                     )}
                     {bio.perfiles.length > 0 ? (
@@ -514,7 +523,10 @@ export const Settings: React.FC<Props> = ({
                               <>
                                 <span className="perfil-nombre">{p.nombre}</span>
                                 <span className="perfil-datos">
-                                  {[p.voz ? 'voz' : null, p.caras > 0 ? `${p.caras} cara(s)` : null]
+                                  {[
+                                    p.voz_antigua ? 'voz antigua: enséñala otra vez' : p.voz ? `voz (${p.voces ?? 1})` : null,
+                                    p.caras > 0 ? `${p.caras} cara(s)` : null,
+                                  ]
                                     .filter(Boolean)
                                     .join(' · ') || 'sin muestras'}
                                 </span>

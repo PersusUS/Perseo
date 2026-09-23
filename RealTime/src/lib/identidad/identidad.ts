@@ -7,19 +7,27 @@
  * («Javi», «Desconocido 1»…) a quien quiera pintarlas. Los vectores, los
  * umbrales y los perfiles viven en perseo_core/servicios/biometria.py.
  *
- * Dos detalles que importan:
+ * Tres detalles que importan:
  *
- *  1. **El VAD es de energía y basta.** No hace falta separar voz de ruido con
- *     precisión: solo decidir qué trozos merecen gastar una consulta. El suelo
- *     de ruido es adaptativo (media lenta del RMS), así que un micrófono ruidoso
- *     no lo deja todo en «habla» ni uno limpio se queda sordo.
+ *  1. **Aquí no se decide qué es voz.** Se mandan ventanas seguidas de
+ *     micrófono (`ventana-voz.ts`) y el núcleo les quita los silencios. Hasta
+ *     el 2026-09-23 el recorte se hacía aquí, y mal: solo llegaban picos de
+ *     sílaba pegados, demasiado cortos para reconocer a nadie.
  *
- *  2. **Una sola petición en vuelo por canal.** El núcleo tarda decenas de ms
- *     por trozo; si llega otro mientras, se acumula para la siguiente ronda.
- *     Sin esto, un hablante nervioso llenaría la cola más rápido de lo que se
- *     vacía y la etiqueta llegaría siempre tarde.
+ *  2. **Mientras habla Perseo no se escucha.** Lo que sale por el altavoz entra
+ *     por el micrófono aunque el navegador cancele el eco, y mandarlo era
+ *     enseñarle al núcleo la voz de Perseo como la de un «Desconocido». Se
+ *     calla mientras suena y 300 ms después, que es lo que tarda la cola del
+ *     eco en apagarse.
+ *
+ *  3. **Una sola petición en vuelo por canal.** El núcleo tarda decenas de ms
+ *     por ventana; si se cierra otra mientras, espera su turno (solo la última:
+ *     una etiqueta vieja no le sirve a nadie).
  */
 import { invoke } from '@tauri-apps/api/core';
+
+import { audioPlayer } from '../audio/audio-player';
+import { VentanaVoz } from './ventana-voz';
 
 /** Una cara vista en el último fotograma analizado. Caja en píxeles sobre 640x480. */
 export interface CaraDetectada {
@@ -41,24 +49,34 @@ interface RespuestaVoz {
   confianza?: number;
   aprendiendo?: Progreso | null;
   aprendido?: boolean;
+  /** Se parece a alguien, pero no lo bastante: no se nombra a nadie. */
+  dudoso?: string;
+  /** La voz dudaba y la cámara lo confirmó. */
+  por?: 'voz+cara';
   error?: string;
 }
 
 interface EstadoBiometriaInterno {
-  perfiles: { nombre: string; voz: boolean; caras: number; muestras: number; creado: string }[];
+  perfiles: {
+    nombre: string;
+    voz: boolean;
+    voces?: number;
+    /** Perfil de voz de antes del 2026-09-23, hecho con el refuerzo roto. */
+    voz_antigua?: boolean;
+    caras: number;
+    muestras: number;
+    creado: string;
+  }[];
   aprendiendo: { voz: Progreso | null; cara: Progreso | null };
   disponibilidad: { voz: boolean; motivo_voz?: string; cara: boolean; motivo_cara?: string };
 }
 
-const MUESTRAS_SEGUNDO = 16000;
-/** Trozo cómodo para ECAPA: dos segundos de voz seguida. */
-const OBJETIVO_MUESTRAS = MUESTRAS_SEGUNDO * 2;
-/** Menos de esto no vale mandarlo: vector inestable y CPU tirada. */
-const MINIMO_MUESTRAS = MUESTRAS_SEGUNDO / 4;
-/** Tope duro del búfer: si algo va mal, se descarta antes que crecer sin fin. */
-const TOPE_MUESTRAS = OBJETIVO_MUESTRAS * 3;
-/** Cuánto sigue valiendo la última etiqueta tras callarse (ms). */
-const CADUCIDAD_HABLANTE_MS = 4500;
+/** Cuánto sigue valiendo la última etiqueta tras callarse (ms). Una ventana
+ *  dura hasta tres segundos, así que con menos la etiqueta se apagaría entre
+ *  una y la siguiente aunque siguiera hablando el mismo. */
+const CADUCIDAD_HABLANTE_MS = 6000;
+/** Lo que se sigue sin escuchar después de que Perseo se calle (ms). */
+const COLA_ECO_MS = 300;
 /** Cada cuánto se analiza un fotograma de cámara (ms). */
 const CADA_CARA_MS = 4000;
 /**
@@ -82,11 +100,16 @@ class VigilanteIdentidad {
   carasActuales: CaraDetectada[] = [];
 
   onHablante: (nombre: string | null) => void = () => {};
+  /** Habla alguien y el núcleo no sabe quién: se parece a alguien, pero no lo bastante. */
+  onDuda: () => void = () => {};
   onCaras: (caras: CaraDetectada[]) => void = () => {};
+  /** ¿Está sonando Perseo? Se pregunta al reproductor, que es quien lo sabe. */
+  hablaPerseo: () => boolean = () => audioPlayer.estaSonando();
 
-  private colaVoz: Int16Array[] = [];
-  private muestrasAcumuladas = 0;
-  private sueloRuido = 400;
+  private ventana = new VentanaVoz();
+  /** La ventana que se cerró con otra en vuelo: la siguiente en salir. */
+  private ventanaEnEspera: Int16Array | null = null;
+  private ecoHastaMs = 0;
   private enVueloVoz = false;
   private enVueloCara = false;
   /** Si la última lectura traía alguien a medio aprender, se mira más a menudo. */
@@ -111,8 +134,8 @@ class VigilanteIdentidad {
       window.clearInterval(this.temporizador);
       this.temporizador = null;
     }
-    this.colaVoz = [];
-    this.muestrasAcumuladas = 0;
+    this.ventana.descartar();
+    this.ventanaEnEspera = null;
     this.fotogramaPendiente = null;
     this.carasActuales = [];
     this.aprendiendoCara = false;
@@ -123,31 +146,19 @@ class VigilanteIdentidad {
     this.onCaras([]);
   }
 
-  /** AudioManager lo llama con cada trozo del worklet (~8 ms de PCM Int16). */
+  /** AudioManager lo llama con cada trozo del worklet (64 ms de PCM Int16). */
   consumirAudio(trozo: ArrayBuffer): void {
     if (!this.activa) return;
-    const muestras = new Int16Array(trozo);
-    const rms = energiaRms(muestras);
-    // Suelo lento: sube despacio con el ruido de fondo y baja igual. El umbral
-    // de habla flota tres veces por encima, con un mínimo absoluto por si el
-    // silencio fuera total.
-    this.sueloRuido = this.sueloRuido * 0.95 + rms * 0.05;
-    const umbral = Math.max(500, this.sueloRuido * 3);
-
-    if (rms < umbral) {
-      // Fin de frase probable: si lo acumulado ya sirve, vuela. Si era un clic
-      // de boca, se descarta solo al caer el mínimo.
-      if (this.muestrasAcumuladas >= MINIMO_MUESTRAS) void this.enviarVoz();
+    const ahora = Date.now();
+    if (this.hablaPerseo()) this.ecoHastaMs = ahora + COLA_ECO_MS;
+    if (ahora < this.ecoHastaMs) {
+      // Lo que entra ahora es Perseo, o su eco: ni se manda ni se pega a lo
+      // que diga el siguiente.
+      this.ventana.descartar();
       return;
     }
-
-    this.colaVoz.push(muestras);
-    this.muestrasAcumuladas += muestras.length;
-    if (this.muestrasAcumuladas >= TOPE_MUESTRAS) {
-      void this.enviarVoz();
-    } else if (this.muestrasAcumuladas >= OBJETIVO_MUESTRAS) {
-      void this.enviarVoz();
-    }
+    const lista = this.ventana.empujar(new Int16Array(trozo));
+    if (lista) void this.enviarVoz(lista);
   }
 
   /** CameraManager lo llama con cada JPEG capturado; aquí solo se guarda el último. */
@@ -180,24 +191,17 @@ class VigilanteIdentidad {
     }
   }
 
-  private async enviarVoz(): Promise<void> {
-    if (this.enVueloVoz || !this.activa) return;
-    const trozos = this.colaVoz;
-    const total = this.muestrasAcumuladas;
-    this.colaVoz = [];
-    this.muestrasAcumuladas = 0;
-    if (total < MINIMO_MUESTRAS || trozos.length === 0) return;
+  private async enviarVoz(ventana: Int16Array): Promise<void> {
+    if (!this.activa) return;
+    if (this.enVueloVoz) {
+      this.ventanaEnEspera = ventana;
+      return;
+    }
 
     this.enVueloVoz = true;
     try {
-      const fusionado = new Int16Array(total);
-      let cursor = 0;
-      for (const trozo of trozos) {
-        fusionado.set(trozo, cursor);
-        cursor += trozo.length;
-      }
       const respuesta = await invoke<RespuestaVoz>('biometria_voz', {
-        audio: base64DeInt16(fusionado),
+        audio: base64DeInt16(ventana),
       });
       this.avisoErrorDado = false;
       this.ultimoResultadoVozMs = Date.now();
@@ -207,6 +211,14 @@ class VigilanteIdentidad {
       } else if (respuesta.nombre) {
         // Mismo hablante: refresca la caducidad sin repintar.
         this.hablanteActual = respuesta.nombre;
+      } else if (respuesta.dudoso) {
+        // Hablaba alguien y no se sabe quién: la etiqueta de antes ya no vale.
+        // Seguir pintando «Persus» era dejar que el modelo lo siguiera creyendo.
+        if (this.hablanteActual !== null) {
+          this.hablanteActual = null;
+          this.onHablante(null);
+        }
+        this.onDuda();
       }
     } catch (e) {
       if (!this.avisoErrorDado) {
@@ -215,6 +227,9 @@ class VigilanteIdentidad {
       }
     } finally {
       this.enVueloVoz = false;
+      const siguiente = this.ventanaEnEspera;
+      this.ventanaEnEspera = null;
+      if (siguiente) void this.enviarVoz(siguiente);
     }
   }
 
@@ -239,14 +254,6 @@ class VigilanteIdentidad {
       this.enVueloCara = false;
     }
   }
-}
-
-function energiaRms(muestras: Int16Array): number {
-  let suma = 0;
-  for (let i = 0; i < muestras.length; i++) {
-    suma += muestras[i] * muestras[i];
-  }
-  return Math.sqrt(suma / Math.max(1, muestras.length));
 }
 
 /** Int16 → PCM little-endian → base64. Mismo formato que manda AudioManager. */
@@ -369,12 +376,67 @@ function aPcm16(trozos: Float32Array[]): Int16Array {
   return pcm;
 }
 
+/** Lo que contesta el núcleo a una toma de alta. */
+interface ResultadoAlta {
+  ok?: boolean;
+  error?: string;
+  añadido?: string[];
+  /** Segundos de voz útil que encontró en la toma. */
+  segundos_voz?: number;
+  /** Cuánto se parece esta toma a las anteriores del mismo perfil. */
+  parecido_voz?: number;
+  voces?: number;
+  caras?: number;
+}
+
+/**
+ * Da de alta o refuerza un perfil con una toma.
+ *
+ * Una toma mala —poca voz, cara movida o de lado— el núcleo la rechaza con un
+ * 400 **y el motivo**, que es lo único que permite repetirla bien. El puente de
+ * Rust convierte ese 400 en una excepción con el texto dentro; sin capturarla
+ * aquí, Ajustes no enseñaba nada y la toma parecía no haber pasado.
+ */
 export async function crearPerfil(
   nombre: string,
   audio?: string,
   imagen?: string,
-): Promise<{ ok?: boolean; error?: string; añadido?: string[] }> {
-  return invoke('biometria_enrolar', { nombre, audio, imagen });
+): Promise<ResultadoAlta> {
+  try {
+    return await invoke<ResultadoAlta>('biometria_enrolar', { nombre, audio, imagen });
+  } catch (e) {
+    return { error: motivoDelNucleo(e) };
+  }
+}
+
+/**
+ * Lo que se le dice a quien acaba de grabar una toma: cuánto sirvió y si
+ * conviene otra. Sin esto el alta era un botón que decía «guardado» igual con
+ * seis segundos de voz que con uno, y nadie sabía si el perfil había quedado
+ * bien. Con tres tomas —y una foto un poco girada— el reconocimiento va mejor.
+ */
+export function resumenDeToma(r: ResultadoAlta): string {
+  if (r.añadido?.includes('voz')) {
+    const partes = [`Toma guardada: ${(r.segundos_voz ?? 0).toFixed(1).replace('.', ',')} s de voz útil`];
+    if (r.parecido_voz !== undefined) {
+      const parecido = Math.round(r.parecido_voz * 100);
+      partes.push(
+        r.parecido_voz < 0.4
+          ? `se parece poco a las anteriores (${parecido} %): ¿misma persona y mismo micrófono?`
+          : `se parece a las anteriores un ${parecido} %`,
+      );
+    }
+    const voces = r.voces ?? 1;
+    partes.push(`${voces} muestra(s) de voz`);
+    return partes.join(' · ') + (voces < 3 ? '. Graba otra toma para afinar: con tres va mejor.' : '.');
+  }
+  const caras = r.caras ?? 1;
+  return `Foto guardada · ${caras} ángulo(s)` + (caras < 3 ? '. Otra con la cara un poco girada ayuda.' : '.');
+}
+
+/** «El nucleo respondio 400 Bad Request: Se oye muy poca voz…» → el motivo. */
+export function motivoDelNucleo(e: unknown): string {
+  return String(e).replace(/^El nucleo respondio \d{3}[^:]*:\s*/, '');
 }
 
 export async function renombrarPerfil(

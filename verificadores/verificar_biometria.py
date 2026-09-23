@@ -4,8 +4,10 @@ Aquí no se mide la calidad de ECAPA ni de SFace —esa la dan sus papers—, se
 mide que **la tubería completa** haga lo prometido contra el núcleo real:
 
 - sin token, 401; con token, estado claro de perfiles y motores,
-- una voz desconocida se aprende sola al acumular trozos y queda como perfil,
-- reconocida después por su etiqueta, renombrable y borrable,
+- una voz desconocida lleva etiqueta provisional y NO se guarda, hable lo
+  que hable (regla del 2026-09-23: nada se aprende sin nombre),
+- con el nombre dicho se guarda, queda anotada en `personas.log` y se la
+  reconoce por él; y se puede borrar,
 - el borrado quita los vectores de verdad,
 - y todo lo que cree en el disco vive en el directorio temporal del arnés:
   los perfiles reales de `<datos>/perfiles.json` no se tocan.
@@ -71,9 +73,17 @@ def pedir_biometria(
 
 
 def tono(frecuencia: float, segundos: float = 2.5) -> str:
-    """PCM int16 mono 16 kHz en base64: lo mismo que manda la llamada."""
+    """PCM int16 mono 16 kHz en base64: lo mismo que manda la llamada.
+
+    Con envolvente de sílabas —sube y baja tres veces por segundo— desde el
+    2026-09-23: el detector de voz del núcleo tira las señales planas, que es
+    lo que son un zumbido o un ventilador, y un tono puro también lo es.
+    """
     muestras = int(16000 * segundos)
-    valores = [int(8000 * math.sin(i * frecuencia)) for i in range(muestras)]
+    valores = [
+        int(8000 * (0.2 + 0.8 * abs(math.sin(2 * math.pi * 3 * i / 16000))) * math.sin(i * frecuencia))
+        for i in range(muestras)
+    ]
     return base64.b64encode(struct.pack(f"<{muestras}h", *valores)).decode()
 
 
@@ -112,10 +122,9 @@ def comprobar_aprendizaje() -> None:
 
 def _aprendizaje(nucleo: Nucleo) -> None:
 
-    # Un desconocido habla: primero etiqueta provisional, luego perfil.
+    # Un desconocido habla, y mucho: etiqueta provisional y nada en disco.
     ultimo: dict = {}
-    aprendido_en = 99
-    for vuelta in range(10):
+    for _ in range(8):
         codigo, r = pedir_biometria(nucleo, "/biometria/voz", "POST", {"audio": tono(0.05)})
         if codigo != 200 or r.get("error"):
             comprobar("POST /biometria/voz funciona", False, f"{codigo} {r}")
@@ -123,23 +132,16 @@ def _aprendizaje(nucleo: Nucleo) -> None:
             nucleo.volcar()
             return
         ultimo = r
-        if r.get("aprendido"):
-            aprendido_en = vuelta + 1
-            break
-
-    objetivo_segundos = 12.0 / 2.5
     comprobar(
-        f"La voz se aprende sola ({aprendido_en} trozos)",
-        ultimo.get("nombre") == "Desconocido 1" and ultimo.get("aprendido") is True,
-        f"objetivo ~{objetivo_segundos:.0f} trozos",
+        "Un desconocido lleva etiqueta provisional",
+        ultimo.get("nombre") == "Desconocido 1" and ultimo.get("provisional") is True,
+        str(ultimo),
     )
-
-    # Y ya está reconocida, sin aprender nada otra vez.
-    _, r = pedir_biometria(nucleo, "/biometria/voz", "POST", {"audio": tono(0.05)})
+    _, estado = pedir_biometria(nucleo, "/biometria")
     comprobar(
-        "Reconoce al aprendido por su etiqueta",
-        r.get("nombre") == "Desconocido 1" and "aprendiendo" not in r,
-        str(r),
+        "Veinte segundos hablando no lo guardan sin nombre",
+        estado.get("perfiles") == [],
+        str(estado.get("perfiles")),
     )
 
     # Le pone nombre real.
@@ -147,6 +149,12 @@ def _aprendizaje(nucleo: Nucleo) -> None:
         nucleo, "/biometria/perfiles/Desconocido%201", "POST", {"nuevo_nombre": NOMBRE}
     )
     comprobar("Renombrar funciona", codigo == 200 and r.get("ok"), f"{codigo} {r}")
+    _, estado = pedir_biometria(nucleo, "/biometria")
+    comprobar(
+        "El nombre queda en el registro",
+        any("nombrado" in linea and NOMBRE in linea for linea in estado.get("registro", [])),
+        str(estado.get("registro")),
+    )
 
     _, r = pedir_biometria(nucleo, "/biometria/voz", "POST", {"audio": tono(0.05)})
     comprobar(
