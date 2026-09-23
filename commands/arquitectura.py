@@ -73,7 +73,7 @@ TECHO_DURO = 900
 EXCEPCIONES_DE_TAMANO: dict[str, int] = {
     # Una clase, `GeminiLiveClient`. Ya bajó de 1443 al sacarle el catálogo de
     # herramientas; lo que queda es el socket, y no se sostiene en dos mitades.
-    "RealTime/src/lib/llamada/gemini-live.ts": 1163,
+    "RealTime/src/lib/llamada/gemini-live.ts": 1161,
     # Un componente, `App`, y lo que queda tras sacarle tres ganchos el
     # 2026-09-12: `useConfianza`, `useIdentidad` y `useMicrofono`, cada uno con
     # sus reglas ya probadas sin React. Bajó de 1162 a 1015.
@@ -86,7 +86,7 @@ EXCEPCIONES_DE_TAMANO: dict[str, int] = {
     # llamado `useLlamada` que contiene el componente entero miente más que la
     # línea que ahorra. Lo que sí puede encogerlo de verdad es seguir sacando
     # piezas con costura propia, como estas tres.
-    "RealTime/src/App.tsx": 1015,
+    "RealTime/src/App.tsx": 1012,
     # La PWA entera: una página sin build, con su CSS y su JS dentro. Es el
     # fichero más grande del repositorio y entra aquí el mismo día que empieza
     # a medirse, no como perdón sino como línea de salida: a partir de hoy solo

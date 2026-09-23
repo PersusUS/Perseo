@@ -53,6 +53,7 @@ import {
 } from './lib/llamada/diagnostico';
 import { cameraManager } from './lib/llamada/camera-manager';
 import { screenManager } from './lib/llamada/screen-manager';
+import { avisoEnLlamada, decidirAviso } from './lib/llamada/autollamada';
 import { vigilante } from './lib/identidad/identidad';
 import { esElSenor, sinAvisoDeIdentidad } from './lib/identidad/quien-hay';
 import {
@@ -289,6 +290,7 @@ function App() {
     };
     // Resuelta por voz: la tarjeta sale de la pantalla. Los botones siguen para
     // cuando la confirmación no llega hablada —sin micro, o sin llamada—.
+    geminiClient.onSinLlamada = (texto) => recibirAviso(texto, handleCall);
     geminiClient.onAprobacionResuelta = (id) => {
       setPendientes(prev => prev.filter(p => p.id !== id));
     };
@@ -373,13 +375,16 @@ function App() {
     })();
   }, []);
 
-  /**
-   * Qué hacer con un marcador de autollamada.
-   * Vacío —palabra clave o aplauso—: entrar en llamada sin más, que es para lo
-   * que el detector existe. Con motivo —un subagente terminó—: TIMBRE y
-   * decisión del señor Persus; si prefiere no atender, queda pendiente y se
-   * cuenta la próxima vez que hable con Perseo.
-   */
+  /** Vacío —palabra clave o aplauso—: entrar en llamada. Con motivo —un encargo o un
+   *  recordatorio—: TIMBRE y decide él; si no atiende, queda en pendientes. */
+  /** Un aviso de llamada, venga de Rust o de un resultado que llegó tras colgar. */
+  const recibirAviso = (motivo: string, lanzar: () => void) => {
+    const accion = decidirAviso(motivo, connectionStateRef.current, Date.now() - instanteArranque.current < 4000);
+    if (accion === 'contar-en-vivo') geminiClient.informarIdentidad(avisoEnLlamada(motivo), true);
+    else if (accion === 'guardar') geminiClient.anadirPendiente(motivo);
+    else if (accion !== 'nada') atenderMarcador(motivo, lanzar);
+  };
+
   const atenderMarcador = (motivo: string, lanzarLlamada: () => void) => {
     if (!motivo) {
       setTimeout(lanzarLlamada, 1500);
@@ -409,22 +414,14 @@ function App() {
     return () => { cancelado = true; };
   }, [apiKeyReady]);
 
-  // Y la autollamada con la app ya abierta. Desde que Perseo vive en la bandeja
-  // el arranque no vuelve a ocurrir, así que el efecto de arriba —que solo mira
-  // el marcador al montarse— dejaría la palabra clave sin efecto. Rust vigila
-  // el fichero y avisa por evento; aquí solo se atiende.
+  // Y con la app ya abierta: Rust vigila el marcador y avisa por evento.
   useEffect(() => {
     if (!apiKeyReady) return;
 
     let cancelado = false;
     const dejarDeEscuchar = listen<string>('perseo://autollamada', evento => {
-      if (cancelado) return;
-      // Si ya está en llamada no se hace nada: la palabra clave sirve para
-      // empezar una conversación, no para cortar la que hay.
-      if (connectionStateRef.current !== 'disconnected') return;
-      // Recién abierto tampoco: ver `instanteArranque`.
-      if (!evento.payload && Date.now() - instanteArranque.current < 4000) return;
-      atenderMarcador(evento.payload || '', () => { if (!cancelado) handleCall(); });
+      // Timbre, contarlo en vivo o guardarlo: ver `lib/llamada/autollamada.ts`.
+      if (!cancelado) recibirAviso(evento.payload || '', () => { if (!cancelado) handleCall(); });
     });
 
     return () => {
