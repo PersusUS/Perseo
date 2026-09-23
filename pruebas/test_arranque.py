@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -372,14 +373,68 @@ def test_las_entradas_de_antes_estan_listadas_para_quitarlas() -> None:
     assert not set(manage_startup.LEGADO) & set(manage_startup.SERVICIOS)
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="el registro es de Windows")
-def test_la_tarea_que_revive_llama_al_mismo_guion_con_revivir() -> None:
-    import manage_startup
+def _tarea(**cambios: str) -> str:
+    import tarea_revivir
 
-    orden = manage_startup._orden_de_la_tarea()
-    assert orden is not None
-    assert orden.endswith("--revivir")
-    assert "arranque.py" in orden
+    argumentos = {
+        "ejecutable": r"C:\Python311\pythonw.exe",
+        "argumentos": r'"C:\Perseo & Co\commands\arranque.py" --revivir',
+        "directorio": r"C:\Perseo & Co",
+        "usuario": r"PORTATIL\Usuario",
+        "desde": datetime(2026, 9, 23, 17, 5),
+    }
+    argumentos.update(cambios)
+    return tarea_revivir.xml(**argumentos)
+
+
+def test_la_tarea_que_revive_llama_al_mismo_guion_con_revivir() -> None:
+    import xml.etree.ElementTree as ET
+
+    raiz = ET.fromstring(_tarea().encode("utf-16"))
+    ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+    # Una ruta con «&» no rompe el XML: se escapa.
+    argumentos = raiz.find("t:Actions/t:Exec/t:Arguments", ns).text
+    assert argumentos.endswith("--revivir")
+    assert "arranque.py" in argumentos and "&" in argumentos
+    assert raiz.find("t:Triggers/t:TimeTrigger/t:StartBoundary", ns).text == "2026-09-23T00:00:00"
+
+
+def test_la_tarea_nueva_funciona_con_bateria_y_al_despertar() -> None:
+    """Lo que hacía mal la de `/SC MINUTE`: con batería no corría nunca.
+
+    Medido el 2026-09-23: el núcleo cayó a las 14:21, el portátil siguió al 23 %
+    descargando y en tres horas nadie lo levantó.
+    """
+    import tarea_revivir
+
+    assert tarea_revivir.problemas(_tarea()) == []
+    assert "Power-Troubleshooter" in _tarea()
+    assert "SessionUnlock" in _tarea()
+
+
+def test_la_tarea_de_fabrica_se_reconoce_rota() -> None:
+    """Lo que devuelve `schtasks /Query /XML` de una tarea hecha con `/SC MINUTE`."""
+    import tarea_revivir
+
+    de_fabrica = """<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers><TimeTrigger><StartBoundary>2026-08-18T10:00:00</StartBoundary></TimeTrigger></Triggers>
+  <Settings>
+    <DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>
+  </Settings>
+</Task>"""
+    fallos = tarea_revivir.problemas(de_fabrica)
+    assert "con batería no se ejecuta" in fallos
+    assert "se para al desenchufar el cargador" in fallos
+    assert any("dormido" in f for f in fallos)
+    assert any("suspensión" in f for f in fallos)
+
+
+def test_una_tarea_ilegible_no_se_da_por_buena() -> None:
+    import tarea_revivir
+
+    assert tarea_revivir.problemas("esto no es xml") == ["no se ha podido leer la tarea registrada"]
 
 
 def test_revivir_no_levanta_la_app_ni_las_dependencias() -> None:

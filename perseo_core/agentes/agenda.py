@@ -226,7 +226,10 @@ async def _vigilar_calendario(ctx: disparadores.Contexto) -> None:
         ).cargar()
     assert _avisados is not None
 
-    eventos = await _calendario.proximos(timedelta(minutes=ctx.cfg.agenda_antelacion))
+    try:
+        eventos = await _calendario.proximos(timedelta(minutes=ctx.cfg.agenda_antelacion))
+    except google_api.SinCredenciales as e:
+        raise disparadores.Degradado("google", str(e), google_api.ARREGLO) from e
     pendientes = set(_avisados.sin_ver([e.id for e in eventos]))
     nuevos = [e for e in eventos if e.id in pendientes][:TOPE_LOTE]
     if not nuevos:

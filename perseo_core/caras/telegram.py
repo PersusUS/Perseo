@@ -116,11 +116,33 @@ def redactar(evento: Evento, url_base: str) -> tuple[str, list[list[dict[str, An
     Es una función pura a propósito: decidir qué se manda es lo que más se va a
     discutir de este módulo, y así se puede probar sin levantar un Telegram.
     """
+    ver = [{"text": "Ver en Perseo", "url": f"{url_base}/"}]
+
+    # Una pieza que se rompe por fuera —el permiso de Google caducado— la
+    # arregla una persona, y el móvil es donde se entera. Entre el 6 y el 23 de
+    # septiembre de 2026 esto solo salía en el registro, y el correo y la agenda
+    # estuvieron diecisiete días callados sin que nadie lo supiera.
+    if evento.tipo == "sistema.degradado":
+        pieza = str(evento.datos.get("pieza") or "algo").capitalize()
+        texto = f"{pieza} no funciona\n\n{_recortar(str(evento.datos.get('motivo') or ''), 300)}"
+        arreglo = str(evento.datos.get("arreglo") or "")
+        if arreglo:
+            texto += f"\n\nSe arregla con:\n{arreglo}"
+        return texto, [ver]
+    if evento.tipo == "sistema.recuperado":
+        pieza = str(evento.datos.get("pieza") or "algo").capitalize()
+        return f"{pieza} vuelve a funcionar.", [ver]
+
+    # Un encargo que terminó sin nadie esperándolo: Perseo ya ha timbrado en el
+    # ordenador, y esto es por si no hay nadie delante. Titular, nada más.
+    if evento.tipo == "aviso.encargo":
+        encargo = evento.datos.get("trabajo") or {}
+        que = "ha fallado" if evento.datos.get("estado") == "fallido" else "ha terminado"
+        return f"El encargo #{encargo.get('id')} {que}. Míralo en Perseo.", [ver]
+
     trabajo = evento.datos.get("trabajo") or {}
     if trabajo.get("id") is None:
         return None
-
-    ver = [{"text": "Ver en Perseo", "url": f"{url_base}/"}]
 
     if evento.tipo == "trabajo.espera_confirmacion":
         confirmacion = trabajo.get("confirmacion") or {}

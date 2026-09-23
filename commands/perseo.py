@@ -260,6 +260,16 @@ def arrancar_nucleo() -> bool:
         print("  [ya estaba]  El núcleo responde en", manage_startup.url_salud())
         return False
 
+    # Cuándo dejó de escribir el que había. Un núcleo que muere de un
+    # TerminateProcess —el portátil que duerme, un job que se cierra— no deja ni
+    # una línea, y sin esta el registro solo decía «arrancando», sin fecha de
+    # la caída con la que cruzar los eventos de energía de Windows.
+    registro_nucleo = RAIZ / "perseo_core" / "datos" / "nucleo.log"
+    try:
+        calla = datetime.fromtimestamp(registro_nucleo.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        print(f"  [caído]      El núcleo no responde; su registro calla desde {calla}")
+    except OSError:
+        pass
     print("  [arrancando] El núcleo, con su vigilante")
     _sin_consola([_pythonw(), str(AQUI / "vigilante.py")])
 

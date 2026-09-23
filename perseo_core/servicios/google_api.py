@@ -71,6 +71,24 @@ class SinCredenciales(Exception):
     """No hay con qué hablar con Google. No es un error: es algo sin configurar."""
 
 
+#: La orden que lo arregla, escrita una vez: la dicen el estado, el registro y
+#: el aviso al móvil.
+ARREGLO = "python -m perseo_core.servicios.autorizar_google"
+
+
+class TestigoCaducado(SinCredenciales):
+    """Las credenciales están, pero Google ya no las acepta (`invalid_grant`).
+
+    Es lo que pasa cada siete días mientras el proyecto de Cloud siga «En
+    pruebas» (H-39), o si se revoca el permiso. Es su propia clase porque es el
+    único caso que se arregla solo con volver a autorizar, y porque entre el 6 y
+    el 23 de septiembre de 2026 estuvo pasando sin que nadie se enterara: 1.460
+    trazas en el registro, ni un aviso, diecisiete días sin correo ni agenda.
+    """
+
+    __test__ = False  # que pytest no la tome por una clase de pruebas
+
+
 @dataclass(frozen=True)
 class Credenciales:
     """Lo que hace falta para refrescar el acceso, y nada más.
@@ -83,6 +101,10 @@ class Credenciales:
     client_id: str
     client_secret: str
     refresh_token: str
+    #: De dónde se leyeron y cómo estaba el fichero entonces. Sirve para notar
+    #: que alguien ha vuelto a autorizar y recogerlo sin reiniciar el núcleo.
+    ruta: Path | None = None
+    firma: float = 0.0
 
     @classmethod
     def desde_fichero(cls, ruta: Path) -> "Credenciales":
@@ -103,7 +125,16 @@ class Credenciales:
             client_id=str(datos["client_id"]),
             client_secret=str(datos["client_secret"]),
             refresh_token=str(datos["refresh_token"]),
+            ruta=ruta,
+            firma=_firma(ruta),
         )
+
+
+def _firma(ruta: Path) -> float:
+    try:
+        return ruta.stat().st_mtime
+    except OSError:
+        return 0.0
 
 
 class Sesion:
@@ -130,6 +161,12 @@ class Sesion:
         }
         async with self._http.post(f"{URL_TESTIGO()}/token", data=carga) as respuesta:
             datos = await respuesta.json()
+            if respuesta.status != 200 and datos.get("error") == "invalid_grant":
+                raise TestigoCaducado(
+                    "Google ya no acepta el permiso guardado: caducó o se revocó "
+                    f"({datos.get('error_description') or 'invalid_grant'}). "
+                    f"Vuelve a autorizar con `{ARREGLO}`."
+                )
             if respuesta.status != 200:
                 raise SinCredenciales(
                     f"Google no dio testigo ({respuesta.status}): "
@@ -216,10 +253,34 @@ class ClienteGoogle:
         self._sesion: Sesion | None = None
 
     async def _abrir(self) -> Sesion:
+        self._recargar_si_cambiaron()
         if self._sesion is None:
             self._http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
             self._sesion = Sesion(self._credenciales, self._http)
         return self._sesion
+
+    def _recargar_si_cambiaron(self) -> None:
+        """Si el fichero de credenciales cambió, se leen otra vez.
+
+        Hasta el 2026-09-23 el buzón y el calendario se quedaban con el
+        `refresh_token` con el que nacieron: reautorizar escribía el nuevo en
+        disco y el núcleo seguía con el caducado hasta que alguien lo
+        reiniciaba, cosa que nadie sabía que hacía falta.
+        """
+        ruta = self._credenciales.ruta
+        if ruta is None or _firma(ruta) == self._credenciales.firma:
+            return
+        try:
+            nuevas = Credenciales.desde_fichero(ruta)
+        except SinCredenciales as e:
+            # A medio escribir, o roto: se sigue con las de antes y se mira en
+            # la siguiente vuelta.
+            logger.warning("Las credenciales de Google cambiaron pero no se pueden leer: %s", e)
+            return
+        self._credenciales = nuevas
+        if self._sesion is not None and self._http is not None:
+            self._sesion = Sesion(nuevas, self._http)
+        logger.info("Credenciales de Google recargadas de %s.", ruta)
 
     async def cerrar(self) -> None:
         if self._http is not None:
