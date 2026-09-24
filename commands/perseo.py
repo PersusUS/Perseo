@@ -59,6 +59,7 @@ RAIZ = AQUI.parent
 sys.path.insert(0, str(AQUI))
 
 import manage_startup  # noqa: E402
+import ollama_local  # noqa: E402
 import presencia  # noqa: E402
 
 #: Dónde puede estar la app construida, de la más buena a la menos.
@@ -179,14 +180,6 @@ def _corriendo(fragmento: str) -> bool:
     return any(fragmento in linea for linea in salida.splitlines())
 
 
-def _ollama() -> bool:
-    try:
-        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=3) as r:
-            return r.status == 200
-    except (urllib.error.URLError, OSError):
-        return False
-
-
 def _obsidian() -> bool:
     """Si el plugin de Obsidian contesta. Sin clave da 401, que también vale:
     lo que se quiere saber es si Obsidian está abierto."""
@@ -300,9 +293,19 @@ def arrancar_ollama() -> bool:
     Se espera al 11434 y no a que aparezca la ventana: el triaje llama por HTTP,
     y una bandeja abierta con el servidor todavía cargando falla igual que si no
     estuviera. Son unos segundos en frío.
+
+    Y que conteste no basta: tiene que tener el modelo del router. Si el 11434
+    lo tiene un Ollama sin él, se avisa y **no** se arranca el de Windows: el
+    puerto ya está cogido y llegaría tarde. Apagar al otro no lo decide este
+    comando.
     """
-    if _ollama():
-        print("  [ya estaba]  Ollama responde en el 11434")
+    modelo = ollama_local.modelo_router(_directorio_datos())
+    modelos = ollama_local.modelos()
+    if modelos is not None:
+        if ollama_local.tiene_el_modelo(modelos, modelo):
+            print(f"  [ya estaba]  Ollama responde en el 11434, con {modelo}")
+        else:
+            ollama_local.avisar_sin_modelo(modelo)
         return False
 
     binario = OLLAMA_BANDEJA if OLLAMA_BANDEJA.is_file() else None
@@ -322,8 +325,11 @@ def arrancar_ollama() -> bool:
 
     for _ in range(30):
         time.sleep(0.5)
-        if _ollama():
+        modelos = ollama_local.modelos()
+        if modelos is not None:
             print("  [listo]      Ollama responde")
+            if not ollama_local.tiene_el_modelo(modelos, modelo):
+                ollama_local.avisar_sin_modelo(modelo)
             return True
     print("  [ojo]        Ollama no contesta todavía en el 11434; sin él no hay triaje")
     return True
@@ -640,8 +646,9 @@ def estado() -> None:
     # igual de rota que un Obsidian cerrado, y son dos arreglos distintos.
     obsidian_abierto = _exe_vivo("Obsidian.exe")
     obsidian_plugin = _obsidian()
+    modelos = ollama_local.modelos()
     for nombre, vivo, sin_el in (
-        ("Ollama", _ollama(), "sin él no hay triaje de correo"),
+        ("Ollama", modelos is not None, "sin él no hay triaje de correo"),
         (
             "Obsidian",
             obsidian_abierto,
@@ -652,6 +659,11 @@ def estado() -> None:
     ):
         marca = "[activo]  " if vivo else "[PARADO]  "
         print(f"  {marca}   {nombre} — {sin_el}")
+    # «Activo» solo dice que el 11434 contesta. Si quien contesta es el Ollama
+    # de WSL, el triaje está igual de parado, y aquí es donde se mira primero.
+    modelo = ollama_local.modelo_router(_directorio_datos())
+    if modelos is not None and not ollama_local.tiene_el_modelo(modelos, modelo):
+        ollama_local.avisar_sin_modelo(modelo)
 
     print()
     detector = "[activo]  " if _corriendo("clap_detector.py") else "[PARADO]  "
