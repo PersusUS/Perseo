@@ -45,7 +45,7 @@ Dos sitios más donde vive la identidad, y que no son variables de entorno:
 | `PERSEO_TOKEN` | *(se genera)* | Manda sobre `<datos>/token.txt` |
 | `PERSEO_CORE_URL` | `http://127.0.0.1:8787` | **La lee la app**, para saber dónde está el núcleo |
 | `PERSEO_URL_BASE` | la primera interfaz no local | Lo que se pone en el enlace «ver detalle» de los avisos |
-| `PERSEO_DISPARADORES` | `correo,agenda` | Quién empieza trabajos solo. Vacío = nadie |
+| `PERSEO_DISPARADORES` | `correo,agenda,recordatorios,parte` | Quién empieza trabajos solo. Vacío = nadie |
 
 ### HTTPS
 
@@ -103,6 +103,25 @@ Un `buzon.json` mínimo, para probarlo sin cuenta de Google:
 | `PERSEO_AGENDA_FALSA` | `<datos>/agenda.json` | El JSON que hace de calendario |
 | `PERSEO_AGENDA_INTERVALO` | `600` | Cada cuántos segundos se mira |
 | `PERSEO_AGENDA_ANTELACION` | `60` | Con cuántos minutos de antelación se avisa |
+
+## Los recordatorios
+
+Se guardan en `<datos>/recordatorios.json` y los apunta el propio Perseo cuando
+se le pide («avísame en veinte minutos»). No hace falta configurar nada.
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `PERSEO_RECORDATORIOS_INTERVALO` | `30` | Cada cuántos segundos se mira si alguno ha vencido |
+
+## El parte del día
+
+Se pide hablando («¿qué tengo hoy?») o por escrito, y junta agenda, correos que
+piden algo, recordatorios, tareas y hábitos. Además puede salir solo cada
+mañana, con el titular por Telegram: **viene apagado**.
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `PERSEO_PARTE_HORA` | *(vacío)* | `HH:MM` a la que sale solo, una vez al día (o en las tres horas siguientes si el núcleo arrancó más tarde). Vacío = solo cuando se pide |
 
 ## Google
 

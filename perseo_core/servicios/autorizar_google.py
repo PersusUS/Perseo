@@ -271,7 +271,9 @@ def _sincrono() -> None:  # pragma: no cover - atajo para la línea de comandos
 
     print(f"\nHecho: el refresh_token está en {ruta}.")
     print("Compruébalo con:  python -m perseo_core.servicios.google_api")
-    print("Y arranca así:    PERSEO_CORREO=gmail PERSEO_AGENDA=google python -m perseo_core")
+    print("Si el núcleo ya está en marcha, lo recoge solo en su siguiente vuelta")
+    print("(como mucho un cuarto de hora): no hace falta reiniciarlo.")
+    print("Si no lo está:    PERSEO_CORREO=gmail PERSEO_AGENDA=google python -m perseo_core")
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -75,7 +75,11 @@ class MotorCaraOpencv:
         return cv2
 
     def detectar(self, jpeg: bytes) -> list[dict]:
-        """Una entrada por cara: caja en píxeles y vector de SFace."""
+        """Una entrada por cara: caja en píxeles, vector de SFace y su calidad.
+
+        La calidad —`puntuacion`, `nitidez` y `giro`— no decide quién es: dice
+        si esta imagen vale para **enseñar**. Lo decide `biometria.calidad_cara`.
+        """
         import numpy as np
 
         cv2 = self._asegurar()
@@ -93,10 +97,32 @@ class MotorCaraOpencv:
             caja = [int(round(v)) for v in fila[:4]]
             alineada = self._reconocedor.alignCrop(matriz, fila)
             vector = self._reconocedor.feature(alineada).flatten()
+            gris = cv2.cvtColor(alineada, cv2.COLOR_BGR2GRAY)
             salida.append(
                 {
                     "caja": caja,
                     "vector": [float(x) for x in vector.tolist()],
+                    "puntuacion": float(fila[14]),
+                    # Varianza del laplaciano sobre la cara ya alineada: una
+                    # imagen movida o desenfocada tiene pocos bordes y da poco.
+                    "nitidez": float(cv2.Laplacian(gris, cv2.CV_64F).var()),
+                    "giro": giro(fila),
                 }
             )
         return salida
+
+
+def giro(fila) -> float:
+    """Cuánto mira de lado: 0 de frente, 1 de perfil.
+
+    Con los puntos de YuNet —ojo derecho, ojo izquierdo, nariz, en ese orden
+    desde la columna 4— la nariz cae en el centro de los ojos cuando la cara
+    mira de frente y se va hacia un ojo cuando gira. No mide grados, y no hace
+    falta: basta con saber cuándo una cara está demasiado de lado para enseñar.
+    """
+    ojo_derecho, ojo_izquierdo, nariz = float(fila[4]), float(fila[6]), float(fila[8])
+    entre_ojos = ojo_izquierdo - ojo_derecho
+    if abs(entre_ojos) < 1.0:
+        return 1.0
+    posicion = (nariz - ojo_derecho) / entre_ojos
+    return min(1.0, abs(posicion - 0.5) * 2.0)

@@ -172,15 +172,31 @@ pub fn guardar_ajuste(
 #[tauri::command]
 pub fn consumir_autollamada(app: AppHandle) -> Result<String, String> {
     for ruta in rutas_marcador_autollamada(&app) {
-        if ruta.is_file() {
-            let motivo = std::fs::read_to_string(&ruta)
-                .map(|t| t.trim().to_string())
-                .unwrap_or_default();
-            let _ = std::fs::remove_file(&ruta);
+        if let Some(motivo) = tomar_marcador(&ruta) {
             return Ok(motivo);
         }
     }
     Ok(String::new())
+}
+
+/// Se lleva el marcador entero y devuelve lo que decia, o `None` si no estaba.
+///
+/// Primero lo **renombra** y luego lo lee: el nucleo y los subagentes AÑADEN
+/// una linea por aviso, y leer y borrar el mismo fichero dejaba un hueco en el
+/// que un aviso escrito entre medias se borraba sin haberse leido. Lo que
+/// llegue despues del renombrado cae en un marcador nuevo, que se toma en la
+/// vuelta siguiente.
+pub fn tomar_marcador(ruta: &std::path::Path) -> Option<String> {
+    if !ruta.is_file() {
+        return None;
+    }
+    let tomado = ruta.with_extension("tomado");
+    std::fs::rename(ruta, &tomado).ok()?;
+    let motivo = std::fs::read_to_string(&tomado)
+        .map(|t| t.trim().to_string())
+        .unwrap_or_default();
+    let _ = std::fs::remove_file(&tomado);
+    Some(motivo)
 }
 
 pub fn rutas_marcador_autollamada(app: &AppHandle) -> Vec<std::path::PathBuf> {

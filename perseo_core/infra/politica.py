@@ -57,6 +57,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -97,6 +98,14 @@ TABLA: dict[str, str] = {
     # así que sin una entrada propia, redactar heredaría "libre" y escribiría en
     # la cuenta sin que constara en ninguna parte.
     "correo.redactar": REVERSIBLE,
+    # Los recordatorios escriben en `<datos>/recordatorios.json`, no en el
+    # vault: apuntar y quitar son reversibles —lo apuntado se quita, lo quitado
+    # se vuelve a apuntar— y mirar o avisar no cambia nada.
+    "recordatorios": REVERSIBLE,
+    "recordatorios.listar": LIBRE,
+    "recordatorios.avisar": LIBRE,
+    # El parte del día solo lee: agenda, correos triados, recordatorios y espejos.
+    "parte": LIBRE,
     # Del PC, lo que solo abre cosas es libre; teclear y los atajos van a ciegas
     # sobre la ventana que tenga el foco, y eso puede ser cualquier cosa.
     "pc.abrir_app": LIBRE,
@@ -221,6 +230,32 @@ def nivel(agente: str, peticion: dict[str, Any] | None = None) -> str:
 # Modo confianza
 # --------------------------------------------------------------------------- #
 
+#: Reintentos ante un fichero ocupado. En Windows no se puede borrar ni
+#: sustituir un fichero que otro hilo tiene abierto para leer, y la app pide
+#: `POST /confianza` dos veces casi a la vez al empezar la llamada: el
+#: 2026-09-21 a las 11:23 una de las dos se llevó un 500 con `WinError 32`.
+REINTENTOS_OCUPADO = 5
+ESPERA_OCUPADO = 0.02
+
+
+def _mientras_ocupado(operacion):
+    """Repite la operación mientras Windows diga que el fichero está ocupado."""
+    for intento in range(REINTENTOS_OCUPADO):
+        try:
+            return operacion()
+        except PermissionError:
+            if intento == REINTENTOS_OCUPADO - 1:
+                raise
+            time.sleep(ESPERA_OCUPADO)
+
+
+def _escribir_confianza(texto: str) -> None:
+    """Se escribe aparte y se sustituye de una vez: quien lea, lee lo viejo o lo nuevo."""
+    assert _fichero is not None
+    temporal = _fichero.with_suffix(".tmp")
+    _mientras_ocupado(lambda: temporal.write_text(texto, encoding="utf-8"))
+    _mientras_ocupado(lambda: os.replace(temporal, _fichero))
+
 
 def activar_confianza(minutos: float = MINUTOS_CONFIANZA) -> datetime:
     """Enciende el modo confianza y devuelve hasta cuándo dura."""
@@ -229,7 +264,7 @@ def activar_confianza(minutos: float = MINUTOS_CONFIANZA) -> datetime:
 
     minutos = max(1.0, min(float(minutos), MAX_MINUTOS_CONFIANZA))
     hasta = _ahora() + timedelta(minutes=minutos)
-    _fichero.write_text(hasta.isoformat(), encoding="utf-8")
+    _escribir_confianza(hasta.isoformat())
     logger.warning(
         "Modo confianza activado hasta las %s UTC: lo irreversible dejará de pedir un sí.",
         hasta.strftime("%H:%M"),
@@ -243,7 +278,8 @@ def desactivar_confianza() -> None:
     # minutos en la que lo irreversible seguiría pasando solo.
     olvidar_repeticiones()
     if _fichero is not None and _fichero.exists():
-        _fichero.unlink()
+        fichero = _fichero
+        _mientras_ocupado(lambda: fichero.unlink(missing_ok=True))
         logger.info("Modo confianza apagado.")
 
 
@@ -255,9 +291,19 @@ def confianza_hasta() -> datetime | None:
     """
     if _fichero is None or not _fichero.exists():
         return None
+    fichero = _fichero
     try:
-        hasta = datetime.fromisoformat(_fichero.read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
+        texto = _mientras_ocupado(lambda: fichero.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except OSError:
+        # Ocupado de verdad, o sin permiso: ahora no se sabe, así que no hay
+        # confianza —el lado seguro—, pero el fichero NO se borra. Borrarlo
+        # por no haber podido leerlo apagaría la confianza de otro.
+        return None
+    try:
+        hasta = datetime.fromisoformat(texto.strip())
+    except ValueError:
         # Un fichero ilegible se trata como "no hay confianza", que es el lado
         # seguro, y se quita de en medio.
         desactivar_confianza()

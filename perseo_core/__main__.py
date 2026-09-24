@@ -21,22 +21,37 @@ import sys
 # tapa al otro. El sintoma es un AttributeError en `web.AppRunner` al arrancar.
 from aiohttp import web as servidor
 
-from .agentes import agenda, chat, correo, dev, memoria, pc, web
+from .agentes import agenda, chat, correo, dev, memoria, parte, pc, recordatorios, web
 from .caras import api
 from .infra import almacen, politica
 from .servicios import mcp
+from .servicios.llamada_saliente import Avisador
 from .infra.router import Router, Trabajador
 from .infra.bus import Bus
 from .infra.disparadores import Planificador
 from .caras.telegram import Telegram
 from .infra.configuracion import Configuracion, LOCALES, cargar_configuracion
 
-# Estos siete se importan por sus efectos: al cargarse registran sus agentes —y
-# `correo` y `agenda`, además, sus disparadores—. Sin el import el registro está
+# Estos nueve se importan por sus efectos: al cargarse registran sus agentes
+# —y `correo`, `agenda`, `recordatorios` y `parte`, además, sus disparadores—.
+# Sin el import el registro está
 # vacío y el núcleo arranca sin agentes sin decir por qué.
-_ = (agenda, chat, correo, dev, memoria, pc, web)
+_ = (agenda, chat, correo, dev, memoria, parte, pc, recordatorios, web)
 
 logger = logging.getLogger("perseo_core")
+
+
+#: Rutas que se sondean solas y no dicen nada cuando contestan bien. Medido el
+#: 2026-09-23: de 4.624 líneas de acceso en `nucleo.log`, 3.318 eran el
+#: `POST /tareas/recoger` que la app hace cada ocho segundos. Un sondeo que
+#: falla sí se sigue viendo: solo se callan los 200.
+SONDEOS_CALLADOS = ('"POST /tareas/recoger ', '"GET /salud ')
+
+
+class _SinSondeos(logging.Filter):
+    def filter(self, registro: logging.LogRecord) -> bool:
+        mensaje = registro.getMessage()
+        return not any(ruta in mensaje and '" 200 ' in mensaje for ruta in SONDEOS_CALLADOS)
 
 
 def _configurar_registro() -> None:
@@ -45,6 +60,7 @@ def _configurar_registro() -> None:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         stream=sys.stderr,
     )
+    logging.getLogger("aiohttp.access").addFilter(_SinSondeos())
 
 
 def _tls(cfg: Configuracion) -> ssl.SSLContext | None:
@@ -207,11 +223,16 @@ async def arrancar() -> None:
     dev.iniciar(cfg)
     web.iniciar(cfg)
     agenda.iniciar(cfg)
+    recordatorios.iniciar(cfg)
+    parte.iniciar(cfg)
     chat.iniciar(cfg, router)
 
     # Sin token configurado se retira sola tras avisar: es un canal más.
     telegram = Telegram(cfg, bus)
     tarea_telegram = asyncio.create_task(telegram.ejecutar(), name="telegram")
+
+    # El que llama cuando un encargo termina y nadie lo está esperando.
+    tarea_avisador = asyncio.create_task(Avisador(bus).ejecutar(), name="avisador")
 
     # Los disparadores que no tengan de dónde tirar se retiran solos.
     planificador = Planificador(cfg, bus)
@@ -250,7 +271,8 @@ async def arrancar() -> None:
         trabajador_chat.detener()
         telegram.detener()
         planificador.detener()
-        for tarea in (tarea_trabajador, tarea_dev, tarea_chat, tarea_telegram, tarea_disparadores):
+        tareas = (tarea_trabajador, tarea_dev, tarea_chat, tarea_telegram, tarea_disparadores, tarea_avisador)
+        for tarea in tareas:
             tarea.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await tarea

@@ -43,7 +43,7 @@ from aiohttp import web
 from . import estado
 from ..agentes import dev
 from ..infra import almacen, politica
-from ..servicios import catalogo, grafo, habitos, proyectos, tareas
+from ..servicios import catalogo, grafo, habitos, llamada_saliente, proyectos, tareas
 from ..infra.router import REGISTRO, Router
 from . import api_biometria
 from .api_comun import CLAVE_BUS, CLAVE_CFG, CLAVE_ROUTER, cuerpo_json, fallo
@@ -422,6 +422,8 @@ def _id_de_ruta(peticion: web.Request) -> int:
 
 
 async def _ver_trabajo(peticion: web.Request) -> web.Response:
+    # Quien pregunta, espera: si al terminar nadie ha preguntado, llama Perseo.
+    llamada_saliente.marcar_espera(_id_de_ruta(peticion))
     trabajo = await asyncio.to_thread(almacen.obtener, _id_de_ruta(peticion))
     if trabajo is None:
         raise fallo(web.HTTPNotFound, "No existe ese trabajo")

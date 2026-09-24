@@ -16,7 +16,7 @@ irreversible a esperar tu sí. Esa parada viene apagada: [ADR 0005](docs/adr/000
 [![Licencia MIT](https://img.shields.io/badge/licencia-MIT-black.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-black.svg)](https://www.python.org/)
 [![Tauri 2](https://img.shields.io/badge/tauri-2-black.svg)](https://tauri.app/)
-[![919 pruebas](https://img.shields.io/badge/pruebas-919-black.svg)](#verificación)
+[![1075 pruebas](https://img.shields.io/badge/pruebas-1075-black.svg)](#verificación)
 
 [Qué es](#qué-es) · [Cómo se ve](#cómo-se-ve) · [Cómo funciona](#cómo-funciona) ·
 [Instalación](#instalación) · [Privacidad](#privacidad) · [English](README.en.md)
@@ -165,6 +165,8 @@ una implementación y mañana otra, sin tocar el agente.
 |---|---|---|
 | `correo` | Tría el entrante: ignorar / interesante / requiere acción / no seguro | Gmail, o un fichero JSON |
 | `agenda` | Avisa de lo que empieza pronto, una vez por evento | Google Calendar, o un fichero JSON |
+| `recordatorios` | «Avísame en veinte minutos», «recuérdame el jueves a las cinco»: apunta, repite y avisa, también tarde si el núcleo estaba apagado | Un fichero JSON en `<datos>/` |
+| `parte` | El parte del día de una vez: agenda, correos que piden algo, recordatorios, tareas y hábitos. Opcionalmente, cada mañana | Lo que ya leen los demás |
 | `memoria` | Busca, lee y **añade** en el vault. No sobrescribe ni borra | Ficheros Markdown, o el plugin REST de Obsidian |
 | `chat` | Sostiene el chat escrito del panel y del móvil, y usa las herramientas de los demás | Gemini REST con *function calling* |
 | `dev` | Encarga tareas de código a un subagente y **cuenta por dónde va** mientras trabaja | `claude-agent-sdk`, o `claude -p`, o opencode |
@@ -369,13 +371,13 @@ y las rutas de la API en [`docs/API.md`](docs/API.md).
 Nada de esto se comprueba a ojo, y se comprueba de dos maneras.
 
 **Pruebas unitarias** — cada pieza por separado, sin red y sin subprocesos.
-Dicen *qué* se ha roto: **919** en total.
+Dicen *qué* se ha roto: **1075** en total.
 
 ```bash
 python commands/perseo.py comprobar    # todo, en orden de coste
 
-python -m pytest                       # 760, el núcleo y los comandos
-cd RealTime && npm test                # 159, la interfaz
+python -m pytest                       # 871, el núcleo y los comandos
+cd RealTime && npm test                # 204, la interfaz
 cd RealTime/src-tauri && cargo check   # y que el Rust compila
 ```
 
@@ -437,7 +439,7 @@ El detalle, en [`docs/PRIVACIDAD.md`](docs/PRIVACIDAD.md).
 
 Perseo funciona y se usa a diario, pero es un proyecto personal: está pensado
 para **una** persona, en **un** ordenador con Windows, y se nota. Lo que hay
-detrás son unas 49.100 líneas, 919 pruebas y 17 verificadores.
+detrás son unas 49.100 líneas, 1075 pruebas y 18 verificadores.
 
 Si lo clonas y algo no arranca, abre un
 [issue](https://github.com/PersusUS/Perseo/issues) — y si lo arreglas, mejor

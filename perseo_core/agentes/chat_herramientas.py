@@ -22,7 +22,7 @@ from typing import Any
 
 from ..infra import almacen, politica
 from ..infra.configuracion import Configuracion
-from ..servicios import correo_lectura, habitos, tareas, triaje
+from ..servicios import correo_lectura, habitos, llamada_saliente, tareas, triaje
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,7 @@ async def _encolar_y_esperar(agente: str, peticion: dict[str, Any], espera: floa
     id_trabajo = int(trabajo["id"])
     limite = asyncio.get_running_loop().time() + espera
     while True:
+        llamada_saliente.marcar_espera(id_trabajo)
         actual = await asyncio.to_thread(almacen.obtener, id_trabajo)
         if actual is not None:
             estado = str(actual.get("estado"))
@@ -335,6 +336,20 @@ async def _ejecutar_herramienta(nombre: str, argumentos: dict[str, Any]) -> str:
             "la ventana esté abierta; si lo está, en segundos. Si hay más de una nota "
             "con ese nombre no moverá ninguna."
         )
+
+    if nombre in ("crear_recordatorio", "consultar_recordatorios", "cancelar_recordatorio"):
+        accion = {
+            "crear_recordatorio": "crear",
+            "consultar_recordatorios": "listar",
+            "cancelar_recordatorio": "cancelar",
+        }[nombre]
+        return await _encolar_y_esperar("recordatorios", {**argumentos, "accion": accion}, 15)
+
+    if nombre == "parte_del_dia":
+        return await _encolar_y_esperar("parte", {"accion": "dar"}, 30)
+
+    if nombre == "redactar_borrador":
+        return await _encolar_y_esperar("correo", {**argumentos, "accion": "redactar"}, 30)
 
     if nombre == "consultar_agenda":
         peticion: dict[str, Any] = {"accion": "proximos"}

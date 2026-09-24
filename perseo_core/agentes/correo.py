@@ -256,7 +256,12 @@ async def _vigilar_buzon(ctx: disparadores.Contexto) -> None:
         ).cargar()
     assert _vistos is not None
 
-    mensajes = await _buzon.nuevos()
+    try:
+        mensajes = await _buzon.nuevos()
+    except google_api.SinCredenciales as e:
+        # Configurado y roto: lo arregla una persona, y hay que decírselo a ella,
+        # no al registro cada cinco minutos. Ver `disparadores.Degradado`.
+        raise disparadores.Degradado("google", str(e), google_api.ARREGLO) from e
     pendientes = set(_vistos.sin_ver([m.id for m in mensajes]))
     nuevos = [m for m in mensajes if m.id in pendientes]
     if not nuevos:

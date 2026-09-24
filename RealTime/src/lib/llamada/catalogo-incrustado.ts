@@ -165,6 +165,118 @@ export const CATALOGO_INCRUSTADO: HerramientaNeutra[] = [
     }
   },
   {
+    "name": "parte_del_dia",
+    "description": "El parte del día de una vez: lo que queda hoy en la agenda, los correos que piden algo, los recordatorios de hoy y cómo van las tareas y los hábitos. Úsala cuando pregunte «¿qué tengo hoy?», «¿cómo va el día?» o te pida el parte. Cuéntalo resumido y por orden de urgencia, no lo leas entero. Si una sección dice que no se pudo mirar, dilo: no es un día vacío. Solo lectura.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "crear_recordatorio",
+    "description": "Apunta un recordatorio y Perseo avisará a esa hora: por el móvil, y en la cola del panel. Úsala cuando el señor Persus diga «recuérdame», «avísame» o «que no se me olvide» con una hora o un plazo. Di cuándo de UNA forma: en_minutos para «dentro de veinte minutos»; hora con dias o dia_semana para «mañana a las nueve» (hora 09:00, dias 1) o «el jueves a las cinco» (hora 17:00, dia_semana jueves) —no hace falta que sepas la fecha de hoy—; o fecha_hora solo para una fecha concreta. La respuesta repite la hora ya resuelta: DILA tal cual, para que él oiga si se entendió mal. Es reversible y no gasta cuota: no pidas permiso para apuntar. NO la uses para cosas que haya que hacer sin hora: eso es crear_tarea.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "texto": {
+          "type": "string",
+          "description": "Qué hay que recordarle, corto y como lo diría él («llamar al fontanero»)."
+        },
+        "en_minutos": {
+          "type": "number",
+          "description": "Dentro de cuántos minutos. Para plazos cortos: «en media hora» son 30."
+        },
+        "hora": {
+          "type": "string",
+          "description": "A qué hora, HH:MM en 24 horas. Sola es la próxima vez que llega esa hora."
+        },
+        "dias": {
+          "type": "number",
+          "description": "Con hora: dentro de cuántos días. 0 hoy, 1 mañana, 2 pasado mañana."
+        },
+        "dia_semana": {
+          "type": "string",
+          "description": "Con hora: qué día de la semana. Si es hoy, el de la semana que viene.",
+          "enum": [
+            "lunes",
+            "martes",
+            "miércoles",
+            "jueves",
+            "viernes",
+            "sábado",
+            "domingo"
+          ]
+        },
+        "fecha_hora": {
+          "type": "string",
+          "description": "Solo para una fecha concreta: AAAA-MM-DDTHH:MM, hora local."
+        },
+        "repetir": {
+          "type": "string",
+          "description": "Si se repite. Sin nada, una sola vez.",
+          "enum": [
+            "nunca",
+            "diario",
+            "laborables",
+            "semanal"
+          ]
+        }
+      },
+      "required": [
+        "texto"
+      ]
+    }
+  },
+  {
+    "name": "consultar_recordatorios",
+    "description": "Los recordatorios pendientes, con su hora. Úsala cuando pregunte qué tiene apuntado o antes de quitar uno. Es de solo lectura.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "cancelar_recordatorio",
+    "description": "Quita un recordatorio pendiente, buscándolo por el principio de su texto. Si encajan dos no quita ninguno y te dirá cuáles: entonces pregúntale a cuál se refiere.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "texto": {
+          "type": "string",
+          "description": "El texto del recordatorio, o su principio."
+        }
+      },
+      "required": [
+        "texto"
+      ]
+    }
+  },
+  {
+    "name": "redactar_borrador",
+    "description": "Deja un BORRADOR de correo en el Gmail del señor Persus. No lo envía, y no puede: enviar lo hace él desde Gmail. Úsala cuando te dicte un correo o te pida contestar a uno. Si es una respuesta, el destinatario sale del correo que estabais comentando: no lo inventes. Léele el texto antes si te lo pide, y al terminar dile que está en borradores esperando a que lo revise.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "para": {
+          "type": "string",
+          "description": "La dirección de correo del destinatario, completa."
+        },
+        "asunto": {
+          "type": "string",
+          "description": "El asunto. En una respuesta, «Re: » y el asunto original."
+        },
+        "texto": {
+          "type": "string",
+          "description": "El cuerpo del correo, ya redactado, con saludo y despedida."
+        }
+      },
+      "required": [
+        "para",
+        "texto"
+      ]
+    }
+  },
+  {
     "name": "buscar_en_memoria",
     "description": "Busca DENTRO del texto de las notas del vault de Obsidian y devuelve las que hablan de eso, con su ruta y un extracto. Es la memoria a largo plazo del señor Persus y la tuya: úsala SIEMPRE que la pregunta sea sobre lo que él tiene apuntado —sus proyectos, sus gustos, su salud, vuestras conversaciones— antes de decir que no lo sabes. Las carpetas 01_ a 09_ son cosas suyas; 10_PERSEO/ son las tuyas. No confundir con el servidor MCP 'vault', que maneja ficheros y solo busca por nombre.",
     "parameters": {

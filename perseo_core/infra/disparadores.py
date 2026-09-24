@@ -17,8 +17,13 @@ Tres decisiones que conviene no deshacer:
    en la web y pasa por el mismo camino —con sus confirmaciones— que lo que pides
    tú. Un disparador que hiciera el trabajo por su cuenta sería un segundo
    sistema con sus propias reglas.
-
-
+4. **Lo que está roto por fuera se dice una vez, y a quien lo puede arreglar.**
+   Un disparador cuya pieza está caída —el permiso de Google caducado— lanza
+   `Degradado`: una línea en el registro al caer y otra al volver, un aviso en
+   el bus que Telegram lleva al móvil, y vueltas cada vez más espaciadas. Antes
+   era una traza de cuarenta líneas cada cinco minutos: entre el 6 y el 23 de
+   septiembre de 2026, 1.460 trazas iguales y ni un solo aviso, mientras el
+   correo y la agenda llevaban diecisiete días callados.
 """
 
 from __future__ import annotations
@@ -29,6 +34,8 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
+
+import aiohttp
 
 from . import almacen
 from .bus import Bus
@@ -143,6 +150,32 @@ class Retirarse(Exception):
     """
 
 
+class Degradado(Exception):
+    """La lanza un disparador cuando la pieza de la que depende está rota por fuera.
+
+    No es un fallo del código ni algo sin configurar: está configurado y no
+    funciona, y lo arregla una persona. `pieza` agrupa a los disparadores que
+    dependen de lo mismo —correo y agenda van los dos por Google— para avisar
+    una sola vez; `arreglo` es lo que hay que hacer, dicho como orden.
+    """
+
+    def __init__(self, pieza: str, motivo: str, arreglo: str = "") -> None:
+        super().__init__(motivo)
+        self.pieza = pieza
+        self.motivo = motivo
+        self.arreglo = arreglo
+
+
+#: Hasta dónde se espacian las vueltas de un disparador degradado. Un cuarto de
+#: hora: es lo que se tarda en recoger un permiso nuevo sin reiniciar nada, y
+#: una llamada cada quince minutos a un servicio que dice «no» no molesta a nadie.
+ESPERA_MAXIMA_DEGRADADO = 900.0
+
+#: Fallos de red de una vuelta: se dicen en una línea, sin traza. Tras despertar
+#: de la suspensión el DNS tarda unos segundos, y eso no es un error del código.
+FALLOS_DE_RED = (aiohttp.ClientConnectionError, asyncio.TimeoutError, ConnectionError)
+
+
 class Planificador:
     """Mantiene en marcha los disparadores activos."""
 
@@ -151,6 +184,8 @@ class Planificador:
         self._activos = tuple(n for n in cfg.disparadores if n in REGISTRO)
         self._desconocidos = tuple(n for n in cfg.disparadores if n not in REGISTRO)
         self._parar = asyncio.Event()
+        #: pieza -> disparadores que la ven caída ahora mismo.
+        self._caidas: dict[str, set[str]] = {}
 
     def detener(self) -> None:
         self._parar.set()
@@ -169,16 +204,56 @@ class Planificador:
         """Cada cuánto le toca. La configuración manda sobre el valor del registro."""
         return float(self._contexto.cfg.intervalos.get(disparador.nombre, disparador.intervalo))
 
+    def _cae(self, disparador: str, degradado: Degradado) -> None:
+        """Apunta la caída. Solo el primero que la ve lo dice."""
+        quienes = self._caidas.setdefault(degradado.pieza, set())
+        if not quienes:
+            logger.warning(
+                "%s no funciona: %s%s",
+                degradado.pieza.capitalize(),
+                degradado.motivo,
+                f" Arreglo: {degradado.arreglo}" if degradado.arreglo else "",
+            )
+            self._contexto.bus.publicar(
+                "sistema.degradado",
+                pieza=degradado.pieza,
+                motivo=degradado.motivo,
+                arreglo=degradado.arreglo,
+            )
+        quienes.add(disparador)
+
+    def _vuelve(self, disparador: str) -> None:
+        """Este disparador ha ido bien: las piezas que veía caídas, ya no."""
+        for pieza, quienes in self._caidas.items():
+            if disparador in quienes:
+                quienes.discard(disparador)
+                if not quienes:
+                    logger.info("%s vuelve a funcionar.", pieza.capitalize())
+                    self._contexto.bus.publicar("sistema.recuperado", pieza=pieza)
+
     async def _bucle(self, disparador: Disparador) -> None:
-        espera = self._intervalo(disparador)
+        normal = self._intervalo(disparador)
+        espera = normal
         while not self._parar.is_set():
             try:
                 await disparador.revisar(self._contexto)
+                self._vuelve(disparador.nombre)
+                espera = normal
             except Retirarse as motivo:
                 logger.info("Disparador %s retirado: %s", disparador.nombre, motivo)
                 return
             except asyncio.CancelledError:
                 raise
+            except Degradado as degradado:
+                self._cae(disparador.nombre, degradado)
+                espera = min(max(espera, normal) * 2, ESPERA_MAXIMA_DEGRADADO)
+            except FALLOS_DE_RED as e:
+                logger.warning(
+                    "El disparador %s no llegó a su servicio en esta vuelta (%s: %s).",
+                    disparador.nombre,
+                    type(e).__name__,
+                    e,
+                )
             except Exception:
                 # Una vuelta mala no vale una caída: se anota y se vuelve a
                 # intentar en el siguiente turno.

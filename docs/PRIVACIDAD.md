@@ -33,7 +33,10 @@ producto», no hay servicio de embeddings y no hay copia en la nube.
 - **Los perfiles biométricos.** Los vectores de voz y cara viven en
   `<datos>/perfiles.json`. El reconocimiento corre **en tu ordenador**, con
   ECAPA-TDNN y YuNet + SFace. Ningún trozo de audio o imagen se manda a nadie
-  para identificar a alguien.
+  para identificar a alguien. Y **nadie se guarda sin nombre**: un desconocido
+  lleva una etiqueta provisional mientras dura la sesión y se olvida al
+  reiniciar, salvo que alguien diga cómo se llama. Cada cosa que se guarda de
+  alguien queda anotada en `<datos>/personas.log`.
 - **El cuerpo de tus correos.** Del buzón se leen las cabeceras y el extracto
   que da la propia API. El cuerpo **no se descarga**, porque para triar no hace
   falta — y lo que no se baja no se puede filtrar por accidente.
@@ -91,6 +94,8 @@ Pero un prompt no es una defensa, así que debajo hay dos más:
 | `<datos>/token.txt` | La credencial que abre la API |
 | `<datos>/estado.sqlite3` | La cola: el texto literal de lo que le pides |
 | `<datos>/perfiles.json` | Los vectores de voz y cara |
+| `<datos>/personas.log` | A quién se ha aprendido y cuándo: una línea por alta, nombre, muestra nueva o borrado. Sin números |
+| `<datos>/recordatorios.json` | Lo que le pediste que te recordara, con su hora |
 | `<datos>/google.json` | El `refresh_token` que abre tu buzón |
 | `<datos>/gemini.txt` · `telegram.txt` · `obsidian.txt` | Claves sueltas |
 | `<datos>/nucleo.log` · `vigilante.log` | Los registros |

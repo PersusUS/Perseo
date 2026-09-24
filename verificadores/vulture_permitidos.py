@@ -24,6 +24,7 @@ Este fichero no se importa ni se ejecuta: solo lo lee `vulture`.
 _pc
 _eco
 _simulacro
+_parte
 
 # --------------------------------------------------------------------------- #
 # Callbacks de bibliotecas: el nombre es el contrato
@@ -48,6 +49,8 @@ politica_limpia
 sin_memoria
 _limpio
 todos_instalados
+# Aparta el marcador de llamada en todas las pruebas: autouse, nadie lo pide.
+_marcador_apartado
 # `armado` enciende las confirmaciones mientras dura una prueba del
 # trabajador (ver ADR 0005). Se pide por el nombre del parámetro y no se
 # usa dentro del cuerpo: el efecto es el monkeypatch, no un valor.

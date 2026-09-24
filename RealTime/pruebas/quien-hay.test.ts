@@ -10,8 +10,11 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { defaultConfig } from '../src/lib/datos/config';
 import {
+  AVISO_SIN_RECONOCIMIENTO,
   avisoCaras,
+  avisoDuda,
   avisoHablante,
   bloqueCenso,
   esElSenor,
@@ -168,3 +171,29 @@ describe('sinAvisoDeIdentidad', () => {
     expect(texto).toBe('Dígame.');
   });
 });
+
+describe('cuando no se sabe quién habla', () => {
+  // La causa de que casi siempre se llamara «señor Persus» a cualquiera: la
+  // regla 2 del prompt decía que, mientras nadie dijera lo contrario, quien
+  // hablaba era él. Con el reconocimiento fallando, nadie lo decía nunca.
+  it('el prompt ya no da por hecho que es el señor Persus', () => {
+    expect(defaultConfig.systemPrompt).not.toContain('Mientras nadie diga lo contrario, quien te habla es el señor Persus');
+    expect(defaultConfig.systemPrompt).toContain('Solo es el señor Persus quien un aviso [IDENTIDAD] diga que es él');
+  });
+
+  it('la duda se dice, y dice que no se le llame así', () => {
+    const aviso = avisoDuda();
+    expect(aviso.startsWith('[IDENTIDAD]')).toBe(true);
+    expect(aviso).toContain('No le llames «señor Persus»');
+  });
+
+  it('con el reconocimiento apagado, sí es él', () => {
+    expect(AVISO_SIN_RECONOCIMIENTO).toContain('apagado');
+    expect(AVISO_SIN_RECONOCIMIENTO).toContain('el señor Persus');
+  });
+
+  it('el aviso de duda también se limpia de la transcripción si el modelo lo lee', () => {
+    expect(sinAvisoDeIdentidad(`${avisoDuda()} Buenas tardes.`, [avisoDuda()])).toBe('Buenas tardes.');
+  });
+});
+

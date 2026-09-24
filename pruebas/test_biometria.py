@@ -11,12 +11,13 @@ código.
 from __future__ import annotations
 
 import base64
+import math
 import struct
 from pathlib import Path
 
 import pytest
 
-from perseo_core.servicios import biometria
+from perseo_core.servicios import biometria, biometria_galeria
 
 
 # --------------------------------------------------------------------------- #
@@ -53,9 +54,25 @@ class MotorCaraFalso:
         return [{"caja": caja, "vector": vector}]
 
 
-def _audio_falso(muestras: int = 16000) -> str:
-    """PCM int16 base64 del tamaño pedido. Al motor falso le da igual el valor."""
-    return base64.b64encode(struct.pack(f"<{muestras}h", *([100] * muestras))).decode()
+def _audio_falso(segundos: float = 2.0) -> str:
+    """PCM int16 base64 que el detector de voz del núcleo da por voz.
+
+    Al motor falso le da igual el valor, pero al detector no: una señal
+    constante es plana y la tira, como tiraría un zumbido. Así que es un tono
+    con envolvente de sílabas —sube y baja tres veces por segundo—, igual que
+    la voz de verdad.
+    """
+    muestras = int(16000 * segundos)
+    valores = [
+        int(8000 * (0.2 + 0.8 * abs(math.sin(2 * math.pi * 3 * i / 16000))) * math.sin(i * 0.06))
+        for i in range(muestras)
+    ]
+    return base64.b64encode(struct.pack(f"<{muestras}h", *valores)).decode()
+
+
+def _con_coseno(c: float) -> list[float]:
+    """Un vector que forma ese coseno con [1, 0, 0]."""
+    return [c, math.sqrt(1 - c * c), 0.0]
 
 
 def _imagen_falsa() -> str:
@@ -79,9 +96,9 @@ def _limpio(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def test_el_coseno_sabe_de_angulos() -> None:
     mismo = [1.0, 0.0]
-    assert biometria._coseno(mismo, [2.0, 0.0]) == pytest.approx(1.0)
-    assert biometria._coseno(mismo, [0.0, 5.0]) == pytest.approx(0.0)
-    assert biometria._coseno(mismo, [-1.0, 0.0]) == pytest.approx(-1.0)
+    assert biometria_galeria.coseno(mismo, [2.0, 0.0]) == pytest.approx(1.0)
+    assert biometria_galeria.coseno(mismo, [0.0, 5.0]) == pytest.approx(0.0)
+    assert biometria_galeria.coseno(mismo, [-1.0, 0.0]) == pytest.approx(-1.0)
 
 
 def test_cargar_sin_fichero_es_vacio_y_no_rompe(tmp_path: Path) -> None:
@@ -124,11 +141,15 @@ def test_identifica_a_quien_tiene_perfil(tmp_path: Path) -> None:
 
     assert resultado["nombre"] == "Javi"
     assert resultado["confianza"] >= biometria.UMBRAL_VOZ
-    # Cada acierto refuerza el perfil: la voz guardada tira hacia la de hoy.
-    assert biometria.cargar(tmp_path)["Javi"]["muestras"] == 2
+    # Un acierto claro de un perfil antiguo lo pasa a galería: el vector viejo
+    # (hecho con el refuerzo roto) se sustituye, no se hereda.
+    perfil = biometria.cargar(tmp_path)["Javi"]
+    assert perfil["voces"] == [vector]
+    assert perfil["muestras"] == 2
 
 
-def test_por_debajo_del_umbral_aprende_al_desconocido(tmp_path: Path) -> None:
+def test_un_desconocido_no_se_guarda_aunque_hable_mucho(tmp_path: Path) -> None:
+    """La regla del 2026-09-23: nada se aprende sin que alguien diga el nombre."""
     conocido = [1.0, 0.0]
     otro = [0.0, 1.0]  # ortogonal: coseno 0, muy por debajo del umbral
     biometria.guardar(
@@ -136,32 +157,23 @@ def test_por_debajo_del_umbral_aprende_al_desconocido(tmp_path: Path) -> None:
         {"Persus": {"voz": conocido, "caras": [], "muestras": 1, "creado": "hoy"}},
     )
 
-    # Primera frase del desconocido: ya lleva etiqueta provisional, y aprende.
     biometria.pon_motores(voz=MotorVozFalso(otro))
-    trozo = _audio_falso(32000)  # dos segundos por llamada
-    primero = biometria.identificar_voz(tmp_path, trozo)
-    assert primero["nombre"] == "Desconocido 1"
-    assert primero["aprendiendo"]["etiqueta"] == "Desconocido 1"
-    assert primero["aprendiendo"]["peso"] == pytest.approx(2.0)
-
-    # Frases siguientes del mismo vector engordan el MISMO racimo…
-    for _ in range(3):
+    trozo = _audio_falso(2.0)
+    # Treinta segundos hablando: antes, a los doce, ya era un perfil en disco.
+    for _ in range(15):
         resultado = biometria.identificar_voz(tmp_path, trozo)
-    assert resultado["aprendiendo"]["peso"] == pytest.approx(8.0)
+        assert resultado["nombre"] == "Desconocido 1"
+        assert resultado["provisional"] is True
+    assert list(biometria.cargar(tmp_path)) == ["Persus"]
 
-    # …hasta cruzar el objetivo y fijarse como perfil permanente.
-    while "aprendiendo" in (ultimo := biometria.identificar_voz(tmp_path, trozo)):
-        pass
-    assert ultimo["nombre"] == "Desconocido 1"
-    assert ultimo.get("aprendido") is True
+    # La sesión sí sabe cuánto se le ha oído, para cuando diga su nombre.
+    progreso = biometria.estado_completo(tmp_path)["aprendiendo"]["voz"]
+    assert progreso["etiqueta"] == "Desconocido 1"
+    assert progreso["peso"] == pytest.approx(30.0, abs=1.0)
 
-    perfiles = biometria.cargar(tmp_path)
-    assert "Desconocido 1" in perfiles
-    assert perfiles["Desconocido 1"]["voz"]
-    # Y a partir de ahora lo reconoce por su etiqueta, ya sin aprender nada.
-    reconocido = biometria.identificar_voz(tmp_path, trozo)
-    assert reconocido["nombre"] == "Desconocido 1"
-    assert "aprendiendo" not in reconocido
+    # Y con el nombre dicho, se guarda y se reconoce.
+    assert biometria.renombrar(tmp_path, "Desconocido 1", "Lucía")["ok"] is True
+    assert biometria.identificar_voz(tmp_path, trozo)["nombre"] == "Lucía"
 
 
 def test_dos_desconocidos_distintos_abren_racimos_distintos(tmp_path: Path) -> None:
@@ -175,10 +187,26 @@ def test_dos_desconocidos_distintos_abren_racimos_distintos(tmp_path: Path) -> N
 
 
 def test_audio_demasiado_corto_no_molesta(tmp_path: Path) -> None:
-    biometria.pon_motores(voz=MotorVozFalso([1.0]))
-    resultado = biometria.identificar_voz(tmp_path, _audio_falso(800))
-    assert resultado == {"nombre": None}
+    motor = MotorVozFalso([1.0])
+    biometria.pon_motores(voz=motor)
+    resultado = biometria.identificar_voz(tmp_path, _audio_falso(0.05))
+    assert resultado["nombre"] is None
+    assert motor.llamadas == 0
     assert biometria.ruta_perfiles(tmp_path).exists() is False
+
+
+def test_una_ventana_sin_voz_no_llega_al_motor(tmp_path: Path) -> None:
+    """Tres segundos de silencio, o de un zumbido plano, no son de nadie."""
+    motor = MotorVozFalso([1.0])
+    biometria.pon_motores(voz=motor)
+    silencio = base64.b64encode(bytes(96000)).decode()
+    zumbido = base64.b64encode(
+        struct.pack("<48000h", *[int(8000 * math.sin(i * 0.06)) for i in range(48000)])
+    ).decode()
+
+    assert biometria.identificar_voz(tmp_path, silencio)["nombre"] is None
+    assert biometria.identificar_voz(tmp_path, zumbido)["nombre"] is None
+    assert motor.llamadas == 0
 
 
 def test_sin_motor_dice_que_falta_y_por_que(
@@ -216,19 +244,18 @@ def test_reconoce_la_cara_conocida_y_devuelve_su_caja(tmp_path: Path) -> None:
     assert cara["caja"] == caja
 
 
-def test_la_cara_desconocida_se_aprende_contando_detecciones(tmp_path: Path) -> None:
+def test_la_cara_desconocida_no_se_guarda_sin_nombre(tmp_path: Path) -> None:
     vector = [0.0, 1.0]
     biometria.pon_motores(cara=MotorCaraFalso(([0, 0, 50, 50], vector)))
 
-    for _ in range(biometria.FRAMES_CARA_APRENDER - 1):
+    for _ in range(biometria.FRAMES_CARA_APRENDER * 2):
         resultado = biometria.identificar_cara(tmp_path, _imagen_falsa())
         assert resultado["caras"][0]["nombre"] == "Desconocido 1"
-        assert "aprendiendo" in resultado["caras"][0]
+        assert resultado["caras"][0]["provisional"] is True
+    assert biometria.cargar(tmp_path) == {}
 
-    final = biometria.identificar_cara(tmp_path, _imagen_falsa())
-    assert final["caras"][0]["nombre"] == "Desconocido 1"
-    perfiles = biometria.cargar(tmp_path)
-    assert perfiles["Desconocido 1"]["caras"]
+    assert biometria.renombrar(tmp_path, "Desconocido 1", "Fátima")["ok"] is True
+    assert biometria.cargar(tmp_path)["Fátima"]["caras"]
 
 
 def test_varias_caras_en_un_cuadro_salen_todas(tmp_path: Path) -> None:
@@ -258,7 +285,7 @@ def test_varias_caras_en_un_cuadro_salen_todas(tmp_path: Path) -> None:
 def test_enrolar_manual_crea_el_perfil_y_lo_usa(tmp_path: Path) -> None:
     biometria.pon_motores(voz=MotorVozFalso([1.0, 0.0]))
 
-    creado = biometria.enrolar(tmp_path, "Javi", audio=_audio_falso())
+    creado = biometria.enrolar(tmp_path, "Javi", audio=_audio_falso(3.0))
     assert creado["ok"] is True and "voz" in creado["añadido"]
 
     reconocido = biometria.identificar_voz(tmp_path, _audio_falso())
@@ -307,7 +334,7 @@ def test_renombrar_fija_al_que_todavia_se_esta_aprendiendo(tmp_path: Path) -> No
     # Un solo trozo: el racimo existe pero está lejos de fijarse solo.
     primera = biometria.identificar_voz(tmp_path, _audio_falso())
     assert primera["nombre"] == "Desconocido 1"
-    assert "aprendiendo" in primera
+    assert primera["provisional"] is True
 
     resultado = biometria.renombrar(tmp_path, "Desconocido 1", "Antonio")
     assert resultado["ok"] is True
@@ -346,7 +373,7 @@ def test_borrar_quita_los_vectores_de_verdad(tmp_path: Path) -> None:
 
 def test_el_estado_completo_trae_todo_para_pintarlo(tmp_path: Path) -> None:
     biometria.pon_motores(voz=MotorVozFalso([1.0]), cara=MotorCaraFalso(([0, 0, 9, 9], [1.0])))
-    biometria.enrolar(tmp_path, "Javi", audio=_audio_falso())
+    biometria.enrolar(tmp_path, "Javi", audio=_audio_falso(3.0))
 
     estado = biometria.estado_completo(tmp_path)
     assert [p["nombre"] for p in estado["perfiles"]] == ["Javi"]

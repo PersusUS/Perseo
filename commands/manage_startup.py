@@ -24,7 +24,11 @@ medio.
 import os
 import subprocess
 import sys
+import tempfile
 import winreg
+from datetime import datetime
+
+import tarea_revivir
 
 RUTA_CLAVE = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
@@ -39,9 +43,10 @@ SERVICIOS = ()
 #: arrancan solos al iniciar sesión y se pelean por el mismo micrófono.
 LEGADO = ("PerseoClapDetector", "PerseoNucleo")
 
-#: La tarea programada que revive lo que se caiga, y cada cuánto mira.
+#: La tarea programada que revive lo que se caiga, y cada cuánto mira. Cómo
+#: está escrita, y por qué no con los valores de fábrica: `tarea_revivir.py`.
 TAREA = "PerseoRevivir"
-MINUTOS_ENTRE_REVISIONES = 10
+MINUTOS_ENTRE_REVISIONES = tarea_revivir.MINUTOS_ENTRE_REVISIONES
 
 #: Que `schtasks` no abra ventana. Toda llamada de aquí lleva `capture_output`,
 #: así que esa consola no la lee nadie: solo parpadea encima de lo que esté
@@ -91,33 +96,46 @@ def _comando(nombre: str) -> str | None:
 # --------------------------------------------------------------------------- #
 
 
-def _orden_de_la_tarea() -> str | None:
-    raiz = _raiz_proyecto()
-    guion = os.path.join(raiz, "commands", "arranque.py")
+def _guion_de_arranque() -> str | None:
+    guion = os.path.join(_raiz_proyecto(), "commands", "arranque.py")
     if not os.path.isfile(guion):
         print(f"[-] No se encuentra el guion de arranque: {guion}")
         return None
-    return f'"{_pythonw()}" "{guion}" --revivir'
+    return guion
+
+
+def _usuario() -> str:
+    dominio = os.environ.get("USERDOMAIN", "").strip()
+    nombre = os.environ.get("USERNAME", "").strip()
+    return f"{dominio}\\{nombre}" if dominio else nombre
 
 
 def añadir_tarea() -> None:
-    """Crea la tarea programada que mira cada diez minutos si falta algo.
+    """Crea la tarea que revive a Perseo: cada diez minutos, al despertar y al desbloquear.
 
     `/F` la reemplaza si ya existía: reinstalar tras mover la carpeta tiene que
-    actualizar la ruta, no fallar diciendo que ya está.
+    actualizar la ruta, no fallar diciendo que ya está. Y reinstalar es también
+    como se arregla una tarea vieja, de las de `/SC MINUTE`, que con batería no
+    hacía nada (ver `tarea_revivir.py`).
     """
-    orden = _orden_de_la_tarea()
-    if orden is None:
+    guion = _guion_de_arranque()
+    if guion is None:
         return
+    contenido = tarea_revivir.xml(
+        ejecutable=_pythonw(),
+        argumentos=f'"{guion}" --revivir',
+        directorio=_raiz_proyecto(),
+        usuario=_usuario(),
+        desde=datetime.now(),
+    )
+    # `schtasks /XML` quiere un fichero, y en UTF-16 como dice su cabecera.
+    descriptor, ruta = tempfile.mkstemp(suffix=".xml", prefix="perseo-tarea-")
+    os.close(descriptor)
     try:
+        with open(ruta, "w", encoding="utf-16") as fichero:
+            fichero.write(contenido)
         resultado = subprocess.run(
-            [
-                "schtasks", "/Create", "/F",
-                "/TN", TAREA,
-                "/TR", orden,
-                "/SC", "MINUTE",
-                "/MO", str(MINUTOS_ENTRE_REVISIONES),
-            ],
+            ["schtasks", "/Create", "/F", "/TN", TAREA, "/XML", ruta],
             capture_output=True,
             creationflags=SIN_VENTANA,
             text=True,
@@ -125,10 +143,43 @@ def añadir_tarea() -> None:
     except (OSError, subprocess.SubprocessError) as e:
         print(f"[-] No se pudo crear la tarea '{TAREA}': {e}")
         return
+    finally:
+        try:
+            os.remove(ruta)
+        except OSError:
+            pass
     if resultado.returncode == 0:
-        print(f"[+] '{TAREA}' revisará cada {MINUTOS_ENTRE_REVISIONES} minutos que Perseo siga en pie.")
+        print(
+            f"[+] '{TAREA}' revisará cada {MINUTOS_ENTRE_REVISIONES} minutos que Perseo siga en pie, "
+            "también con batería, al despertar y al desbloquear."
+        )
     else:
         print(f"[-] No se pudo crear la tarea '{TAREA}': {resultado.stderr.strip() or resultado.stdout.strip()}")
+
+
+def problemas_de_la_tarea() -> list[str]:
+    """Qué hace mal la tarea registrada. Vacío si está bien o si no hay tarea."""
+    try:
+        resultado = subprocess.run(
+            ["schtasks", "/Query", "/TN", TAREA, "/XML"],
+            capture_output=True,
+            creationflags=SIN_VENTANA,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if resultado.returncode != 0:
+        return []
+    # schtasks escribe su XML en la página de códigos de la consola o en
+    # UTF-16 según la versión de Windows: se prueban las dos.
+    crudo = resultado.stdout
+    for codificacion in ("utf-16", "utf-8", "mbcs"):
+        try:
+            texto = crudo.decode(codificacion)
+        except (UnicodeDecodeError, LookupError):
+            continue
+        if "<Task" in texto:
+            return tarea_revivir.problemas(texto)
+    return ["no se ha podido leer la tarea registrada"]
 
 
 def quitar_tarea() -> None:
@@ -264,8 +315,16 @@ def estado() -> None:
 
     print()
     if tarea_puesta():
-        print(f"  [activo]   {TAREA}")
-        print(f"             Cada {MINUTOS_ENTRE_REVISIONES} min levanta el núcleo o el detector si se han caído")
+        fallos = problemas_de_la_tarea()
+        if fallos:
+            print(f"  [roto]     {TAREA}")
+            for fallo in fallos:
+                print(f"             ^ {fallo}")
+            print("             Vuelve a ponerla: python commands/manage_startup.py install")
+        else:
+            print(f"  [activo]   {TAREA}")
+            print(f"             Cada {MINUTOS_ENTRE_REVISIONES} min, al despertar y al desbloquear,")
+            print("             levanta el núcleo o el detector si se han caído")
     else:
         print(f"  [inactivo] {TAREA}")
         print("             Nadie revive a Perseo si se cae con el PC encendido.")

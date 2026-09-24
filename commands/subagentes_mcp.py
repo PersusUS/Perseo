@@ -417,8 +417,12 @@ def _avisar_si_nadie_pregunto(id_tarea: str) -> None:
             f"{id_tarea}: {_primera_linea(resumen)}"
         )
         tarea["entregado"] = True
+        # Se AÑADE, no se escribe encima: dos avisos casi a la vez —un encargo
+        # y un recordatorio— y el primero se perdía. Rust se lleva el fichero
+        # entero de una vez y la app cuenta todas las líneas.
         try:
-            MARCA_AUTOLLAMADA.write_text(motivo, encoding="utf-8")
+            with MARCA_AUTOLLAMADA.open("a", encoding="utf-8") as marcador:
+                marcador.write(" ".join(motivo.split()) + "\n")
         except OSError:
             pass
     _persistir()
