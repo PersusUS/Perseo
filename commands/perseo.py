@@ -24,6 +24,8 @@ cuando quieres mirar si está todo en pie sin acordarte de las cinco rutas.
     perseo comprobar  pasa todo lo que tiene que estar verde antes de un commit
     perseo cuentas    los números que cita la documentación, medidos
     perseo catalogo   las herramientas que ve cada cara; --incrustar regenera la copia
+    perseo boveda     contraseñas y tarjetas de los recados, sin valores a la vista
+    perseo navegador  abre el navegador de los recados para entrar a mano en tus sitios
 
 `perseo` a secas sigue siendo `perseo on`, que es como se ha escrito siempre en
 esta bitácora.
@@ -784,6 +786,18 @@ def _catalogo() -> None:
     raise SystemExit(modulo.catalogo_cli(sys.argv[2:]))
 
 
+def _boveda() -> None:
+    import boveda as modulo
+
+    raise SystemExit(modulo.boveda_cli(sys.argv[2:]))
+
+
+def _navegador() -> None:
+    import boveda as modulo
+
+    raise SystemExit(modulo.navegador_cli(sys.argv[2:]))
+
+
 #: Las órdenes, con sus sinónimos. `on` y `off` son las que pidió el señor
 #: Persus el 2026-08-21; `perseo` a secas se queda como `on` porque es lo que
 #: dice la bitácora entera, y `parar` porque apagar dejando el detector vivo
@@ -803,6 +817,8 @@ ORDENES = {
     "comprobar": _comprobar,
     "cuentas": _cuentas,
     "catalogo": _catalogo,
+    "boveda": _boveda,
+    "navegador": _navegador,
 }
 
 

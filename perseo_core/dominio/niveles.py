@@ -22,4 +22,16 @@ IRREVERSIBLE = "irreversible"
 #: preguntarlo. Tener delante a alguien hablando no es su sí a esta orden.
 CRITICO = "critico"
 
-NIVELES = (LIBRE, REVERSIBLE, IRREVERSIBLE, CRITICO)
+#: Lo que **sale de casa**: llega a otra persona o gasta dinero. Enviar un
+#: correo, pulsar «Pagar» o «Reservar» en una web, meter una tarjeta en un
+#: formulario. Es el único nivel que se para aunque las confirmaciones estén
+#: apagadas (ADR 0007), y ni el modo confianza ni un sí de hace un rato lo tapan.
+#:
+#: Nació el 2026-09-24 mirando a Instinct, el asistente que hace recados por la
+#: web: sus incidentes documentados son exactamente de esta familia —un correo
+#: enviado sin permiso, un buzón que obedeció a un correo con instrucciones—.
+#: Lo irreversible de casa (teclear, borrar) se deshace o se paga en casa; esto
+#: lo ve alguien de fuera y ya no se recoge.
+EXTERIOR = "exterior"
+
+NIVELES = (LIBRE, REVERSIBLE, IRREVERSIBLE, CRITICO, EXTERIOR)

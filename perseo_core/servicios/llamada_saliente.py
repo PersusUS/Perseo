@@ -55,7 +55,8 @@ SIN_ESPERA = 10.0
 
 #: Los agentes cuyo final merece una llamada cuando nadie espera. Los que
 #: contestan en un segundo no: su resultado ya se lo llevó quien preguntó.
-AGENTES_QUE_AVISAN = ("dev",)
+#: Un recado sí: se pide y se deja de mirar, que es la gracia de pedirlo.
+AGENTES_QUE_AVISAN = ("dev", "recado")
 
 _bloqueo = threading.Lock()
 _ultima_pregunta: dict[int, float] = {}

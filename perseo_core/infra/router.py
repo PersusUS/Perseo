@@ -51,12 +51,18 @@ class NecesitaConfirmacion(Exception):
     guardada, y cuando alguien contesta vuelve a la cola. El agente se ejecuta
     entonces desde el principio, así que **todo lo que haga antes de lanzarla
     tiene que poder repetirse sin consecuencias**.
+
+    `nivel` es el de lo que se pregunta, si el agente lo sabe mejor que su
+    petición: un recado entero es reversible, y lo que para a mitad de camino
+    es un «Pagar». Se guarda con la pregunta, y es lo que mira quien decide si
+    un sí puede darlo el modelo o tiene que darlo una persona.
     """
 
-    def __init__(self, resumen: str, detalle: str = "") -> None:
+    def __init__(self, resumen: str, detalle: str = "", nivel: str | None = None) -> None:
         super().__init__(resumen)
         self.resumen = resumen
         self.detalle = detalle
+        self.nivel = nivel
 
 
 def aprobado(trabajo: dict[str, Any]) -> bool:
@@ -342,6 +348,7 @@ class Trabajador:
                 id_trabajo,
                 politica.resumir(nombre, trabajo.get("peticion"), quien),
                 json.dumps(trabajo.get("peticion") or {}, ensure_ascii=False),
+                politica.nivel(nombre, trabajo.get("peticion")),
             )
             self._bus.publicar("trabajo.espera_confirmacion", trabajo=esperando)
             logger.info(
@@ -358,7 +365,11 @@ class Trabajador:
             # Ni hecho ni fallido: el trabajo se queda esperando un sí. Quien lo
             # dé puede ser la web o, más adelante, Telegram.
             esperando = await asyncio.to_thread(
-                almacen.pedir_confirmacion, id_trabajo, pregunta.resumen, pregunta.detalle
+                almacen.pedir_confirmacion,
+                id_trabajo,
+                pregunta.resumen,
+                pregunta.detalle,
+                pregunta.nivel,
             )
             self._bus.publicar("trabajo.espera_confirmacion", trabajo=esperando)
             logger.info("Trabajo %d esperando confirmación: %s", id_trabajo, pregunta.resumen)

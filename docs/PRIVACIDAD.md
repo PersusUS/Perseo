@@ -15,6 +15,8 @@ queda y dónde está cada cosa.
 |---|---|---|
 | **Google — Gemini Live** | El audio del micrófono y, si la enciendes, la imagen de la cámara y de la pantalla | Solo durante una llamada |
 | **Google — Gemini (REST)** | El texto del chat escrito, y lo que las herramientas devuelven | Solo si escribes en el panel o en el móvil |
+| **Google — Gemini (REST), en un recado** | El encargo y las páginas que visita el navegador de los recados, **con las contraseñas y tarjetas tapadas** | Solo mientras hay un recado en marcha |
+| **Las webs de tus recados** | Lo que el recado teclea en ellas, también las claves de la bóveda —solo en los sitios de cada entrada— | Solo con un recado que tú encargaste, y pagar o enviar esperan tu sí |
 | **Google — Gmail y Calendar** | Nada tuyo: se **leen** cabeceras de correo y eventos | Solo con `PERSEO_CORREO=gmail` / `PERSEO_AGENDA=google` |
 | **Telegram** | El **recuento**: «3 correos, 1 requiere acción». Nunca el asunto ni el cuerpo | Solo con el bot configurado |
 
@@ -42,6 +44,12 @@ producto», no hay servicio de embeddings y no hay copia en la nube.
   falta — y lo que no se baja no se puede filtrar por accidente.
 - **La cola.** Guarda el texto literal de lo que le pides. Vive en SQLite, en
   tu disco, en una carpeta que está fuera de git.
+- **Los valores de la bóveda, hacia ningún modelo.** Las contraseñas y tarjetas
+  de `<datos>/boveda.json` van cifradas con DPAPI, atadas a tu cuenta de
+  Windows. El modelo trabaja con referencias (`{{boveda:resy.clave}}`); el valor
+  se pone en el núcleo justo antes de teclearlo, y todo lo que vuelve de la
+  página se tapa antes de llegar al modelo, a la cola o al registro. Se guardan
+  desde la terminal (`perseo boveda`), nunca por el chat ni por la voz.
 
 ---
 
@@ -96,6 +104,9 @@ Pero un prompt no es una defensa, así que debajo hay dos más:
 | `<datos>/perfiles.json` | Los vectores de voz y cara |
 | `<datos>/personas.log` | A quién se ha aprendido y cuándo: una línea por alta, nombre, muestra nueva o borrado. Sin números |
 | `<datos>/recordatorios.json` | Lo que le pediste que te recordara, con su hora |
+| `<datos>/boveda.json` | Contraseñas y tarjetas de los recados, cifradas con DPAPI. En claro solo nombres, sitios y nombres de campo |
+| `<datos>/navegador/` | El perfil de Chrome de los recados: las sesiones de los sitios donde entraste a mano |
+| `<datos>/recados/` | Por dónde iba un recado que espera tu sí: la conversación con el modelo, ya tapada. Se borra al acabar |
 | `<datos>/google.json` | El `refresh_token` que abre tu buzón |
 | `<datos>/gemini.txt` · `telegram.txt` · `obsidian.txt` | Claves sueltas |
 | `<datos>/nucleo.log` · `vigilante.log` | Los registros |

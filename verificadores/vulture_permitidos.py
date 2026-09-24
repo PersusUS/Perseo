@@ -25,6 +25,7 @@ _pc
 _eco
 _simulacro
 _parte
+_recado
 
 # --------------------------------------------------------------------------- #
 # Callbacks de bibliotecas: el nombre es el contrato

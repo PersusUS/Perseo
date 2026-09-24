@@ -770,6 +770,33 @@ CATALOGO: tuple[Herramienta, ...] = (
         ),
     ),
     Herramienta(
+        nombre="encargar_recado",
+        voz=(
+            "Encarga un recado en la web que Perseo hace solo, en segundo plano, con su propio "
+            "navegador: reservar mesa, buscar y comparar, rellenar un formulario, comprar algo "
+            "concreto. Tarda minutos; vuelve al momento con el número del trabajo y avisa al "
+            "acabar. Lo que sale de casa —pagar, reservar, enviar— se para a esperar su sí, que "
+            "él da en la tarjeta del panel o del móvil, NO hablando. Úsala solo con una orden "
+            "suya, y con el encargo completo: qué, dónde, cuándo, para cuántos y hasta cuánto."
+        ),
+        chat=(
+            "Recado en la web que Perseo hace solo con su navegador (reservar, comparar, "
+            "rellenar formularios, comprar algo concreto). Tarda minutos: devuelve el #N y avisa "
+            "al acabar. Pagar, reservar o enviar se para a esperar su sí en la tarjeta del panel "
+            "o del móvil. 'texto' es el encargo completo: qué, dónde, cuándo, cuántos, hasta "
+            "cuánto."
+        ),
+        parametros=(
+            Parametro(
+                nombre="texto",
+                tipo="string",
+                voz="El encargo entero, con todos los datos que haya dado.",
+                chat="El encargo entero y autocontenido.",
+                obligatorio=True,
+            ),
+        ),
+    ),
+    Herramienta(
         nombre="consultar_trabajo",
         chat=(
             "El estado REAL de un encargo de la cola. Con 'id', ese trabajo: hecho (con su "

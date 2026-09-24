@@ -21,7 +21,7 @@ import sys
 # tapa al otro. El sintoma es un AttributeError en `web.AppRunner` al arrancar.
 from aiohttp import web as servidor
 
-from .agentes import agenda, chat, correo, dev, memoria, parte, pc, recordatorios, web
+from .agentes import agenda, chat, correo, dev, memoria, parte, pc, recado, recordatorios, web
 from .caras import api
 from .infra import almacen, politica
 from .servicios import mcp
@@ -32,11 +32,11 @@ from .infra.disparadores import Planificador
 from .caras.telegram import Telegram
 from .infra.configuracion import Configuracion, LOCALES, cargar_configuracion
 
-# Estos nueve se importan por sus efectos: al cargarse registran sus agentes
+# Estos diez se importan por sus efectos: al cargarse registran sus agentes
 # —y `correo`, `agenda`, `recordatorios` y `parte`, además, sus disparadores—.
 # Sin el import el registro está
 # vacío y el núcleo arranca sin agentes sin decir por qué.
-_ = (agenda, chat, correo, dev, memoria, parte, pc, recordatorios, web)
+_ = (agenda, chat, correo, dev, memoria, parte, pc, recado, recordatorios, web)
 
 logger = logging.getLogger("perseo_core")
 
@@ -204,12 +204,17 @@ async def arrancar() -> None:
     router = Router(cfg)
     await router.abrir()
 
-    # Tres carriles. `dev` puede tardar minutos, y con un solo trabajador un
+    # Tres carriles (cuatro, con el de los recados). `dev` puede tardar minutos, y con un solo trabajador un
     # encargo de código dejaba el correo sin triar mientras durase. El chat
     # tiene el suyo porque un turno puede irse a los dos minutos entre
     # herramientas, y no debe frenar ni al triaje ni a la cola general.
-    trabajador = Trabajador(bus, excluir=("dev", "chat"), nombre="general")
+    trabajador = Trabajador(bus, excluir=("dev", "chat", "recado"), nombre="general")
     tarea_trabajador = asyncio.create_task(trabajador.ejecutar(), name="trabajador")
+
+    # Y un cuarto para los recados, por lo mismo que `dev`: uno puede llevarse
+    # diez minutos navegando, y los avisos de la agenda no pueden esperarle.
+    trabajador_recado = Trabajador(bus, agentes=("recado",), nombre="recado")
+    tarea_recado = asyncio.create_task(trabajador_recado.ejecutar(), name="trabajador-recado")
 
     trabajador_dev = Trabajador(bus, agentes=("dev",), nombre="dev")
     tarea_dev = asyncio.create_task(trabajador_dev.ejecutar(), name="trabajador-dev")
@@ -222,6 +227,7 @@ async def arrancar() -> None:
     memoria.iniciar(cfg)
     dev.iniciar(cfg)
     web.iniciar(cfg)
+    recado.iniciar(cfg)
     agenda.iniciar(cfg)
     recordatorios.iniciar(cfg)
     parte.iniciar(cfg)
@@ -269,9 +275,18 @@ async def arrancar() -> None:
         trabajador.detener()
         trabajador_dev.detener()
         trabajador_chat.detener()
+        trabajador_recado.detener()
         telegram.detener()
         planificador.detener()
-        tareas = (tarea_trabajador, tarea_dev, tarea_chat, tarea_telegram, tarea_disparadores, tarea_avisador)
+        tareas = (
+            tarea_trabajador,
+            tarea_dev,
+            tarea_chat,
+            tarea_recado,
+            tarea_telegram,
+            tarea_disparadores,
+            tarea_avisador,
+        )
         for tarea in tareas:
             tarea.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -282,6 +297,7 @@ async def arrancar() -> None:
         await memoria.detener()
         dev.detener()
         await web.detener()
+        await recado.detener()
         await agenda.detener()
         await chat.detener()
         await mcp.detener()

@@ -413,5 +413,21 @@ export const CATALOGO_INCRUSTADO: HerramientaNeutra[] = [
       "type": "object",
       "properties": {}
     }
+  },
+  {
+    "name": "encargar_recado",
+    "description": "Encarga un recado en la web que Perseo hace solo, en segundo plano, con su propio navegador: reservar mesa, buscar y comparar, rellenar un formulario, comprar algo concreto. Tarda minutos; vuelve al momento con el número del trabajo y avisa al acabar. Lo que sale de casa —pagar, reservar, enviar— se para a esperar su sí, que él da en la tarjeta del panel o del móvil, NO hablando. Úsala solo con una orden suya, y con el encargo completo: qué, dónde, cuándo, para cuántos y hasta cuánto.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "texto": {
+          "type": "string",
+          "description": "El encargo entero, con todos los datos que haya dado."
+        }
+      },
+      "required": [
+        "texto"
+      ]
+    }
   }
 ];

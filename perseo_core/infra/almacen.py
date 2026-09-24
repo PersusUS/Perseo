@@ -362,13 +362,18 @@ def cancelar(id_trabajo: int) -> dict[str, Any] | None:
 
 
 def pedir_confirmacion(
-    id_trabajo: int, resumen: str, detalle: str = ""
+    id_trabajo: int, resumen: str, detalle: str = "", nivel: str | None = None
 ) -> dict[str, Any] | None:
-    """Deja el trabajo esperando un sí, guardando qué es lo que se pregunta."""
+    """Deja el trabajo esperando un sí, guardando qué es lo que se pregunta.
+
+    `nivel` es el de la pregunta, que no siempre es el del trabajo entero (ver
+    `router.NecesitaConfirmacion`). `None` cuando no se sabe.
+    """
     momento = _ahora()
     confirmacion = {
         "resumen": resumen,
         "detalle": detalle,
+        "nivel": nivel,
         "pedida_en": momento,
         "decision": None,
         "decidida_en": None,

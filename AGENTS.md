@@ -27,6 +27,7 @@ la web del móvil). No es una costumbre: lo comprueba `pruebas/test_arquitectura
 | A qué agente va cada cosa | `perseo_core/infra/router.py` (el router) |
 | Un agente concreto | `perseo_core/agentes/<nombre>.py` — se llaman como el agente |
 | Qué necesita confirmación | `perseo_core/infra/politica.py` |
+| Los recados en la web y la bóveda | `perseo_core/agentes/recado.py`, `servicios/boveda.py`, `servicios/navegacion.py` |
 | El prompt compartido | `perseo_core/infra/identidad.py` |
 | La llamada de voz | `RealTime/src/lib/llamada/gemini-live.ts` y `RealTime/src/App.tsx` |
 | El panel | `RealTime/src/components/Panel.tsx` |

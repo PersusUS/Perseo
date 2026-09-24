@@ -49,6 +49,12 @@ ejecuta» en las cuatro filas. La razón y lo que cuesta están escritos en el
 propio interruptor, que es donde alguien los buscará el día que quiera
 volver a encenderlo.
 
+**Salvo una fila, desde el 2026-09-24: `exterior`.** Lo que sale de casa —un
+correo que se envía, un «Pagar» en una web, una tarjeta en un formulario— se
+para aunque el interruptor esté apagado. Llegó con los recados por la web, que
+es cuando Perseo empezó a poder gastar dinero y hablar con desconocidos en
+nombre de él. Ver ADR 0007.
+
 
 """
 
@@ -63,7 +69,7 @@ from pathlib import Path
 from typing import Any
 
 from . import identidad
-from ..dominio.niveles import CRITICO, IRREVERSIBLE, LIBRE, NIVELES, REVERSIBLE
+from ..dominio.niveles import CRITICO, EXTERIOR, IRREVERSIBLE, LIBRE, NIVELES, REVERSIBLE
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +130,12 @@ TABLA: dict[str, str] = {
     # aquí su nivel y piden su sí por el camino de siempre. Parar el turno del
     # chat entero sería preguntar dos veces por lo mismo.
     "chat": LIBRE,
+    # Un recado navega y teclea en el navegador de Perseo, que es suyo y no el
+    # de él: eso es reversible. Lo que sale de casa dentro de un recado —pulsar
+    # «Pagar», meter una tarjeta— no se decide aquí por el recado entero sino
+    # paso a paso, con `recado.exterior`, que es lo que pregunta el agente.
+    "recado": REVERSIBLE,
+    "recado.exterior": EXTERIOR,
 }
 
 #: **Si el sistema para algo alguna vez, o no para nunca.**
@@ -149,6 +161,9 @@ TABLA: dict[str, str] = {
 #: salen sin preguntar. Esa es exactamente la puerta por la que el 2026-08-27
 #: salió un `Remove-Item` que nadie autorizó, y que es la razón de que el nivel
 #: exista. Ver la cabecera de `CRITICO` en `dominio/niveles.py`.
+#:
+#: **Lo que NO se pierde, desde el 2026-09-24:** `EXTERIOR`. Apagado o no, lo
+#: que sale de casa se para. Ver `hay_que_parar` y el ADR 0007.
 CONFIRMACIONES = os.environ.get("PERSEO_CONFIRMACIONES", "").strip().lower() in (
     "1",
     "si",
@@ -197,7 +212,7 @@ def iniciar(directorio_datos: Path | str) -> None:
     _fichero = Path(directorio_datos) / "confianza.txt"
     if not CONFIRMACIONES:
         logger.warning(
-            "Las confirmaciones están APAGADAS (politica.CONFIRMACIONES): nada se parará a pedir un sí, tampoco lo crítico."
+            "Las confirmaciones están APAGADAS (politica.CONFIRMACIONES): solo lo que sale de casa se parará a pedir un sí; lo crítico, no."
         )
 
 
@@ -400,9 +415,11 @@ def pide_confirmacion(
         # que hable manda». Es la otra mitad de la lección de N-3, que en la
         # cabecera de `CRITICO` se cuenta desde el otro lado.
         return True
-    if en_juego == CRITICO:
-        # Lo crítico pregunta siempre, con confianza o sin ella. Es la única
-        # puerta que no se queda abierta durante una llamada.
+    if en_juego in (CRITICO, EXTERIOR):
+        # Lo crítico pregunta siempre, con confianza o sin ella. Lo exterior
+        # también: la confianza dice «estoy delante del PC», y lo que sale de
+        # casa no lo ve el PC sino otra persona. Son las dos puertas que no se
+        # quedan abiertas durante una llamada.
         return True
     if en_juego != IRREVERSIBLE:
         return False
@@ -426,8 +443,24 @@ def hay_que_parar(
     todo lo de arriba se sigue comprobando aunque hoy no llegue a aplicarse.
     """
     if not CONFIRMACIONES:
-        return False
+        # Apagadas, salvo lo que sale de casa (ADR 0007). Es el punto medio que
+        # el ADR 0005 dejó escrito sin tomar: el resto sigue sin preguntar.
+        return nivel(agente, peticion) == EXTERIOR
     return pide_confirmacion(agente, peticion, quien)
+
+
+def nivel_de_la_pregunta(trabajo: dict[str, Any]) -> str:
+    """El nivel de lo que un trabajo parado está preguntando.
+
+    El que guardó la pregunta, si lo guardó: un recado es reversible entero y
+    se para a mitad por un «Pagar», que es exterior. Si no hay, el del trabajo
+    por la tabla, que es lo que se miraba antes de que existiera el otro.
+    """
+    confirmacion = trabajo.get("confirmacion") or {}
+    guardado = confirmacion.get("nivel") if isinstance(confirmacion, dict) else None
+    if guardado in NIVELES:
+        return str(guardado)
+    return nivel(str(trabajo.get("agente") or ""), trabajo.get("peticion"))
 
 
 def resumir(
@@ -444,4 +477,6 @@ def resumir(
         return f"Lo pide {quien}, que no eres tú. ¿Lo autorizas? ({que})"
     if nivel(agente, peticion) == CRITICO:
         return f"¿Confirmas algo que no se puede deshacer? ({que})"
+    if nivel(agente, peticion) == EXTERIOR:
+        return f"¿Confirmas algo que sale de casa? ({que})"
     return f"¿Confirmas una acción irreversible? ({que})"

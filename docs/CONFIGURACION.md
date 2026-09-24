@@ -195,6 +195,43 @@ propia red.
 
 ---
 
+## Los recados
+
+El agente `recado` hace encargos enteros en la web con su propio navegador
+(Chrome, por `@playwright/mcp`). Necesita Node.js y Google Chrome; la primera vez
+instala su versión fijada de Playwright en `<datos>/navegador_mcp`.
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `PERSEO_RECADO_MODELO` | los del chat | Qué modelo de Gemini piensa los recados. Lista con comas: el segundo entra si el primero no tiene cuota |
+| `PERSEO_RECADO_PASOS` | `40` | Turnos de modelo por recado como mucho. Cada uno es una petición a Gemini |
+| `PERSEO_RECADO_VISIBLE` | *(vacío)* | `1` = el navegador se ve en pantalla mientras trabaja. Vacío = en segundo plano |
+
+Dos órdenes para prepararlo, en una terminal y no por el chat —lo que se escribe
+ahí pasa por un modelo en la nube—:
+
+```bash
+python commands/perseo.py navegador
+```
+
+Abre el navegador de los recados para que entres **a mano** en tus sitios una
+vez; las sesiones se quedan en `<datos>/navegador`.
+
+```bash
+python commands/perseo.py boveda guardar resy --sitio resy.com
+```
+
+Guarda una contraseña (o una tarjeta, con `--tarjeta` y `--tope 60`) cifrada con
+DPAPI en `<datos>/boveda.json`. Cada entrada vale solo en sus sitios. El modelo
+la escribe como `{{boveda:resy.clave}}` y nunca ve el valor.
+
+Lo que sale de casa —pagar, reservar, enviar, meter una tarjeta— **se para a
+esperar tu sí** aunque las confirmaciones estén apagadas, y ese sí se da en la
+tarjeta del panel o del móvil, no hablando. Ver el
+[ADR 0007](adr/0007-lo-que-sale-de-casa-se-para.md).
+
+---
+
 ## El detector
 
 Es un proceso aparte (`python commands/clap_detector.py`).
