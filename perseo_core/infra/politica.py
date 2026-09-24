@@ -136,6 +136,14 @@ TABLA: dict[str, str] = {
     # paso a paso, con `recado.exterior`, que es lo que pregunta el agente.
     "recado": REVERSIBLE,
     "recado.exterior": EXTERIOR,
+    # Las vigilancias se apuntan en `<datos>/vigilancias.json`, como los
+    # recordatorios: apuntar y quitar se deshacen. Cada comprobación es un
+    # `recado` y pasa por lo suyo, parada ante lo exterior incluida.
+    "vigilancias": REVERSIBLE,
+    "vigilancias.caducadas": LIBRE,
+    # El seguimiento mira hilos de Gmail (leer) y marca como atendido lo que ya
+    # tiene respuesta suya, que se desmarca en el panel.
+    "seguimiento": REVERSIBLE,
 }
 
 #: **Si el sistema para algo alguna vez, o no para nunca.**

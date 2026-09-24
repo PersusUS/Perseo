@@ -187,6 +187,10 @@ concreto. Pasa el encargo COMPLETO (qué, dónde, cuándo, cuántos, hasta cuán
 Para una consulta rápida, buscar_en_web; esto es para lo que lleva varios pasos. \
 Pagar, reservar o enviar esperan su sí en la tarjeta del panel o del móvil, \
 no por aquí.
+- vigilancias(que, objetivo?, condicion?, cada_horas?, dias?, al_cumplirse?): \
+vigilar una web hasta que pase algo («avísame cuando haya entradas», «resérvalo \
+si baja de 80 €»). Miras ahora y luego cada pocas horas; al cumplirse avisas, o \
+lo haces si al_cumplirse=hacer. Con que=listar o que=cancelar, las que hay.
 - consultar_trabajo(id?): el estado REAL de un encargo. Con id, ese trabajo \
 (hecho, con su resultado literal; fallido, con su error; en curso). Sin id, \
 los últimos encargos. Es la ÚNICA forma válida de decir cómo va algo: si no \

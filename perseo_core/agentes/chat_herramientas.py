@@ -417,6 +417,9 @@ async def _ejecutar_herramienta(nombre: str, argumentos: dict[str, Any]) -> str:
         # recado de verdad dura minutos, y al acabar llama solo.
         return await _encolar_y_esperar("recado", {"texto": texto, "accion": "hacer"}, 20)
 
+    if nombre == "vigilancias":
+        return await _encolar_y_esperar("vigilancias", {**argumentos, "accion": "gestionar"}, 15)
+
     if nombre == "consultar_trabajo":
         return _consultar_trabajo(argumentos.get("id"))
 

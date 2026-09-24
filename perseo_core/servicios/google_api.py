@@ -336,6 +336,20 @@ class BuzonGmail(ClienteGoogle):
             )
         return mensajes
 
+    async def respondido(self, hilo: str) -> bool:
+        """Si el último mensaje del hilo lo mandó él: la etiqueta `SENT` lo dice.
+
+        `format=minimal` trae los ids y las etiquetas de cada mensaje del hilo,
+        sin cabeceras ni cuerpo: para saber quién habló el último no hace falta
+        leer qué dijo. Cabe en el `gmail.readonly` que ya estaba.
+        """
+        sesion = await self._abrir()
+        datos = await sesion.pedir(
+            f"{URL_GMAIL()}/gmail/v1/users/me/threads/{hilo}", {"format": "minimal"}
+        )
+        mensajes = datos.get("messages") or []
+        return bool(mensajes) and "SENT" in (mensajes[-1].get("labelIds") or [])
+
     async def crear_borrador(
         self,
         para: str,

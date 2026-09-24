@@ -429,5 +429,50 @@ export const CATALOGO_INCRUSTADO: HerramientaNeutra[] = [
         "texto"
       ]
     }
+  },
+  {
+    "name": "vigilancias",
+    "description": "Vigilar una web hasta que pase algo: «avísame cuando haya entradas para…», «dime si baja el vuelo de 80 €», «resérvalo en cuanto haya mesa». Perseo mira ahora y luego cada pocas horas, solo, hasta que se cumpla o caduque; al cumplirse te avisa, o lo hace si al_cumplirse es 'hacer' (y lo que se pague espera su sí en la tarjeta). que=crear con objetivo y condicion; que=listar para decir qué vigila; que=cancelar con objetivo para dejar de vigilar algo. Como mucho cinco a la vez.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "que": {
+          "type": "string",
+          "description": "crear, listar o cancelar.",
+          "enum": [
+            "crear",
+            "listar",
+            "cancelar"
+          ]
+        },
+        "objetivo": {
+          "type": "string",
+          "description": "Qué y dónde se mira, con todos los datos: la web, el evento, las fechas. Al cancelar, su principio."
+        },
+        "condicion": {
+          "type": "string",
+          "description": "Cuándo avisar o actuar, dicho claro: «hay entradas a la venta», «el precio baja de 80 €»."
+        },
+        "cada_horas": {
+          "type": "number",
+          "description": "Cada cuántas horas mirar. Mínimo una; si no lo dice, tres."
+        },
+        "dias": {
+          "type": "number",
+          "description": "Durante cuántos días vigilar. Si no lo dice, siete; como mucho treinta."
+        },
+        "al_cumplirse": {
+          "type": "string",
+          "description": "avisar (por defecto) o hacer, si ha pedido que lo haga en cuanto se pueda.",
+          "enum": [
+            "avisar",
+            "hacer"
+          ]
+        }
+      },
+      "required": [
+        "que"
+      ]
+    }
   }
 ];

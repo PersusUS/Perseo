@@ -104,7 +104,9 @@ def motivo_de_encargo(trabajo: dict[str, Any], estado: str) -> str:
     if estado == "fallido":
         detalle = str(trabajo.get("error") or "sin detalle")
     elif isinstance(resultado, dict):
-        detalle = str(resultado.get("titular") or resultado.get("texto") or resultado.get("resumen") or "")
+        detalle = str(
+            resultado.get("aviso") or resultado.get("titular") or resultado.get("texto") or resultado.get("resumen") or ""
+        )
     else:
         detalle = str(resultado or "")
     detalle = (detalle.strip().splitlines() or [""])[0][:160]
@@ -134,6 +136,11 @@ class Avisador:
                     continue
                 trabajo = evento.datos.get("trabajo") or {}
                 if trabajo.get("agente") not in AGENTES_QUE_AVISAN or trabajo.get("id") is None:
+                    continue
+                resultado = trabajo.get("resultado")
+                if isinstance(resultado, dict) and resultado.get("callado"):
+                    # Lo pide el propio agente: una vigilancia que comprobó y
+                    # no encontró nada no merece un timbre cada tres horas.
                     continue
                 tarea = asyncio.create_task(self._quizas_llamar(trabajo, evento.tipo.split(".")[1]))
                 self._en_curso.add(tarea)

@@ -28,6 +28,7 @@ la web del móvil). No es una costumbre: lo comprueba `pruebas/test_arquitectura
 | Un agente concreto | `perseo_core/agentes/<nombre>.py` — se llaman como el agente |
 | Qué necesita confirmación | `perseo_core/infra/politica.py` |
 | Los recados en la web y la bóveda | `perseo_core/agentes/recado.py`, `servicios/boveda.py`, `servicios/navegacion.py` |
+| Lo que Perseo hace solo: vigilar y retomar | `perseo_core/agentes/vigilancias.py`, `agentes/seguimiento.py`, `infra/disparadores.py` |
 | El prompt compartido | `perseo_core/infra/identidad.py` |
 | La llamada de voz | `RealTime/src/lib/llamada/gemini-live.ts` y `RealTime/src/App.tsx` |
 | El panel | `RealTime/src/components/Panel.tsx` |

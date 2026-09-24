@@ -45,7 +45,7 @@ Dos sitios más donde vive la identidad, y que no son variables de entorno:
 | `PERSEO_TOKEN` | *(se genera)* | Manda sobre `<datos>/token.txt` |
 | `PERSEO_CORE_URL` | `http://127.0.0.1:8787` | **La lee la app**, para saber dónde está el núcleo |
 | `PERSEO_URL_BASE` | la primera interfaz no local | Lo que se pone en el enlace «ver detalle» de los avisos |
-| `PERSEO_DISPARADORES` | `correo,agenda,recordatorios,parte` | Quién empieza trabajos solo. Vacío = nadie |
+| `PERSEO_DISPARADORES` | `correo,agenda,recordatorios,parte,vigilancias,seguimiento` | Quién empieza trabajos solo. Vacío = nadie |
 
 ### HTTPS
 
@@ -229,6 +229,28 @@ Lo que sale de casa —pagar, reservar, enviar, meter una tarjeta— **se para a
 esperar tu sí** aunque las confirmaciones estén apagadas, y ese sí se da en la
 tarjeta del panel o del móvil, no hablando. Ver el
 [ADR 0007](adr/0007-lo-que-sale-de-casa-se-para.md).
+
+### Las vigilancias
+
+«Avísame cuando haya entradas», «resérvalo si baja de 80 €». Se piden hablando
+o por escrito y viven en `<datos>/vigilancias.json`. Cada comprobación es un
+recado, y un recado gasta varias peticiones a Gemini, del mismo cubo que el
+chat; por eso los topes: cada una se mira **como mucho cada hora** (tres, si no
+se dice), no hay más de **cinco** a la vez, caducan a los siete días (treinta
+como mucho) y entre todas no pasan de **24 comprobaciones al día**. Mientras no
+se cumplen, no suena nada.
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `PERSEO_VIGILANCIAS_INTERVALO` | `60` | Cada cuántos segundos se mira si a alguna le toca |
+
+### El seguimiento
+
+Si un correo que el triaje marcó como «requiere acción» lleva **entre dos y
+catorce días** sin respuesta, Perseo te llama una vez para recordártelo, solo
+entre las nueve y las nueve. Antes mira el hilo en Gmail: si el último mensaje
+es tuyo, ya contestaste, y lo marca como atendido sin decir nada. No hace falta
+configurarlo; con el buzón de mentira no hay hilos que mirar y avisa igual.
 
 ---
 

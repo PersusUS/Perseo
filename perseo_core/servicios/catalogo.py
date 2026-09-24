@@ -37,59 +37,17 @@ el trabajo.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
+
+from .catalogo_recados import RECADOS
+from .catalogo_tipos import Herramienta, Parametro
 
 #: Las dos caras que hablan con un modelo. La PWA y Telegram no declaran
 #: herramientas: encolan trabajos y ya.
 CARAS = ("voz", "chat")
 
 
-@dataclass(frozen=True)
-class Parametro:
-    """Un argumento de una herramienta.
-
-    `voz` y `chat` son la misma explicación contada para cada cara. Si solo hay
-    una, vale para las dos: que una cara no tenga texto propio no significa que
-    no tenga el parámetro.
-    """
-
-    nombre: str
-    tipo: str
-    voz: str = ""
-    chat: str = ""
-    #: El `enum` del esquema. Uno solo, y por eso ya no puede haber dos listas
-    #: de acciones distintas para `controlar_pc`.
-    opciones: tuple[str, ...] = ()
-    obligatorio: bool = False
-
-    def descripcion(self, cara: str) -> str:
-        propia = self.voz if cara == "voz" else self.chat
-        return propia or self.chat or self.voz
-
-
-@dataclass(frozen=True)
-class Herramienta:
-    """Una herramienta, con una descripción por cara.
-
-    Una cadena vacía significa **esta cara no la tiene**, y es información, no
-    un olvido: `ver_pantalla` necesita ojos y solo existe en la llamada;
-    `encargar_codigo` tarda minutos y solo existe por escrito.
-    """
-
-    nombre: str
-    voz: str = ""
-    chat: str = ""
-    parametros: tuple[Parametro, ...] = ()
-
-    def esta_en(self, cara: str) -> bool:
-        return bool(self.voz if cara == "voz" else self.chat)
-
-    def descripcion(self, cara: str) -> str:
-        return self.voz if cara == "voz" else self.chat
-
-
-CATALOGO: tuple[Herramienta, ...] = (
+_BASE: tuple[Herramienta, ...] = (
     Herramienta(
         nombre="situacion_actual",
         voz=(
@@ -770,33 +728,6 @@ CATALOGO: tuple[Herramienta, ...] = (
         ),
     ),
     Herramienta(
-        nombre="encargar_recado",
-        voz=(
-            "Encarga un recado en la web que Perseo hace solo, en segundo plano, con su propio "
-            "navegador: reservar mesa, buscar y comparar, rellenar un formulario, comprar algo "
-            "concreto. Tarda minutos; vuelve al momento con el número del trabajo y avisa al "
-            "acabar. Lo que sale de casa —pagar, reservar, enviar— se para a esperar su sí, que "
-            "él da en la tarjeta del panel o del móvil, NO hablando. Úsala solo con una orden "
-            "suya, y con el encargo completo: qué, dónde, cuándo, para cuántos y hasta cuánto."
-        ),
-        chat=(
-            "Recado en la web que Perseo hace solo con su navegador (reservar, comparar, "
-            "rellenar formularios, comprar algo concreto). Tarda minutos: devuelve el #N y avisa "
-            "al acabar. Pagar, reservar o enviar se para a esperar su sí en la tarjeta del panel "
-            "o del móvil. 'texto' es el encargo completo: qué, dónde, cuándo, cuántos, hasta "
-            "cuánto."
-        ),
-        parametros=(
-            Parametro(
-                nombre="texto",
-                tipo="string",
-                voz="El encargo entero, con todos los datos que haya dado.",
-                chat="El encargo entero y autocontenido.",
-                obligatorio=True,
-            ),
-        ),
-    ),
-    Herramienta(
         nombre="consultar_trabajo",
         chat=(
             "El estado REAL de un encargo de la cola. Con 'id', ese trabajo: hecho (con su "
@@ -814,6 +745,11 @@ CATALOGO: tuple[Herramienta, ...] = (
         ),
     ),
 )
+
+#: El catálogo entero. Los recados y las vigilancias viven en
+#: `catalogo_recados.py` por el techo de líneas, no por ser de otra familia: se
+#: declaran una vez igual, y aquí se juntan en el orden en que las ve el modelo.
+CATALOGO: tuple[Herramienta, ...] = _BASE[:-1] + RECADOS + _BASE[-1:]
 
 
 def esquema(herramienta: Herramienta, cara: str) -> dict[str, Any]:

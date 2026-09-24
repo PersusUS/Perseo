@@ -21,7 +21,20 @@ import sys
 # tapa al otro. El sintoma es un AttributeError en `web.AppRunner` al arrancar.
 from aiohttp import web as servidor
 
-from .agentes import agenda, chat, correo, dev, memoria, parte, pc, recado, recordatorios, web
+from .agentes import (
+    agenda,
+    chat,
+    correo,
+    dev,
+    memoria,
+    parte,
+    pc,
+    recado,
+    recordatorios,
+    seguimiento,
+    vigilancias,
+    web,
+)
 from .caras import api
 from .infra import almacen, politica
 from .servicios import mcp
@@ -32,11 +45,11 @@ from .infra.disparadores import Planificador
 from .caras.telegram import Telegram
 from .infra.configuracion import Configuracion, LOCALES, cargar_configuracion
 
-# Estos diez se importan por sus efectos: al cargarse registran sus agentes
+# Estos doce se importan por sus efectos: al cargarse registran sus agentes
 # —y `correo`, `agenda`, `recordatorios` y `parte`, además, sus disparadores—.
 # Sin el import el registro está
 # vacío y el núcleo arranca sin agentes sin decir por qué.
-_ = (agenda, chat, correo, dev, memoria, parte, pc, recado, recordatorios, web)
+_ = (agenda, chat, correo, dev, memoria, parte, pc, recado, recordatorios, seguimiento, vigilancias, web)
 
 logger = logging.getLogger("perseo_core")
 
@@ -228,6 +241,8 @@ async def arrancar() -> None:
     dev.iniciar(cfg)
     web.iniciar(cfg)
     recado.iniciar(cfg)
+    vigilancias.iniciar(cfg)
+    seguimiento.iniciar(cfg)
     agenda.iniciar(cfg)
     recordatorios.iniciar(cfg)
     parte.iniciar(cfg)

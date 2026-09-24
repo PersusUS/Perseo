@@ -17,7 +17,7 @@ see [ADR 0005](docs/adr/0005-las-confirmaciones-estan-apagadas.md).
 [![MIT licence](https://img.shields.io/badge/licence-MIT-black.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-black.svg)](https://www.python.org/)
 [![Tauri 2](https://img.shields.io/badge/tauri-2-black.svg)](https://tauri.app/)
-[![1171 tests](https://img.shields.io/badge/tests-1171-black.svg)](#verification)
+[![1180 tests](https://img.shields.io/badge/tests-1180-black.svg)](#verification)
 
 [What it is](#what-it-is) · [What it looks like](#what-it-looks-like) ·
 [How it works](#how-it-works) · [Install](#install) · [Privacy](#privacy) ·
@@ -51,6 +51,7 @@ Raspberry Pi tomorrow without rewriting a line of interface code.
 | 🛑 **It grades risk, and knows who asked** | Five levels enforced in the worker, not in the prompt. Switched on, anything irreversible stops and waits for your yes — and an order from a guest stops even while you are right there. **They ship off** as of 2026-09-12 ([ADR 0005](docs/adr/0005-las-confirmaciones-estan-apagadas.md)), except whatever leaves the house ([ADR 0007](docs/adr/0007-lo-que-sale-de-casa-se-para.md)) |
 | 📱 **It follows you to your phone** | A PWA over your home VPN: chat, queue, mail and status. No build step, one single file |
 | 🤖 **It delegates code** | Hands tasks to sub-agents (Claude Code or opencode) and tells you how they're going while they work |
+| 👁️ **It watches and follows up** | "Tell me when tickets go on sale" —or "book it as soon as the price drops"— and it checks every few hours until it happens. And if an email that asked for something has had no reply from you in Gmail for two days, it reminds you once |
 | 🧾 **It runs errands on the web** | "Book me a table on Friday" and it just does it, with its own Chrome and your sessions, and calls you when it's done. Passwords come from an encrypted vault the model never sees, and paying or booking waits for your yes: [ADR 0007](docs/adr/0007-lo-que-sale-de-casa-se-para.md) |
 | 🔌 **It speaks MCP** | Its own client for local and remote servers: vault, browser, Windows, triaged mail, sub-agents |
 
@@ -180,6 +181,8 @@ implementation behind it today, another tomorrow, without touching the agent.
 | `pc` | Opens apps, types, moves the mouse. Allow-list, no shell | `pyautogui` (optional) |
 | `web` | Reads pages and searches. Can't reach your home network | HTTP, no browser |
 | `recado` | Runs a whole errand on the web in the background: logs in with your vault passwords, stops before paying or booking, and picks up from there with your yes | Chrome through `@playwright/mcp` and Gemini; in tests, a script and fake pages |
+| `vigilancias` | Keeps the list of things to watch; a trigger launches a `recado` every few hours to check whether it has happened yet, and stays quiet while it hasn't | `<datos>/vigilancias.json` |
+| `seguimiento` | Reminds you once about emails that asked for something and got no reply in two days; whatever you already answered in Gmail it marks as handled | The Gmail thread, only its labels |
 | `mcp` | Talks to the declared MCP servers: vault, browser, Windows, time, triaged mail | JSON-RPC over stdio with its own client; remote ones over HTTP with the official SDK |
 | `eco`, `simulacro` | The two test agents: echo back what they get, touch nothing | — |
 
@@ -384,12 +387,12 @@ the tables read fine in any language.
 None of this is checked by eye, and it's checked two ways.
 
 **Unit tests** — each piece on its own, no network, no subprocesses. They tell
-you *what* broke: **1171** in total.
+you *what* broke: **1180** in total.
 
 ```bash
 python commands/perseo.py comprobar    # everything, cheapest first
 
-python -m pytest                       # 967, core and commands
+python -m pytest                       # 976, core and commands
 cd RealTime && npm test                # 204, the interface
 cd RealTime/src-tauri && cargo check   # and that the Rust compiles
 ```
@@ -441,7 +444,7 @@ details are in [`docs/PRIVACIDAD.md`](docs/PRIVACIDAD.md).
 
 Perseo works and gets used daily, but it's a personal project: built for
 **one** person on **one** Windows machine, and it shows. Behind it are roughly
-49,100 lines, 1171 tests and 19 verifiers.
+49,100 lines, 1180 tests and 19 verifiers.
 
 If you clone it and something won't start, open an
 [issue](https://github.com/PersusUS/Perseo/issues) — and if you fix it, even

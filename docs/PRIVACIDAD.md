@@ -17,7 +17,7 @@ queda y dónde está cada cosa.
 | **Google — Gemini (REST)** | El texto del chat escrito, y lo que las herramientas devuelven | Solo si escribes en el panel o en el móvil |
 | **Google — Gemini (REST), en un recado** | El encargo y las páginas que visita el navegador de los recados, **con las contraseñas y tarjetas tapadas** | Solo mientras hay un recado en marcha |
 | **Las webs de tus recados** | Lo que el recado teclea en ellas, también las claves de la bóveda —solo en los sitios de cada entrada— | Solo con un recado que tú encargaste, y pagar o enviar esperan tu sí |
-| **Google — Gmail y Calendar** | Nada tuyo: se **leen** cabeceras de correo y eventos | Solo con `PERSEO_CORREO=gmail` / `PERSEO_AGENDA=google` |
+| **Google — Gmail y Calendar** | Nada tuyo: se **leen** cabeceras de correo y eventos, y de los hilos que piden seguimiento solo sus etiquetas (¿el último es tuyo?) | Solo con `PERSEO_CORREO=gmail` / `PERSEO_AGENDA=google` |
 | **Telegram** | El **recuento**: «3 correos, 1 requiere acción». Nunca el asunto ni el cuerpo | Solo con el bot configurado |
 
 Y uno que está **apagado de fábrica**: `PERSEO_MODELO_SUPLENTE`. Es un modelo
@@ -107,6 +107,8 @@ Pero un prompt no es una defensa, así que debajo hay dos más:
 | `<datos>/boveda.json` | Contraseñas y tarjetas de los recados, cifradas con DPAPI. En claro solo nombres, sitios y nombres de campo |
 | `<datos>/navegador/` | El perfil de Chrome de los recados: las sesiones de los sitios donde entraste a mano |
 | `<datos>/recados/` | Por dónde iba un recado que espera tu sí: la conversación con el modelo, ya tapada. Se borra al acabar |
+| `<datos>/vigilancias.json` | Lo que le pediste vigilar, con la condición y lo que vio la última vez |
+| `<datos>/seguimiento_avisados.json` | Los ids de los correos de los que ya te recordó que seguían sin respuesta |
 | `<datos>/google.json` | El `refresh_token` que abre tu buzón |
 | `<datos>/gemini.txt` · `telegram.txt` · `obsidian.txt` | Claves sueltas |
 | `<datos>/nucleo.log` · `vigilante.log` | Los registros |

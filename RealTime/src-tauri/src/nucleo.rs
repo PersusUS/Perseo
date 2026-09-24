@@ -102,6 +102,7 @@ const DIRECTAS: &[(&str, &str, &str)] = &[
     ("redactar_borrador", "correo", "redactar"),
     ("parte_del_dia", "parte", "dar"),
     ("encargar_recado", "recado", "hacer"),
+    ("vigilancias", "vigilancias", "gestionar"),
 ];
 
 /// Traduce la herramienta que pide el modelo al agente que la hace.

@@ -236,6 +236,18 @@ _buzon: Buzon | None = None
 _vistos: disparadores.Vistos | None = None
 
 
+def buzon() -> Buzon | None:
+    """El buzón configurado, abierto la primera vez: el mismo para todos.
+
+    Lo usa también `seguimiento`, que mira si un hilo ya tiene respuesta; abrir
+    un segundo cliente de Gmail sería otra sesión que mantener viva.
+    """
+    global _buzon
+    if _buzon is None and _cfg is not None:
+        _buzon = abrir_buzon(_cfg)
+    return _buzon
+
+
 @disparadores.registrar("correo", intervalo=300)
 async def _vigilar_buzon(ctx: disparadores.Contexto) -> None:
     """Mira el buzón y encola lo que no se haya triado todavía.

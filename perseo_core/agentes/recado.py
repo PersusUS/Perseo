@@ -41,11 +41,11 @@ Lo que no hace, dicho sin adornos:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -55,8 +55,10 @@ from ..infra.configuracion import Configuracion
 from ..infra.router import NecesitaConfirmacion, aprobado, registrar
 from ..servicios import boveda as boveda_mod
 from ..servicios import navegacion as nav
+from ..servicios import recordatorios, vigilancias
 from ..servicios.mcp_transportes import ErrorMcp
 from . import web
+from .recado_estado import Estado, Final, Puntos
 from .recado_puertos import (
     Cerebro,
     CerebroGemini,
@@ -78,12 +80,13 @@ logger = logging.getLogger(__name__)
 #: chat vive del mismo cubo: 500 peticiones diarias en Flash Lite).
 TOPE_PASOS = int(os.environ.get("PERSEO_RECADO_PASOS", "40") or 40)
 
+#: Pasos de una comprobación de vigilancia antes de que diga si se cumple. Mirar
+#: una página y contestar son dos o tres; ocho es margen para una cookie y un
+#: buscador, y es lo que protege la cuota de una web que no se deja leer.
+TOPE_PASOS_VIGILAR = 8
+
 #: Tiempo total de trabajo, sin contar lo que se espera un sí.
 TOPE_SEGUNDOS = 15 * 60
-
-#: Un punto de reanudación que nadie reclama en este tiempo es de un recado
-#: rechazado o abandonado.
-DIAS_PUNTO = 2
 
 TAREA = """\
 Estás haciendo un recado en la web por encargo del señor Persus, con un
@@ -113,52 +116,6 @@ Cómo trabajas:
 SISTEMA = identidad.con_identidad(TAREA)
 
 
-@dataclass
-class Final:
-    """Cómo acaba un recado: hecho, atascado (necesita al dueño) o sin pasos."""
-
-    estado: str
-    texto: str
-
-
-@dataclass
-class Estado:
-    """Todo lo que hace falta para seguir un recado en otro momento."""
-
-    contents: list[dict[str, Any]]
-    pasos: int = 0
-    url: str = ""
-    #: El ref de la última instantánea y lo que es. De aquí sale el nombre de lo
-    #: que se pulsa, no de lo que escribe el modelo.
-    elementos: dict[str, nav.Elemento] = field(default_factory=dict)
-    #: Huellas de lo exterior que el dueño ya aprobó en este recado.
-    aprobadas: list[str] = field(default_factory=list)
-    tarjeta_usada: bool = False
-    #: El menor tope de las tarjetas metidas en este recado, si alguna lo tiene.
-    limite: float | None = None
-
-    def a_json(self) -> dict[str, Any]:
-        return {
-            "contents": self.contents,
-            "pasos": self.pasos,
-            "url": self.url,
-            "aprobadas": self.aprobadas,
-            "tarjeta_usada": self.tarjeta_usada,
-            "limite": self.limite,
-        }
-
-    @classmethod
-    def de_json(cls, datos: dict[str, Any]) -> "Estado":
-        return cls(
-            contents=list(datos.get("contents") or []),
-            pasos=int(datos.get("pasos") or 0),
-            url=str(datos.get("url") or ""),
-            aprobadas=list(datos.get("aprobadas") or []),
-            tarjeta_usada=bool(datos.get("tarjeta_usada")),
-            limite=datos.get("limite"),
-        )
-
-
 # --------------------------------------------------------------------------- #
 # Lo del proceso
 # --------------------------------------------------------------------------- #
@@ -166,7 +123,7 @@ class Estado:
 _cfg: Configuracion | None = None
 _cerebro: Cerebro | None = None
 _manos: Manos | None = None
-_puntos: Path | None = None
+_puntos: Puntos | None = None
 
 
 def iniciar(
@@ -178,11 +135,10 @@ def iniciar(
     visible = os.environ.get("PERSEO_RECADO_VISIBLE", "").strip().lower() in ("1", "si", "sí", "true")
     _cerebro = cerebro or CerebroGemini(cfg.gemini_clave)
     _manos = manos or ManosPlaywright(cfg.directorio_datos, visible=visible)
-    _puntos = Path(cfg.directorio_datos) / "recados"
-    _puntos.mkdir(parents=True, exist_ok=True)
+    _puntos = Puntos(Path(cfg.directorio_datos) / "recados")
     if boveda_mod.actual() is None:
         boveda_mod.iniciar(cfg.directorio_datos)
-    _limpiar_puntos_viejos()
+    _puntos.limpiar_viejos()
     vaciar_salida(cfg.directorio_datos)
 
 
@@ -193,6 +149,12 @@ async def detener() -> None:
     if _manos is not None:
         await _manos.detener()
     _cerebro = _manos = None
+
+
+def _hay_puntos() -> Puntos:
+    if _puntos is None:
+        raise RuntimeError("El agente recado no está iniciado; falta recado.iniciar().")
+    return _puntos
 
 
 async def _cerrar_navegador() -> None:
@@ -209,45 +171,6 @@ async def _cerrar_navegador() -> None:
             logger.warning("Recado: el navegador no se cerró limpio: %s", e)
     if _cfg is not None:
         vaciar_salida(_cfg.directorio_datos)
-
-
-def _ruta_punto(id_trabajo: int) -> Path:
-    assert _puntos is not None
-    return _puntos / f"{int(id_trabajo)}.json"
-
-
-def _limpiar_puntos_viejos() -> None:
-    assert _puntos is not None
-    corte = time.time() - DIAS_PUNTO * 86400
-    for fichero in _puntos.glob("*.json"):
-        try:
-            if fichero.stat().st_mtime < corte:
-                fichero.unlink()
-        except OSError:
-            pass
-
-
-def _guardar_punto(id_trabajo: int, estado: Estado, turno: dict[str, Any]) -> None:
-    compactar(estado.contents)
-    datos = {"estado": estado.a_json(), "turno": turno}
-    ruta = _ruta_punto(id_trabajo)
-    temporal = ruta.with_suffix(".tmp")
-    temporal.write_text(json.dumps(datos, ensure_ascii=False), encoding="utf-8")
-    os.replace(temporal, ruta)
-
-
-def _cargar_punto(id_trabajo: int) -> dict[str, Any] | None:
-    try:
-        return json.loads(_ruta_punto(id_trabajo).read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return None
-
-
-def _borrar_punto(id_trabajo: int) -> None:
-    try:
-        _ruta_punto(id_trabajo).unlink()
-    except OSError:
-        pass
 
 
 # --------------------------------------------------------------------------- #
@@ -407,7 +330,7 @@ async def _accion(
                 "rol": elemento.rol if elemento else "",
                 "nombre": elemento.nombre if elemento else "",
             }
-            _guardar_punto(int(trabajo["id"]), estado, turno)
+            _hay_puntos().guardar(int(trabajo["id"]), estado, turno)
             encargo = str((trabajo.get("peticion") or {}).get("texto") or "")[:200]
             raise NecesitaConfirmacion(
                 f"Recado #{trabajo['id']}: ¿{motivo}?",
@@ -467,7 +390,14 @@ async def _atender_turno(trabajo: dict[str, Any], estado: Estado, turno: dict[st
             return Final("hecho", str(args.get("resumen") or "Recado terminado."))
         if nombre == "pedir_ayuda":
             return Final("atascado", str(args.get("pregunta") or "Necesito ayuda para seguir."))
-        if nombre == "boveda_listar":
+        if nombre == "informar" and estado.vigilancia:
+            final = await _informar(estado, bool(args.get("cumple")), str(args.get("detalle") or ""))
+            if final is not None:
+                return final
+            texto = "Se cumple, y está apuntado. Ahora haz el recado entero y acaba con terminar."
+        elif nombre == "informar":
+            texto = "informar solo vale en una vigilancia."
+        elif nombre == "boveda_listar":
             try:
                 texto = json.dumps(boveda.listar() if boveda else [], ensure_ascii=False)
             except boveda_mod.ErrorBoveda as e:
@@ -481,6 +411,21 @@ async def _atender_turno(trabajo: dict[str, Any], estado: Estado, turno: dict[st
         turno.pop("pendiente", None)
     estado.contents.append({"role": "user", "parts": turno["respuestas"]})
     return None
+
+
+async def _informar(estado: Estado, cumple: bool, detalle: str) -> Final | None:
+    """Apunta lo que vio la comprobación. Devuelve cómo acaba, o `None` si sigue."""
+    assert _cfg is not None
+    detalle = _tapar(detalle) or ("se cumple" if cumple else "sigue sin cumplirse")
+    v = await asyncio.to_thread(
+        vigilancias.apuntar, _cfg.directorio_datos, estado.vigilancia, cumple, detalle, recordatorios.ahora_local()
+    )
+    if not cumple:
+        return Final("sin_novedad", detalle)
+    estado.cumplida = True
+    if (v or {}).get("al_cumplirse") == "hacer":
+        return None
+    return Final("cumplida", detalle)
 
 
 async def _reanudar(trabajo: dict[str, Any], punto: dict[str, Any]) -> tuple[Estado, Final | None]:
@@ -527,23 +472,41 @@ async def _recado(trabajo: dict[str, Any]) -> dict[str, Any]:
     if _cerebro is None or _manos is None:
         raise RuntimeError("El agente recado no está iniciado; falta recado.iniciar().")
     id_trabajo = int(trabajo["id"])
-    encargo = str((trabajo.get("peticion") or {}).get("texto") or "").strip()
+    peticion = trabajo.get("peticion") or {}
+    encargo = str(peticion.get("texto") or "").strip()
     if not encargo:
         raise ValueError("Un recado necesita `texto`: qué hay que hacer.")
+    punto = _hay_puntos().cargar(id_trabajo) if aprobado(trabajo) else None
+
+    vigilancia: dict[str, Any] | None = None
+    if str(peticion.get("accion") or "") == "vigilar":
+        assert _cfg is not None
+        vigilancia = await asyncio.to_thread(
+            vigilancias.obtener, _cfg.directorio_datos, str(peticion.get("vigilancia"))
+        )
+        if vigilancia is None or (punto is None and vigilancia.get("estado") != "activa"):
+            # La quitaron, o se cumplió, entre encolar la comprobación y hacerla.
+            return {"estado": "sin_vigilancia", "texto": "Esa vigilancia ya no está activa.", "callado": True}
 
     await _manos.arrancar()
-    herramientas = declaraciones(_manos.herramientas)
-    punto = _cargar_punto(id_trabajo) if aprobado(trabajo) else None
+    herramientas = declaraciones(_manos.herramientas, vigilar=vigilancia is not None)
     final: Final | None = None
-    estado = Estado(contents=[{"role": "user", "parts": [{"text": f"El recado: {encargo}"}]}])
+    inicial = vigilancias.enunciado(vigilancia) if vigilancia else f"El recado: {encargo}"
+    estado = Estado(
+        contents=[{"role": "user", "parts": [{"text": inicial}]}],
+        vigilancia=str(vigilancia["id"]) if vigilancia else "",
+    )
     inicio = time.monotonic()
     try:
         if punto is not None:
             logger.info("Recado %d: sigue tras el sí.", id_trabajo)
             estado, final = await _reanudar(trabajo, punto)
         else:
-            _borrar_punto(id_trabajo)
+            _hay_puntos().borrar(id_trabajo)
         while final is None:
+            if estado.vigilancia and not estado.cumplida and estado.pasos >= TOPE_PASOS_VIGILAR:
+                final = await _informar(estado, False, f"no se pudo comprobar en {TOPE_PASOS_VIGILAR} pasos")
+                break
             if estado.pasos >= TOPE_PASOS:
                 final = Final("sin_pasos", f"Me quedé sin pasos ({TOPE_PASOS}) antes de acabar.")
                 break
@@ -571,18 +534,43 @@ async def _recado(trabajo: dict[str, Any]) -> dict[str, Any]:
         # sigue desde ahí.
         raise
     except BaseException:
-        _borrar_punto(id_trabajo)
+        _hay_puntos().borrar(id_trabajo)
         await _cerrar_navegador()
         raise
 
-    _borrar_punto(id_trabajo)
+    _hay_puntos().borrar(id_trabajo)
     await _cerrar_navegador()
+    return _resultado(trabajo, estado, final)
+
+
+_TITULARES = {
+    "hecho": "Recado hecho",
+    "cumplida": "Se ha cumplido una vigilancia",
+    "atascado": "El recado necesita ayuda",
+    "sin_pasos": "Recado sin acabar",
+}
+
+
+def _resultado(trabajo: dict[str, Any], estado: Estado, final: Final) -> dict[str, Any]:
+    """Lo que queda en la cola, lo que se dice en la llamada y lo que va a Telegram.
+
+    Tres destinatarios, tres textos. `texto` es el detalle entero, en la cola.
+    `aviso` es lo que dice la llamada, en el ordenador: lleva el detalle.
+    `titular` es lo que va por Telegram cuando el recado salió de un disparador
+    (una vigilancia): ahí solo va de qué tipo es, porque lo vigilado —qué mesa,
+    qué entradas, qué precio— es contenido suyo viajando por un tercero.
+    """
     texto = _tapar(final.texto)
-    titulares = {"hecho": "Recado hecho", "atascado": "El recado necesita ayuda", "sin_pasos": "Recado sin acabar"}
+    if final.estado == "sin_novedad":
+        # Una comprobación que dice «todavía no» no llama ni escribe: nadie
+        # quiere que el teléfono suene cada tres horas para decir que nada.
+        return {"estado": final.estado, "texto": texto, "titular": None, "callado": True, "pasos": estado.pasos}
+    que = _TITULARES.get(final.estado, "Recado")
     return {
         "estado": final.estado,
         "texto": texto,
-        "titular": f"{titulares.get(final.estado, 'Recado')}: {texto}"[:160],
+        "aviso": f"{que}: {texto}",
+        "titular": que if trabajo.get("origen") == "disparador" else f"{que}: {texto}"[:160],
         "pasos": estado.pasos,
         "url": estado.url,
     }

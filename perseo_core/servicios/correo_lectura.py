@@ -95,6 +95,7 @@ def cargar_correos(ruta_db: Path, tope_trabajos: int = TOPE_TRABAJOS) -> list[di
                 "asunto": str(clasificado.get("asunto") or original.get("asunto") or ""),
                 "extracto": str(original.get("extracto") or ""),
                 "fecha": str(original.get("fecha") or ""),
+                "hilo": str(original.get("hilo") or ""),
                 "clase": str(clasificado.get("clase") or ""),
                 "motivo": str(clasificado.get("motivo") or ""),
                 "hecho": marcas.get(id_mensaje, ""),

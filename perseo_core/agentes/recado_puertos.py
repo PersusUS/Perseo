@@ -364,7 +364,24 @@ PROPIAS: list[dict[str, Any]] = [
 ]
 
 
-def declaraciones(herramientas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+#: Solo en una vigilancia: la respuesta a «¿se cumple ya?». Es una herramienta y
+#: no una frase porque la decisión la guarda el núcleo y la mira el disparador;
+#: un «parece que sí» en texto libre no se puede guardar.
+INFORMAR: dict[str, Any] = {
+    "name": "informar",
+    "description": (
+        "Solo en una vigilancia: dice si la condición se cumple ahora. `detalle` es lo que "
+        "viste, corto (precio, fecha, «sigue agotado»)."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {"cumple": {"type": "boolean"}, "detalle": {"type": "string"}},
+        "required": ["cumple", "detalle"],
+    },
+}
+
+
+def declaraciones(herramientas: list[dict[str, Any]], vigilar: bool = False) -> list[dict[str, Any]]:
     """Las del navegador que haya, en el dialecto de Gemini, y las propias."""
     salida: list[dict[str, Any]] = []
     for h in herramientas:
@@ -378,7 +395,8 @@ def declaraciones(herramientas: list[dict[str, Any]]) -> list[dict[str, Any]]:
             _reescribir_target(esquema)
             declaracion["parameters"] = esquema
         salida.append(declaracion)
-    return salida + json.loads(json.dumps(PROPIAS))
+    propias = PROPIAS + ([INFORMAR] if vigilar else [])
+    return salida + json.loads(json.dumps(propias))
 
 
 def _reescribir_target(esquema: dict[str, Any]) -> None:
