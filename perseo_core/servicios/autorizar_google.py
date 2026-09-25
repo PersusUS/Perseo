@@ -12,14 +12,16 @@ dirección, lo canjea por un `refresh_token` y lo deja escrito en
 `perseo_core/datos/google.json`, junto al `client_id` y el `client_secret` que ya
 estaban ahí.
 
-**Lee, y como mucho deja un borrador.** Los ámbitos son `gmail.readonly`,
-`calendar.readonly` y —desde el 2026-08-16— `gmail.compose`.
+**Los ámbitos.** `gmail.readonly`, `calendar.readonly`, `gmail.compose` (desde
+el 2026-08-16) y `calendar.events` (desde el 2026-09-24, para apuntar citas).
 
-`gmail.compose` es el ámbito más pequeño que permite escribir un borrador, y la
-elección es deliberada: **no incluye enviar**. Se descartaron `gmail.send`, que
-manda correo de verdad, y `gmail.modify`, que además puede borrar. Con este
-testigo Perseo puede redactar y dejarlo en la carpeta de borradores, y darle a
-enviar sigue siendo un gesto tuyo desde el móvil.
+Aquí ponía que `gmail.compose` «no incluye enviar», y era falso: Google lo
+describe como «Manage drafts and send emails», y `drafts.send` lo acepta.
+Comprobado en su documentación el 2026-09-24. Se sigue sin pedir `gmail.modify`,
+que además archiva y borra. Lo que impide que salga un correo o una invitación
+sin su sí **no es el permiso sino la política**: enviar (`correo.enviar`) e
+invitar (`agenda.invitar`) son de nivel `exterior`, se paran aunque las
+confirmaciones estén apagadas, y ese sí no lo da el modelo (ADR 0007).
 
 Consecuencia de tocar esta lista: **hay que volver a pasar por la pantalla de
 consentimiento**. Un `refresh_token` lleva grabados los ámbitos con los que se
@@ -54,11 +56,13 @@ import aiohttp
 from . import google_api
 from ..infra.configuracion import cargar_configuracion
 
-#: Lo que se pide. Ver la cabecera: `compose` escribe borradores y **no** envía.
+#: Lo que se pide. Ver la cabecera: `compose` **sí** envía, y lo que lo frena es
+#: la política, no esta lista.
 AMBITOS = (
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/gmail.compose",
+    "https://www.googleapis.com/auth/calendar.events",
 )
 
 #: Dónde vive la pantalla de consentimiento. Se puede apuntar a otro sitio para

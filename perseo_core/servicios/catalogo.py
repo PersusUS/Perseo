@@ -427,16 +427,16 @@ _BASE: tuple[Herramienta, ...] = (
     Herramienta(
         nombre="redactar_borrador",
         voz=(
-            "Deja un BORRADOR de correo en el Gmail del señor Persus. No lo envía, y no "
-            "puede: enviar lo hace él desde Gmail. Úsala cuando te dicte un correo o te "
-            "pida contestar a uno. Si es una respuesta, el destinatario sale del correo "
-            "que estabais comentando: no lo inventes. Léele el texto antes si te lo pide, "
-            "y al terminar dile que está en borradores esperando a que lo revise."
+            "Deja un BORRADOR de correo en el Gmail del señor Persus; no lo envía. Úsala "
+            "cuando te dicte un correo o te pida contestar a uno. Si es una respuesta, el "
+            "destinatario sale del correo que estabais comentando: no lo inventes. Léele el "
+            "texto antes si te lo pide. Si además quiere que salga, después enviar_borrador "
+            "con lo que te devuelva esta."
         ),
         chat=(
-            "Deja un borrador de correo en Gmail; no lo envía, y no puede. El destinatario "
-            "de una respuesta sale del correo triado: no lo inventes. Al terminar, di que "
-            "queda en borradores para que lo revise y lo envíe él."
+            "Deja un borrador de correo en Gmail; no lo envía. El destinatario de una "
+            "respuesta sale del correo triado: no lo inventes. Para que salga, después "
+            "enviar_borrador con el id que devuelve."
         ),
         parametros=(
             Parametro(

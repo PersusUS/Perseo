@@ -103,6 +103,8 @@ const DIRECTAS: &[(&str, &str, &str)] = &[
     ("parte_del_dia", "parte", "dar"),
     ("encargar_recado", "recado", "hacer"),
     ("vigilancias", "vigilancias", "gestionar"),
+    ("enviar_borrador", "correo", "enviar"),
+    ("crear_evento", "agenda", "crear"),
 ];
 
 /// Traduce la herramienta que pide el modelo al agente que la hace.
@@ -503,11 +505,9 @@ async fn responder_confirmacion(app: &AppHandle, args: &Value) -> Result<String,
     let token = token(app)?;
     let cliente = reqwest::Client::new();
     let base = base_url();
-    // Lo que sale de casa no se aprueba hablando (ADR 0007): el si, en la tarjeta.
-    let actual = pedir_json(cliente.get(format!("{base}/trabajos/{id}")).bearer_auth(&token)).await?;
-    if decision == "aprobar" && actual["confirmacion"]["nivel"] == "exterior" {
+    if decision == "aprobar" && pedir_json(cliente.get(format!("{base}/trabajos/{id}")).bearer_auth(&token)).await?["confirmacion"]["nivel"] == "exterior" {
         return Ok(format!("El #{id} sale de casa y no se aprueba hablando: que lo confirme en la tarjeta del panel o del movil."));
-    }
+    } // Lo exterior no se aprueba hablando (ADR 0007): el si se da en la tarjeta.
 
     pedir_json(
         cliente

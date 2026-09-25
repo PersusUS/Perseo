@@ -203,9 +203,11 @@ class Sesion:
     async def mandar(self, url: str, cuerpo: dict[str, Any]) -> dict[str, Any]:
         """POST autenticado. Mismo trato del 401 que `pedir`.
 
-        Existe por una sola cosa: crear borradores. Todo lo demás que hace este
-        módulo lee, y eso no es casualidad — el testigo pide `gmail.compose`, que
-        escribe borradores y **no** envía.
+        Crea borradores, envía el que se aprobó y apunta eventos. Lo que puede
+        hacer el testigo lo dicen sus ámbitos (`autorizar_google.AMBITOS`), y ojo:
+        `gmail.compose` **sí envía** —«Manage drafts and send emails», dice
+        Google—. Que nada salga sin su sí no lo garantiza el permiso sino la
+        política: enviar es `correo.enviar`, nivel `exterior` (ADR 0007).
         """
         if not self._testigo or time.monotonic() >= self._caduca:
             await self._refrescar()
@@ -222,8 +224,8 @@ class Sesion:
                     if respuesta.status == 403:
                         raise RuntimeError(
                             f"Google respondió 403: {mensaje}. Si habla de permisos, el "
-                            "testigo es de antes de gmail.compose: vuelve a ejecutar "
-                            "`python -m perseo_core.servicios.autorizar_google`."
+                            "testigo es de antes de que se pidiera este ámbito: vuelve a "
+                            "ejecutar `python -m perseo_core.servicios.autorizar_google`."
                         )
                     raise RuntimeError(f"Google respondió {respuesta.status}: {mensaje}")
                 return datos
@@ -350,6 +352,22 @@ class BuzonGmail(ClienteGoogle):
         mensajes = datos.get("messages") or []
         return bool(mensajes) and "SENT" in (mensajes[-1].get("labelIds") or [])
 
+    async def leer_borrador(self, borrador: str) -> dict[str, str]:
+        """A quién va y con qué asunto, leído de Gmail y no de quien pide enviarlo."""
+        sesion = await self._abrir()
+        datos = await sesion.pedir(
+            f"{URL_GMAIL()}/gmail/v1/users/me/drafts/{urllib.parse.quote(borrador)}",
+            {"format": "metadata"},
+        )
+        cabeceras = ((datos.get("message") or {}).get("payload") or {}).get("headers") or []
+        return {"para": _cabecera(cabeceras, "To"), "asunto": _cabecera(cabeceras, "Subject")}
+
+    async def enviar_borrador(self, borrador: str) -> dict[str, str]:
+        """Envía un borrador que ya existe. Quien llama ha comprobado antes que es el aprobado."""
+        sesion = await self._abrir()
+        respuesta = await sesion.mandar(f"{URL_GMAIL()}/gmail/v1/users/me/drafts/send", {"id": borrador})
+        return {"id": str(respuesta.get("id", "")), "hilo": str(respuesta.get("threadId", ""))}
+
     async def crear_borrador(
         self,
         para: str,
@@ -357,13 +375,14 @@ class BuzonGmail(ClienteGoogle):
         cuerpo: str,
         hilo: str = "",
     ) -> dict[str, Any]:
-        """Deja un borrador en Gmail. **No lo envía, y no puede.**
+        """Deja un borrador en Gmail. **No lo envía**: eso es `enviar_borrador`.
 
-        El testigo pide `gmail.compose`, que es el ámbito más pequeño capaz de
-        escribir un borrador. No incluye `send`, así que aunque alguien —el
-        modelo, un correo con instrucciones dentro, un fallo de este código—
-        intentara enviarlo, Google responde 403. La garantía no está en el
-        cuidado de quien programa: está en el permiso que se concedió.
+        Hasta el 2026-09-24 aquí ponía que no podía enviarlo porque `gmail.compose`
+        «no incluye send», y era falso: Google describe ese ámbito como «Manage
+        drafts and send emails», y `drafts.send` lo acepta. Lo que impide que un
+        borrador salga sin su sí no es el permiso, es que enviar es otra acción,
+        `correo.enviar`, de nivel `exterior`: se para aunque las confirmaciones
+        estén apagadas, y ese sí no lo puede dar el modelo (ADR 0007).
 
         Si se pasa `hilo`, el borrador cuelga de esa conversación y le llega al
         destinatario como una respuesta y no como un correo suelto.
@@ -435,6 +454,38 @@ class CalendarioGoogle(ClienteGoogle):
                 )
             )
         return eventos
+
+    async def crear(
+        self,
+        titulo: str,
+        inicio: datetime,
+        fin: datetime,
+        lugar: str = "",
+        descripcion: str = "",
+        invitados: tuple[str, ...] = (),
+    ) -> dict[str, str]:
+        """Apunta un evento. Con invitados, Google les manda la invitación (`sendUpdates=all`).
+
+        Pide el ámbito `calendar.events`, que llegó el 2026-09-24: un testigo de
+        antes contesta 403 hasta que se vuelve a pasar por `autorizar_google`.
+        """
+        cuerpo: dict[str, Any] = {
+            "summary": titulo,
+            "start": {"dateTime": inicio.isoformat()},
+            "end": {"dateTime": fin.isoformat()},
+        }
+        if lugar:
+            cuerpo["location"] = lugar
+        if descripcion:
+            cuerpo["description"] = descripcion
+        if invitados:
+            cuerpo["attendees"] = [{"email": correo} for correo in invitados]
+        url = f"{URL_CALENDAR()}/calendar/v3/calendars/{urllib.parse.quote(self._calendario)}/events"
+        if invitados:
+            url += "?sendUpdates=all"
+        sesion = await self._abrir()
+        respuesta = await sesion.mandar(url, cuerpo)
+        return {"id": str(respuesta.get("id", "")), "enlace": str(respuesta.get("htmlLink", ""))}
 
 
 # --------------------------------------------------------------------------- #

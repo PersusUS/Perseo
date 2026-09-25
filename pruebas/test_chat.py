@@ -34,7 +34,8 @@ def test_las_herramientas_estan_completas_y_con_forma() -> None:
         "redactar_borrador", "parte_del_dia",
         "buscar_en_memoria", "leer_nota", "guardar_recuerdo",
         "buscar_en_web", "leer_pagina", "controlar_pc", "encargar_codigo",
-        "encargar_recado", "vigilancias", "consultar_trabajo",
+        "encargar_recado", "vigilancias", "enviar_borrador", "crear_evento",
+        "consultar_trabajo",
         "listar_mcp", "usar_mcp", "responder_confirmacion",
     }
     assert nombres == esperadas

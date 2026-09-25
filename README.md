@@ -16,7 +16,7 @@ irreversible a esperar tu sí. Esa parada viene apagada: [ADR 0005](docs/adr/000
 [![Licencia MIT](https://img.shields.io/badge/licencia-MIT-black.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-black.svg)](https://www.python.org/)
 [![Tauri 2](https://img.shields.io/badge/tauri-2-black.svg)](https://tauri.app/)
-[![1180 pruebas](https://img.shields.io/badge/pruebas-1180-black.svg)](#verificación)
+[![1193 pruebas](https://img.shields.io/badge/pruebas-1193-black.svg)](#verificación)
 
 [Qué es](#qué-es) · [Cómo se ve](#cómo-se-ve) · [Cómo funciona](#cómo-funciona) ·
 [Instalación](#instalación) · [Privacidad](#privacidad) · [English](README.en.md)
@@ -46,6 +46,7 @@ Raspberry Pi sin reescribir una línea de la interfaz.
 | 📱 **Te sigue al móvil** | Una PWA por la VPN de casa: chat, cola, correo y estado. Sin build y en un solo fichero |
 | 🤖 **Delega código** | Encarga tareas a subagentes (Claude Code u opencode) y te cuenta por dónde van mientras trabajan |
 | 🧾 **Hace recados en la web** | «Resérvame mesa el viernes» y lo hace solo, con su propio Chrome y tus sesiones, y te llama al acabar. Las claves salen de una bóveda cifrada que el modelo nunca ve, y pagar o reservar esperan tu sí: [ADR 0007](docs/adr/0007-lo-que-sale-de-casa-se-para.md) |
+| ✉️ **Envía y apunta** | Manda el correo que te redactó y apunta citas en tu Google Calendar. Lo que llega a otra persona —el correo, la invitación— espera tu sí en la tarjeta, y el correo solo sale si es exactamente el borrador que aprobaste |
 | 👁️ **Vigila y retoma** | «Avísame cuando haya entradas» —o «resérvalo en cuanto baje»— y mira cada pocas horas hasta que pasa. Y si un correo que pedía algo lleva dos días sin respuesta tuya en Gmail, te lo recuerda una vez |
 | 🔌 **Habla MCP** | Cliente propio para servidores locales y remotos: vault, navegador, Windows, correo triado, subagentes |
 
@@ -380,12 +381,12 @@ y las rutas de la API en [`docs/API.md`](docs/API.md).
 Nada de esto se comprueba a ojo, y se comprueba de dos maneras.
 
 **Pruebas unitarias** — cada pieza por separado, sin red y sin subprocesos.
-Dicen *qué* se ha roto: **1180** en total.
+Dicen *qué* se ha roto: **1193** en total.
 
 ```bash
 python commands/perseo.py comprobar    # todo, en orden de coste
 
-python -m pytest                       # 976, el núcleo y los comandos
+python -m pytest                       # 989, el núcleo y los comandos
 cd RealTime && npm test                # 204, la interfaz
 cd RealTime/src-tauri && cargo check   # y que el Rust compila
 ```
@@ -448,7 +449,7 @@ El detalle, en [`docs/PRIVACIDAD.md`](docs/PRIVACIDAD.md).
 
 Perseo funciona y se usa a diario, pero es un proyecto personal: está pensado
 para **una** persona, en **un** ordenador con Windows, y se nota. Lo que hay
-detrás son unas 49.100 líneas, 1180 pruebas y 19 verificadores.
+detrás son unas 49.100 líneas, 1193 pruebas y 19 verificadores.
 
 Si lo clonas y algo no arranca, abre un
 [issue](https://github.com/PersusUS/Perseo/issues) — y si lo arreglas, mejor

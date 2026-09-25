@@ -1,10 +1,12 @@
-"""Borradores de correo: lo que se escribe, y lo que no se puede enviar.
+"""Borradores de correo: lo que se escribe, y que escribirlo no es enviarlo.
 
-La garantía de este camino no está en el código, está en el permiso: el testigo
-pide `gmail.compose`, que escribe borradores y **no** incluye `send`. Aunque el
-modelo se empeñara, Google contestaría 403. Lo que se comprueba aquí es que el
-código no se salga de eso y que el mensaje llegue bien formado — un borrador con
-las tildes rotas es tan inútil como no tenerlo.
+Aquí ponía que la garantía estaba en el permiso —que `gmail.compose` no incluye
+`send` y Google contestaría 403—, y era falso: Google describe ese ámbito como
+«Manage drafts and send emails» (comprobado el 2026-09-24). La garantía está en
+la política: redactar es reversible, y enviar es otra acción, `correo.enviar`,
+de nivel `exterior` (ver `test_manos_google.py`). Lo que se comprueba aquí es
+eso, y que el mensaje llegue bien formado — un borrador con las tildes rotas es
+tan inútil como no tenerlo.
 """
 
 from __future__ import annotations
@@ -26,11 +28,12 @@ from perseo_core.servicios import autorizar_google, google_api
 # --------------------------------------------------------------------------- #
 
 
-def test_se_pide_compose_y_no_send() -> None:
-    """`compose` escribe borradores; `send` manda correo y `modify` borra.
+def test_se_pide_compose_y_no_modify() -> None:
+    """`compose` escribe borradores **y envía**; `modify` además archiva y borra.
 
-    Si alguien amplía esto, que sea a sabiendas: es la única cosa que separa
-    "Perseo redacta" de "Perseo escribe en tu nombre a quien sea".
+    Que `compose` envíe no lo frena esta lista sino la política: ver
+    `test_redactar_y_enviar_no_son_lo_mismo`. Si alguien amplía esto a
+    `modify`, que sea a sabiendas.
     """
     ambitos = " ".join(autorizar_google.AMBITOS)
     assert "gmail.compose" in ambitos
@@ -38,13 +41,17 @@ def test_se_pide_compose_y_no_send() -> None:
     assert "gmail.modify" not in ambitos
 
 
-def test_solo_lectura_para_lo_demas() -> None:
-    ambitos = " ".join(autorizar_google.AMBITOS)
-    assert "gmail.readonly" in ambitos
-    assert "calendar.readonly" in ambitos
-    # Del calendario no se pide nada que escriba: mover un evento sigue siendo
-    # cosa suya.
-    assert not any("calendar" in a and "readonly" not in a for a in autorizar_google.AMBITOS)
+def test_del_calendario_leer_y_apuntar_eventos_y_nada_mas() -> None:
+    """Desde el 2026-09-24 se apuntan citas (`calendar.events`). El ámbito
+    `calendar` a secas, que además comparte y borra calendarios enteros, no."""
+    calendario = [a.rsplit("/", 1)[-1] for a in autorizar_google.AMBITOS if "calendar" in a]
+    assert sorted(calendario) == ["calendar.events", "calendar.readonly"]
+
+
+def test_redactar_y_enviar_no_son_lo_mismo() -> None:
+    """Lo que de verdad separa «Perseo redacta» de «Perseo escribe en tu nombre»."""
+    assert politica.nivel("correo", {"accion": "redactar"}) == politica.REVERSIBLE
+    assert politica.nivel("correo", {"accion": "enviar"}) == politica.EXTERIOR
 
 
 def test_redactar_no_hereda_el_libre_del_triaje() -> None:

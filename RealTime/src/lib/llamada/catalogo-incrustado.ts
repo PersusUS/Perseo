@@ -253,7 +253,7 @@ export const CATALOGO_INCRUSTADO: HerramientaNeutra[] = [
   },
   {
     "name": "redactar_borrador",
-    "description": "Deja un BORRADOR de correo en el Gmail del señor Persus. No lo envía, y no puede: enviar lo hace él desde Gmail. Úsala cuando te dicte un correo o te pida contestar a uno. Si es una respuesta, el destinatario sale del correo que estabais comentando: no lo inventes. Léele el texto antes si te lo pide, y al terminar dile que está en borradores esperando a que lo revise.",
+    "description": "Deja un BORRADOR de correo en el Gmail del señor Persus; no lo envía. Úsala cuando te dicte un correo o te pida contestar a uno. Si es una respuesta, el destinatario sale del correo que estabais comentando: no lo inventes. Léele el texto antes si te lo pide. Si además quiere que salga, después enviar_borrador con lo que te devuelva esta.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -472,6 +472,69 @@ export const CATALOGO_INCRUSTADO: HerramientaNeutra[] = [
       },
       "required": [
         "que"
+      ]
+    }
+  },
+  {
+    "name": "enviar_borrador",
+    "description": "Envía un borrador que ya dejaste con redactar_borrador, cuando el señor Persus pida que salga. Pásale el id, el destinatario y el asunto EXACTOS que devolvió redactar_borrador. No sale al momento: espera su sí, que él da en la tarjeta del panel o del móvil, NO hablando. Díselo así, y no lo des por enviado.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "borrador": {
+          "type": "string",
+          "description": "El id del borrador."
+        },
+        "para": {
+          "type": "string",
+          "description": "El destinatario, tal cual."
+        },
+        "asunto": {
+          "type": "string",
+          "description": "El asunto, tal cual."
+        }
+      },
+      "required": [
+        "borrador",
+        "para",
+        "asunto"
+      ]
+    }
+  },
+  {
+    "name": "crear_evento",
+    "description": "Apunta una cita en el calendario de Google del señor Persus: «apúntame cena el viernes a las nueve». Averigua antes la fecha de hoy con la hora si hace falta, y repite en voz alta el día y la hora que apuntas. Si hay invitados, a ellos les llega una invitación de Google, así que eso espera su sí en la tarjeta.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "titulo": {
+          "type": "string",
+          "description": "Qué es, corto."
+        },
+        "inicio": {
+          "type": "string",
+          "description": "Día y hora de empezar, en ISO local: 2026-09-26T21:00."
+        },
+        "duracion_min": {
+          "type": "number",
+          "description": "Cuánto dura, en minutos. Sin decirlo, una hora."
+        },
+        "lugar": {
+          "type": "string",
+          "description": "Dónde, si lo dice."
+        },
+        "descripcion": {
+          "type": "string",
+          "description": "Una nota, si la hay."
+        },
+        "invitados": {
+          "type": "string",
+          "description": "Correos de los invitados separados por comas, solo si lo pide."
+        }
+      },
+      "required": [
+        "titulo",
+        "inicio"
       ]
     }
   }

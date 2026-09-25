@@ -95,15 +95,23 @@ TABLA: dict[str, str] = {
     "memoria.anotar": REVERSIBLE,
     "memoria.conversacion": REVERSIBLE,
     "dev": REVERSIBLE,
-    # Un borrador de correo es reversible **porque no se puede enviar**: el
-    # testigo pide `gmail.compose`, que escribe borradores y no incluye `send`.
-    # Lo que queda es un texto en la carpeta de borradores, visible y borrable,
-    # y darle a enviar sigue siendo un gesto de una persona.
+    # Un borrador de correo es reversible: queda en la carpeta de borradores,
+    # visible y borrable. **No porque no se pueda enviar** —aquí ponía que
+    # `gmail.compose` no incluye `send`, y sí lo incluye (verificado el
+    # 2026-09-24)—, sino porque enviar es otra acción, `correo.enviar`, y esa
+    # es exterior.
     #
     # Esta línea tiene que estar. `correo` entero está como LIBRE por el triaje,
     # así que sin una entrada propia, redactar heredaría "libre" y escribiría en
     # la cuenta sin que constara en ninguna parte.
     "correo.redactar": REVERSIBLE,
+    # Enviar llega a otra persona y no se recoge: se para siempre (ADR 0007).
+    "correo.enviar": EXTERIOR,
+    # Un evento en su calendario se borra con un clic; invitar a alguien le
+    # manda un correo de Google en su nombre. `agenda` a secas es LIBRE (leer),
+    # así que crear tiene que estar aquí o heredaría «libre».
+    "agenda.crear": REVERSIBLE,
+    "agenda.invitar": EXTERIOR,
     # Los recordatorios escriben en `<datos>/recordatorios.json`, no en el
     # vault: apuntar y quitar son reversibles —lo apuntado se quita, lo quitado
     # se vuelve a apuntar— y mirar o avisar no cambia nada.
@@ -478,6 +486,11 @@ def resumir(
     peticion = peticion or {}
     accion = str(peticion.get("accion", "")).strip()
     que = f"{agente} · {accion}" if accion else agente
+    if peticion.get("para") or peticion.get("asunto"):
+        # Un correo que sale: la tarjeta dice a quién y de qué. Es lo que dice
+        # la petición; el agente comprueba antes de enviar que el borrador es
+        # ese, y si no lo es no envía nada.
+        que += f" a {peticion.get('para') or '?'}: «{peticion.get('asunto') or 'sin asunto'}»"
     if quien is not None and not identidad.es_el_dueno(quien):
         # Quién lo pidió es LO que hay que decidir aquí, así que va en el
         # titular y no en el detalle: una visita pidiendo teclear no es la

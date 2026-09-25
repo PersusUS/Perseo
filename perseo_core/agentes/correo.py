@@ -30,6 +30,7 @@ Dos reglas que gobiernan el módulo:
 from __future__ import annotations
 
 import asyncio
+import email.utils
 import json
 import logging
 from pathlib import Path
@@ -145,14 +146,17 @@ async def _correo(trabajo: dict[str, Any]) -> dict[str, Any]:
     mensaje, el detalle se queda en la cola —que se lee por el tailnet— y lo que
     sale por Telegram es `titular()`.
 
-    `redactar` escribe un borrador en Gmail y **no lo envía**. Enviar no está, y
-    no por olvido: el testigo pide `gmail.compose`, que no incluye `send`, así
-    que darle a enviar sigue siendo un gesto de una persona. Un correo enviado
-    que no querías no se deshace.
+    `redactar` escribe un borrador en Gmail y no lo envía. `enviar` envía un
+    borrador ya escrito, y es `exterior`: el trabajador lo para antes de llegar
+    aquí aunque las confirmaciones estén apagadas, y el sí lo da una persona en
+    la tarjeta (ADR 0007). Un correo enviado que no querías no se deshace.
     """
     peticion = trabajo.get("peticion") or {}
-    if str(peticion.get("accion", "triar")).strip().lower() == "redactar":
+    accion = str(peticion.get("accion", "triar")).strip().lower()
+    if accion == "redactar":
         return await _redactar(peticion)
+    if accion == "enviar":
+        return await _enviar(peticion)
 
     crudos = peticion.get("mensajes") or []
     mensajes = [Mensaje.desde_dict(m) for m in crudos if isinstance(m, dict)]
@@ -218,13 +222,61 @@ async def _redactar(peticion: dict[str, Any]) -> dict[str, Any]:
 
     creado = await redactor(para, asunto, cuerpo, str(peticion.get("hilo", "")))
     logger.info("Borrador dejado en Gmail para %s (id %s).", para, creado.get("id"))
-    # El titular sale por Telegram: dice a quién, no lo que pone dentro.
+    borrador = creado.get("id", "")
+    # El titular sale por Telegram: dice a quién, no lo que pone dentro. El
+    # texto es para el modelo: sin el id del borrador no podría pedir enviarlo.
     return {
         "accion": "redactar",
         "para": para,
         "asunto": asunto,
-        "borrador": creado.get("id", ""),
-        "titular": f"Borrador listo para {para} — revísalo en Gmail y envíalo tú",
+        "borrador": borrador,
+        "texto": (
+            f"Borrador guardado en Gmail (id {borrador}) para {para}: «{asunto}». Si quiere "
+            f"enviarlo, enviar_borrador con borrador={borrador}, para={para} y asunto={asunto}; "
+            "esperará su sí en la tarjeta del panel o del móvil."
+        ),
+        "titular": f"Borrador listo para {para} — revísalo en Gmail",
+    }
+
+
+def _direcciones(texto: str) -> set[str]:
+    return {d.lower() for _, d in email.utils.getaddresses([texto or ""]) if d}
+
+
+def _asunto(texto: str) -> str:
+    return " ".join(str(texto or "").split()).casefold()
+
+
+async def _enviar(peticion: dict[str, Any]) -> dict[str, Any]:
+    """Envía un borrador, **solo si es el que dice la tarjeta**.
+
+    Lo que se aprobó es lo que ponía la petición —a quién y con qué asunto—, y
+    eso lo escribió el modelo. Antes de enviar se lee el borrador de verdad en
+    Gmail: si va a otra dirección o lleva otro asunto, no se envía nada. Así la
+    tarjeta no puede decir una cosa y el correo hacer otra.
+    """
+    borrador = str(peticion.get("borrador", "")).strip()
+    para = str(peticion.get("para", "")).strip()
+    asunto = str(peticion.get("asunto", "")).strip()
+    if not borrador or not para:
+        raise ValueError("Para enviar hacen falta `borrador` (su id) y `para`.")
+    buzon_activo = buzon()
+    leer = getattr(buzon_activo, "leer_borrador", None)
+    enviar = getattr(buzon_activo, "enviar_borrador", None)
+    if leer is None or enviar is None:
+        raise RuntimeError("Este buzón no sabe enviar: hace falta PERSEO_CORREO=gmail.")
+    real = await leer(borrador)
+    if _direcciones(real["para"]) != _direcciones(para) or _asunto(real["asunto"]) != _asunto(asunto):
+        raise ValueError(
+            f"El borrador {borrador} no es el que se aprobó: va a {real['para'] or '(nadie)'} con "
+            f"asunto «{real['asunto']}». No se ha enviado nada."
+        )
+    enviado = await enviar(borrador)
+    logger.info("Correo enviado a %s (borrador %s, mensaje %s).", real["para"], borrador, enviado.get("id"))
+    return {
+        "accion": "enviar",
+        "texto": f"Enviado a {real['para']}: «{real['asunto']}».",
+        "titular": f"Correo enviado a {para}",
     }
 
 

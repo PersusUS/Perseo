@@ -44,6 +44,20 @@ Y dos reglas que lo sostienen:
   eso `NecesitaConfirmacion` lleva un `nivel`, se guarda en la confirmación, y
   quien decide si el modelo puede aprobar mira `politica.nivel_de_la_pregunta`.
 
+Fuera de los recados, desde el 2026-09-24: **enviar un correo**
+(`correo.enviar`) e **invitar a alguien a una cita** (`agenda.invitar`). Y una
+regla más para el correo: la tarjeta dice a quién y con qué asunto según la
+petición, y antes de enviar el agente lee el borrador de verdad en Gmail; si
+no coincide, no sale nada. Así la tarjeta no puede decir una cosa y el correo
+hacer otra.
+
+Ese mismo día se descubrió que el permiso de Google, `gmail.compose`, **sí
+permite enviar**: el código decía lo contrario, y la documentación de Google
+dice «Manage drafts and send emails». No cambia nada de lo de arriba —lo que
+frenaba el envío era que nadie lo llamaba, y ahora lo frena este nivel—, pero
+queda escrito porque durante un mes se creyó protegido por el permiso algo que
+solo protegía el código.
+
 Qué cuenta como exterior en un recado lo decide el código, no el prompt
 (`agentes/recado.py`):
 

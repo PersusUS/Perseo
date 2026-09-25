@@ -1,4 +1,4 @@
-"""Las herramientas de los recados en la web y de las vigilancias.
+"""Las herramientas que actúan fuera: recados, vigilancias, correo que sale y citas.
 
 Son parte del catálogo de `catalogo.py`, declaradas una vez como todas; viven
 aquí porque aquel fichero llegaba a su techo de 900 líneas. `catalogo.CATALOGO`
@@ -91,6 +91,57 @@ RECADOS: tuple[Herramienta, ...] = (
                 voz="avisar (por defecto) o hacer, si ha pedido que lo haga en cuanto se pueda.",
                 chat="avisar (por defecto) o hacer.",
                 opciones=("avisar", "hacer"),
+            ),
+        ),
+    ),
+    Herramienta(
+        nombre="enviar_borrador",
+        voz=(
+            "Envía un borrador que ya dejaste con redactar_borrador, cuando el señor Persus "
+            "pida que salga. Pásale el id, el destinatario y el asunto EXACTOS que devolvió "
+            "redactar_borrador. No sale al momento: espera su sí, que él da en la tarjeta del "
+            "panel o del móvil, NO hablando. Díselo así, y no lo des por enviado."
+        ),
+        chat=(
+            "Envía un borrador ya redactado, con el id, destinatario y asunto EXACTOS que "
+            "devolvió redactar_borrador. Espera su sí en la tarjeta: no está enviado hasta "
+            "entonces."
+        ),
+        parametros=(
+            Parametro(nombre="borrador", tipo="string", voz="El id del borrador.", chat="El id del borrador.", obligatorio=True),
+            Parametro(nombre="para", tipo="string", voz="El destinatario, tal cual.", chat="El destinatario, tal cual.", obligatorio=True),
+            Parametro(nombre="asunto", tipo="string", voz="El asunto, tal cual.", chat="El asunto, tal cual.", obligatorio=True),
+        ),
+    ),
+    Herramienta(
+        nombre="crear_evento",
+        voz=(
+            "Apunta una cita en el calendario de Google del señor Persus: «apúntame cena el "
+            "viernes a las nueve». Averigua antes la fecha de hoy con la hora si hace falta, "
+            "y repite en voz alta el día y la hora que apuntas. Si hay invitados, a ellos les "
+            "llega una invitación de Google, así que eso espera su sí en la tarjeta."
+        ),
+        chat=(
+            "Apunta una cita en su calendario de Google. `inicio` en ISO local. Con invitados "
+            "les llega la invitación, y eso espera su sí en la tarjeta."
+        ),
+        parametros=(
+            Parametro(nombre="titulo", tipo="string", voz="Qué es, corto.", chat="Qué es, corto.", obligatorio=True),
+            Parametro(
+                nombre="inicio",
+                tipo="string",
+                voz="Día y hora de empezar, en ISO local: 2026-09-26T21:00.",
+                chat="ISO local: 2026-09-26T21:00.",
+                obligatorio=True,
+            ),
+            Parametro(nombre="duracion_min", tipo="number", voz="Cuánto dura, en minutos. Sin decirlo, una hora.", chat="Minutos (por defecto 60)."),
+            Parametro(nombre="lugar", tipo="string", voz="Dónde, si lo dice.", chat="Dónde."),
+            Parametro(nombre="descripcion", tipo="string", voz="Una nota, si la hay.", chat="Una nota."),
+            Parametro(
+                nombre="invitados",
+                tipo="string",
+                voz="Correos de los invitados separados por comas, solo si lo pide.",
+                chat="Correos separados por comas.",
             ),
         ),
     ),

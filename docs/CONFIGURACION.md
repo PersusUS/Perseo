@@ -131,9 +131,14 @@ mañana, con el titular por Telegram: **viene apagado**.
 | `PERSEO_GOOGLE_OAUTH` · `_GMAIL` · `_CALENDAR` | las de Google | Se apuntan a otro sitio para verificar sin cuenta |
 | `PERSEO_GOOGLE_CUENTAS` | *(vacío)* | Varias cuentas, separadas por comas |
 
-Los ámbitos que se piden son los más pequeños que sirven: `gmail.readonly`,
-`calendar.readonly` y `gmail.compose` —que permite escribir un borrador pero
-**no** enviarlo—.
+Los ámbitos que se piden: `gmail.readonly`, `calendar.readonly`, `gmail.compose`
+y `calendar.events`. **`gmail.compose` permite enviar**, no solo escribir
+borradores —hasta el 2026-09-24 aquí ponía lo contrario, y era falso—. Lo que
+impide que salga un correo o una invitación sin tu sí es la política: enviar e
+invitar son de nivel `exterior` y se paran siempre ([ADR 0007](adr/0007-lo-que-sale-de-casa-se-para.md)).
+`calendar.events` llegó el 2026-09-24 para apuntar citas: con un permiso de
+antes, crear un evento contesta 403 hasta que vuelvas a pasar por
+`python -m perseo_core.servicios.autorizar_google`.
 
 ---
 
