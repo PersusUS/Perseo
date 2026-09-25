@@ -1,6 +1,6 @@
 # 0005 · Las confirmaciones están apagadas
 
-**Fecha:** 2026-09-12 · **Estado:** vigente
+**Fecha:** 2026-09-12 · **Estado:** vigente, con una excepción desde el 2026-09-24: lo que sale de casa se para ([ADR 0007](0007-lo-que-sale-de-casa-se-para.md))
 
 ## Contexto
 

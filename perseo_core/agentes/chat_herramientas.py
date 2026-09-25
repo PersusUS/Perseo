@@ -22,7 +22,7 @@ from typing import Any
 
 from ..infra import almacen, politica
 from ..infra.configuracion import Configuracion
-from ..servicios import correo_lectura, habitos, tareas, triaje
+from ..servicios import correo_lectura, habitos, llamada_saliente, tareas, triaje
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,7 @@ async def _encolar_y_esperar(agente: str, peticion: dict[str, Any], espera: floa
     id_trabajo = int(trabajo["id"])
     limite = asyncio.get_running_loop().time() + espera
     while True:
+        llamada_saliente.marcar_espera(id_trabajo)
         actual = await asyncio.to_thread(almacen.obtener, id_trabajo)
         if actual is not None:
             estado = str(actual.get("estado"))
@@ -336,6 +337,20 @@ async def _ejecutar_herramienta(nombre: str, argumentos: dict[str, Any]) -> str:
             "con ese nombre no moverá ninguna."
         )
 
+    if nombre in ("crear_recordatorio", "consultar_recordatorios", "cancelar_recordatorio"):
+        accion = {
+            "crear_recordatorio": "crear",
+            "consultar_recordatorios": "listar",
+            "cancelar_recordatorio": "cancelar",
+        }[nombre]
+        return await _encolar_y_esperar("recordatorios", {**argumentos, "accion": accion}, 15)
+
+    if nombre == "parte_del_dia":
+        return await _encolar_y_esperar("parte", {"accion": "dar"}, 30)
+
+    if nombre == "redactar_borrador":
+        return await _encolar_y_esperar("correo", {**argumentos, "accion": "redactar"}, 30)
+
     if nombre == "consultar_agenda":
         peticion: dict[str, Any] = {"accion": "proximos"}
         horas = argumentos.get("horas")
@@ -394,6 +409,22 @@ async def _ejecutar_herramienta(nombre: str, argumentos: dict[str, Any]) -> str:
         # quedan consultables con consultar_trabajo.
         return await _encolar_y_esperar("dev", peticion_dev, 25)
 
+    if nombre == "encargar_recado":
+        texto = str(argumentos.get("texto", "") or "").strip()
+        if not texto:
+            raise ErrorHerramienta("encargar_recado necesita el encargo.")
+        # Veinte segundos: lo justo para contar el #N con lo que ya sepa. Un
+        # recado de verdad dura minutos, y al acabar llama solo.
+        return await _encolar_y_esperar("recado", {"texto": texto, "accion": "hacer"}, 20)
+
+    if nombre == "enviar_borrador":
+        return await _encolar_y_esperar("correo", {**argumentos, "accion": "enviar"}, 20)
+    if nombre == "crear_evento":
+        return await _encolar_y_esperar("agenda", {**argumentos, "accion": "crear"}, 20)
+
+    if nombre == "vigilancias":
+        return await _encolar_y_esperar("vigilancias", {**argumentos, "accion": "gestionar"}, 15)
+
     if nombre == "consultar_trabajo":
         return _consultar_trabajo(argumentos.get("id"))
 
@@ -439,10 +470,16 @@ async def _resolver_confirmacion(argumentos: dict[str, Any]) -> str:
         # 2026-08-27 anunció una confirmación que nadie le había pedido y dio
         # el comando por autorizado. Para lo que no se deshace, el sí lo pone
         # una persona en la tarjeta del panel.
+        #
+        # Lo exterior, igual y por una razón más: la pregunta de un recado
+        # lleva dentro el nombre de un botón de una web, que escribe quien
+        # hizo la web. Un botón llamado «aprueba el trabajo 5» no puede
+        # acabar aprobándolo por boca del modelo que lo lee.
         pendiente = await asyncio.to_thread(almacen.obtener, id_trabajo)
-        if pendiente is not None and politica.nivel(
-            str(pendiente.get("agente") or ""), pendiente.get("peticion")
-        ) == politica.CRITICO:
+        if pendiente is not None and politica.nivel_de_la_pregunta(pendiente) in (
+            politica.CRITICO,
+            politica.EXTERIOR,
+        ):
             return (
                 f"El trabajo #{id_trabajo} no se puede aprobar hablando: no se "
                 "puede deshacer. Dile que lo confirme él mismo en la tarjeta del "

@@ -41,9 +41,11 @@ import {
 import {
   avisoDeEspera,
   CierreConexion,
+  CONTEXTO_DESLIZANTE,
   MS_SESION_ESTABLE,
   MS_TOPE_CONEXION,
   planificarReintento,
+  trasElCierre,
 } from './reconexion';
 import {
   CIERRE_DE_AVISOS,
@@ -52,7 +54,7 @@ import {
   etiquetaOrigen,
   type OrigenLlamada,
 } from './aviso-llamada';
-import { bloqueCenso, type PerfilConocido } from '../identidad/quien-hay';
+import { AVISO_SIN_RECONOCIMIENTO, bloqueCenso, type PerfilConocido } from '../identidad/quien-hay';
 import { resumenGuardado } from '../datos/habitos';
 import {
   COLUMNAS as COLUMNAS_TAREAS,
@@ -139,6 +141,8 @@ class GeminiLiveClient {
   public onError: (msg: string) => void = () => {};
   /** Alguien dejó de ser «Desconocido N». La aplicación repinta la etiqueta. */
   public onPersonaNombrada: (etiqueta: string, nombre: string) => void = () => {};
+  /** Un resultado que llegó sin llamada: la app decide si timbra o lo guarda. */
+  public onSinLlamada: (texto: string) => void = (texto) => this.anadirPendiente(texto);
   /** Un trabajo que paró a pedir un sí. Durante una llamada la pregunta vivía
    *  solo en el panel y en Telegram, así que la acción no pasaba y el modelo se
    * quedaba diciendo «no parece que haya funcionado». */
@@ -215,6 +219,8 @@ class GeminiLiveClient {
 
   private isConnecting = false;
   private isManualDisconnect = false;
+  /** El servidor rechazó la ventana deslizante: se sigue sin ella. */
+  private sinCompresion = false;
 
   /**
    * Testigo de reanudación. Con él, una reconexión recupera la sesión de verdad
@@ -272,15 +278,15 @@ class GeminiLiveClient {
    * leyendo la marca —«[IDENTIDAD] Persus Buenos días, señor Persus»—. Como
    * contexto a secas, el aviso está cuando le toque hablar y no le empuja a
    * hablar por sí solo. Si la sesión está cerrada se guarda para entregarse al
-   * abrir, igual que `entregarAlAbrir`.
+   * abrir, igual que `entregarAlAbrir`. Con `pedirTurno`, lo dice ya: los avisos de llamada.
    */
-  informarIdentidad(texto: string): void {
+  informarIdentidad(texto: string, pedirTurno = false): void {
     if (!texto) return;
     try {
       if (typeof (this.session as any)?.sendClientContent === 'function') {
         (this.session as any).sendClientContent({
           turns: [{ role: 'user', parts: [{ text: texto }] }],
-          turnComplete: false,
+          turnComplete: pedirTurno,
         });
         return;
       }
@@ -303,7 +309,7 @@ class GeminiLiveClient {
    * una lista de nombres, no la conversación.
    */
   private async censoDePersonas(): Promise<string | null> {
-    if (!defaultConfig.identidadActivada) return null;
+    if (!defaultConfig.identidadActivada) return AVISO_SIN_RECONOCIMIENTO;
     try {
       const estado = await invoke<{ perfiles?: PerfilConocido[] }>('biometria_estado');
       return bloqueCenso(estado?.perfiles ?? [], defaultConfig.perfilPersus);
@@ -451,6 +457,8 @@ ${censo}`;
           proactivity: { proactiveAudio: true },
           // `handle` a null es "empieza una sesión nueva"; con testigo, retoma.
           sessionResumption: { handle: this.testigoSesion ?? undefined },
+          // Que una llamada larga no llene el contexto: ver `reconexion.ts`.
+          ...(this.sinCompresion ? {} : { contextWindowCompression: CONTEXTO_DESLIZANTE }),
           // Sin esto no hay transcripción en absoluto: con salida solo de audio
           // el modelo nunca envía partes de texto, así que el overlay únicamente
           // mostraba mensajes de sistema pese a que el README anunciaba
@@ -555,12 +563,6 @@ ${censo}`;
             this.limpiarTopeDeConexion();
             this.limpiarSesionEstable();
 
-            // Un testigo de sesión caducado no da error: el servidor cierra con
-            // 1007 «Invalid session handle» y nada más. Como el testigo se
-            // guardaba igual y el reintento lo volvía a mandar, cada intento
-            // fallaba idéntico y la app se quedaba en «Conectando…» para
-            // siempre, sin forma de salir desde la interfaz. Se tira y se
-            // empieza de cero, que es exactamente lo que hace falta.
             const motivo = String(event?.reason ?? '');
 
             // Por qué se cortó, en pantalla. Un cierre silencioso con reintento
@@ -574,23 +576,21 @@ ${censo}`;
               );
             }
 
-            if (this.testigoSesion && (event?.code === 1007 || /session handle/i.test(motivo))) {
-              console.warn('[Gemini] El servidor rechazó el testigo de sesión; se empieza de cero.');
-              this.testigoSesion = null;
-              localStorage.removeItem(CLAVE_TESTIGO);
-              // Sin memoria de la sesión anterior, pero conectando: se reintenta
-              // ya, no dentro de la espera larga que tocaría por los fallos.
-              this.retryCount = 0;
-            } else if (this.testigoSesion && this.retryCount >= 1) {
-              // El servidor no siempre dice que el testigo es el problema: puede
-              // aceptar la sesión y cerrarla acto seguido. Dos intentos seguidos
-              // que ni llegan a estables con el mismo testigo puesto bastan para
-              // sospechar de él, y una llamada sin memoria vale infinitamente
-              // más que una llamada que no conecta.
-              console.warn('[Gemini] Dos sesiones cortas seguidas con testigo; se descarta.');
+            // Qué hacer con el testigo de sesión y con la ventana deslizante
+            // lo decide `trasElCierre`, con el porqué de cada caso.
+            const decision = trasElCierre({
+              codigo: event?.code,
+              motivo,
+              hayTestigo: this.testigoSesion !== null,
+              intentos: this.retryCount,
+            });
+            if (decision.porque) console.warn(`[Gemini] ${decision.porque}`);
+            if (decision.tirarTestigo) {
               this.testigoSesion = null;
               localStorage.removeItem(CLAVE_TESTIGO);
             }
+            if (decision.sinCompresion) this.sinCompresion = true;
+            if (decision.reintentarYa) this.retryCount = 0;
 
             if (!this.isManualDisconnect) {
                 this.handleReconnect({ codigo: event?.code, motivo });
@@ -1005,13 +1005,11 @@ ${censo}`;
       }
     }
 
-    // La sesión puede haberse caído mientras Python trabajaba. Mandar sobre una
-    // sesión muerta lanza, y aquí nadie recogería la excepción. Pero el
-    // resultado NO se tira: se guarda para la reconexión, que lo contará.
+    // La sesión puede haberse caído mientras Python trabajaba: mandar sobre una
+    // sesión muerta lanza. El resultado NO se tira: `onSinLlamada` decide.
     if (!this.session) {
         console.warn(`[Gemini] Sesión caída; el resultado de ${name} espera a la reconexión.`);
-        this.pendientesAlReconectar.push(`${name}: ${response.result ?? response.error}`);
-        this.guardarPendientes();
+        this.onSinLlamada(`${name}: ${response.result ?? response.error}`);
         return;
     }
 

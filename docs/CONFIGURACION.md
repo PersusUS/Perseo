@@ -45,7 +45,7 @@ Dos sitios más donde vive la identidad, y que no son variables de entorno:
 | `PERSEO_TOKEN` | *(se genera)* | Manda sobre `<datos>/token.txt` |
 | `PERSEO_CORE_URL` | `http://127.0.0.1:8787` | **La lee la app**, para saber dónde está el núcleo |
 | `PERSEO_URL_BASE` | la primera interfaz no local | Lo que se pone en el enlace «ver detalle» de los avisos |
-| `PERSEO_DISPARADORES` | `correo,agenda` | Quién empieza trabajos solo. Vacío = nadie |
+| `PERSEO_DISPARADORES` | `correo,agenda,recordatorios,parte,vigilancias,seguimiento` | Quién empieza trabajos solo. Vacío = nadie |
 
 ### HTTPS
 
@@ -104,6 +104,25 @@ Un `buzon.json` mínimo, para probarlo sin cuenta de Google:
 | `PERSEO_AGENDA_INTERVALO` | `600` | Cada cuántos segundos se mira |
 | `PERSEO_AGENDA_ANTELACION` | `60` | Con cuántos minutos de antelación se avisa |
 
+## Los recordatorios
+
+Se guardan en `<datos>/recordatorios.json` y los apunta el propio Perseo cuando
+se le pide («avísame en veinte minutos»). No hace falta configurar nada.
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `PERSEO_RECORDATORIOS_INTERVALO` | `30` | Cada cuántos segundos se mira si alguno ha vencido |
+
+## El parte del día
+
+Se pide hablando («¿qué tengo hoy?») o por escrito, y junta agenda, correos que
+piden algo, recordatorios, tareas y hábitos. Además puede salir solo cada
+mañana, con el titular por Telegram: **viene apagado**.
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `PERSEO_PARTE_HORA` | *(vacío)* | `HH:MM` a la que sale solo, una vez al día (o en las tres horas siguientes si el núcleo arrancó más tarde). Vacío = solo cuando se pide |
+
 ## Google
 
 | Variable | Por defecto | Para qué |
@@ -112,9 +131,14 @@ Un `buzon.json` mínimo, para probarlo sin cuenta de Google:
 | `PERSEO_GOOGLE_OAUTH` · `_GMAIL` · `_CALENDAR` | las de Google | Se apuntan a otro sitio para verificar sin cuenta |
 | `PERSEO_GOOGLE_CUENTAS` | *(vacío)* | Varias cuentas, separadas por comas |
 
-Los ámbitos que se piden son los más pequeños que sirven: `gmail.readonly`,
-`calendar.readonly` y `gmail.compose` —que permite escribir un borrador pero
-**no** enviarlo—.
+Los ámbitos que se piden: `gmail.readonly`, `calendar.readonly`, `gmail.compose`
+y `calendar.events`. **`gmail.compose` permite enviar**, no solo escribir
+borradores —hasta el 2026-09-24 aquí ponía lo contrario, y era falso—. Lo que
+impide que salga un correo o una invitación sin tu sí es la política: enviar e
+invitar son de nivel `exterior` y se paran siempre ([ADR 0007](adr/0007-lo-que-sale-de-casa-se-para.md)).
+`calendar.events` llegó el 2026-09-24 para apuntar citas: con un permiso de
+antes, crear un evento contesta 403 hasta que vuelvas a pasar por
+`python -m perseo_core.servicios.autorizar_google`.
 
 ---
 
@@ -173,6 +197,71 @@ requiere acción». El detalle se lee en la web.
 El agente `web` **no alcanza la red de casa**: las direcciones privadas están
 cerradas a propósito, porque una página puede pedirle que mire dentro de tu
 propia red.
+
+---
+
+## Los recados
+
+El agente `recado` hace encargos enteros en la web con su propio navegador
+(Chrome, por `@playwright/mcp`). Necesita Node.js y Google Chrome; la primera vez
+instala su versión fijada de Playwright en `<datos>/navegador_mcp`.
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `PERSEO_RECADO_MODELO` | los del chat | Qué modelo de Gemini piensa los recados. Lista con comas: el segundo entra si el primero no tiene cuota |
+| `PERSEO_RECADO_PASOS` | `40` | Turnos de modelo por recado como mucho. Cada uno es una petición a Gemini |
+| `PERSEO_RECADO_VISIBLE` | *(vacío)* | `1` = el navegador se ve en pantalla mientras trabaja. Vacío = en segundo plano |
+
+Dos órdenes para prepararlo, en una terminal y no por el chat —lo que se escribe
+ahí pasa por un modelo en la nube—:
+
+```bash
+python commands/perseo.py navegador
+```
+
+Abre el navegador de los recados para que entres **a mano** en tus sitios una
+vez; las sesiones se quedan en `<datos>/navegador`.
+
+```bash
+python commands/perseo.py boveda guardar resy --sitio resy.com
+```
+
+Guarda una contraseña (o una tarjeta, con `--tarjeta` y `--tope 60`) cifrada con
+DPAPI en `<datos>/boveda.json`. Cada entrada vale solo en sus sitios. El modelo
+la escribe como `{{boveda:resy.clave}}` y nunca ve el valor.
+
+Lo que sale de casa —pagar, reservar, enviar, meter una tarjeta— **se para a
+esperar tu sí** aunque las confirmaciones estén apagadas, y ese sí se da en la
+tarjeta del panel o del móvil, no hablando. Ver el
+[ADR 0007](adr/0007-lo-que-sale-de-casa-se-para.md).
+
+### Las vigilancias
+
+«Avísame cuando haya entradas», «resérvalo si baja de 80 €». Se piden hablando
+o por escrito y viven en `<datos>/vigilancias.json`. Cada comprobación es un
+recado, y un recado gasta varias peticiones a Gemini, del mismo cubo que el
+chat; por eso los topes: cada una se mira **como mucho cada hora** (tres, si no
+se dice), no hay más de **cinco** a la vez, caducan a los siete días (treinta
+como mucho) y entre todas no pasan de **24 comprobaciones al día**. Mientras no
+se cumplen, no suena nada.
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `PERSEO_VIGILANCIAS_INTERVALO` | `60` | Cada cuántos segundos se mira si a alguna le toca |
+
+### El seguimiento
+
+Si un correo que el triaje marcó como «requiere acción» lleva **entre dos y
+catorce días** sin respuesta, Perseo te llama una vez para recordártelo, solo
+entre las nueve y las nueve. Antes mira el hilo en Gmail: si el último mensaje
+es tuyo, ya contestaste, y lo marca como atendido sin decir nada. No hace falta
+configurarlo; con el buzón de mentira no hay hilos que mirar y avisa igual.
+
+Solo llama por correos **de personas**. Lo que manda una máquina —boletines,
+avisos de plataformas, `noreply@`, `notifications@`, `support@`, eventos de
+Luma— no llama ni avisa: se queda en el panel de correo. Se reconoce por las
+cabeceras de envío (`List-Unsubscribe`, `List-Id`, `Auto-Submitted`,
+`Precedence`) y, si faltan, por la dirección.
 
 ---
 

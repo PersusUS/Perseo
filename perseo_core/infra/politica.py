@@ -49,6 +49,12 @@ ejecuta» en las cuatro filas. La razón y lo que cuesta están escritos en el
 propio interruptor, que es donde alguien los buscará el día que quiera
 volver a encenderlo.
 
+**Salvo una fila, desde el 2026-09-24: `exterior`.** Lo que sale de casa —un
+correo que se envía, un «Pagar» en una web, una tarjeta en un formulario— se
+para aunque el interruptor esté apagado. Llegó con los recados por la web, que
+es cuando Perseo empezó a poder gastar dinero y hablar con desconocidos en
+nombre de él. Ver ADR 0007.
+
 
 """
 
@@ -57,12 +63,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from . import identidad
-from ..dominio.niveles import CRITICO, IRREVERSIBLE, LIBRE, NIVELES, REVERSIBLE
+from ..dominio.niveles import CRITICO, EXTERIOR, IRREVERSIBLE, LIBRE, NIVELES, REVERSIBLE
 
 logger = logging.getLogger(__name__)
 
@@ -88,15 +95,31 @@ TABLA: dict[str, str] = {
     "memoria.anotar": REVERSIBLE,
     "memoria.conversacion": REVERSIBLE,
     "dev": REVERSIBLE,
-    # Un borrador de correo es reversible **porque no se puede enviar**: el
-    # testigo pide `gmail.compose`, que escribe borradores y no incluye `send`.
-    # Lo que queda es un texto en la carpeta de borradores, visible y borrable,
-    # y darle a enviar sigue siendo un gesto de una persona.
+    # Un borrador de correo es reversible: queda en la carpeta de borradores,
+    # visible y borrable. **No porque no se pueda enviar** —aquí ponía que
+    # `gmail.compose` no incluye `send`, y sí lo incluye (verificado el
+    # 2026-09-24)—, sino porque enviar es otra acción, `correo.enviar`, y esa
+    # es exterior.
     #
     # Esta línea tiene que estar. `correo` entero está como LIBRE por el triaje,
     # así que sin una entrada propia, redactar heredaría "libre" y escribiría en
     # la cuenta sin que constara en ninguna parte.
     "correo.redactar": REVERSIBLE,
+    # Enviar llega a otra persona y no se recoge: se para siempre (ADR 0007).
+    "correo.enviar": EXTERIOR,
+    # Un evento en su calendario se borra con un clic; invitar a alguien le
+    # manda un correo de Google en su nombre. `agenda` a secas es LIBRE (leer),
+    # así que crear tiene que estar aquí o heredaría «libre».
+    "agenda.crear": REVERSIBLE,
+    "agenda.invitar": EXTERIOR,
+    # Los recordatorios escriben en `<datos>/recordatorios.json`, no en el
+    # vault: apuntar y quitar son reversibles —lo apuntado se quita, lo quitado
+    # se vuelve a apuntar— y mirar o avisar no cambia nada.
+    "recordatorios": REVERSIBLE,
+    "recordatorios.listar": LIBRE,
+    "recordatorios.avisar": LIBRE,
+    # El parte del día solo lee: agenda, correos triados, recordatorios y espejos.
+    "parte": LIBRE,
     # Del PC, lo que solo abre cosas es libre; teclear y los atajos van a ciegas
     # sobre la ventana que tenga el foco, y eso puede ser cualquier cosa.
     "pc.abrir_app": LIBRE,
@@ -115,6 +138,20 @@ TABLA: dict[str, str] = {
     # aquí su nivel y piden su sí por el camino de siempre. Parar el turno del
     # chat entero sería preguntar dos veces por lo mismo.
     "chat": LIBRE,
+    # Un recado navega y teclea en el navegador de Perseo, que es suyo y no el
+    # de él: eso es reversible. Lo que sale de casa dentro de un recado —pulsar
+    # «Pagar», meter una tarjeta— no se decide aquí por el recado entero sino
+    # paso a paso, con `recado.exterior`, que es lo que pregunta el agente.
+    "recado": REVERSIBLE,
+    "recado.exterior": EXTERIOR,
+    # Las vigilancias se apuntan en `<datos>/vigilancias.json`, como los
+    # recordatorios: apuntar y quitar se deshacen. Cada comprobación es un
+    # `recado` y pasa por lo suyo, parada ante lo exterior incluida.
+    "vigilancias": REVERSIBLE,
+    "vigilancias.caducadas": LIBRE,
+    # El seguimiento mira hilos de Gmail (leer) y marca como atendido lo que ya
+    # tiene respuesta suya, que se desmarca en el panel.
+    "seguimiento": REVERSIBLE,
 }
 
 #: **Si el sistema para algo alguna vez, o no para nunca.**
@@ -140,6 +177,9 @@ TABLA: dict[str, str] = {
 #: salen sin preguntar. Esa es exactamente la puerta por la que el 2026-08-27
 #: salió un `Remove-Item` que nadie autorizó, y que es la razón de que el nivel
 #: exista. Ver la cabecera de `CRITICO` en `dominio/niveles.py`.
+#:
+#: **Lo que NO se pierde, desde el 2026-09-24:** `EXTERIOR`. Apagado o no, lo
+#: que sale de casa se para. Ver `hay_que_parar` y el ADR 0007.
 CONFIRMACIONES = os.environ.get("PERSEO_CONFIRMACIONES", "").strip().lower() in (
     "1",
     "si",
@@ -188,7 +228,7 @@ def iniciar(directorio_datos: Path | str) -> None:
     _fichero = Path(directorio_datos) / "confianza.txt"
     if not CONFIRMACIONES:
         logger.warning(
-            "Las confirmaciones están APAGADAS (politica.CONFIRMACIONES): nada se parará a pedir un sí, tampoco lo crítico."
+            "Las confirmaciones están APAGADAS (politica.CONFIRMACIONES): solo lo que sale de casa se parará a pedir un sí; lo crítico, no."
         )
 
 
@@ -221,6 +261,32 @@ def nivel(agente: str, peticion: dict[str, Any] | None = None) -> str:
 # Modo confianza
 # --------------------------------------------------------------------------- #
 
+#: Reintentos ante un fichero ocupado. En Windows no se puede borrar ni
+#: sustituir un fichero que otro hilo tiene abierto para leer, y la app pide
+#: `POST /confianza` dos veces casi a la vez al empezar la llamada: el
+#: 2026-09-21 a las 11:23 una de las dos se llevó un 500 con `WinError 32`.
+REINTENTOS_OCUPADO = 5
+ESPERA_OCUPADO = 0.02
+
+
+def _mientras_ocupado(operacion):
+    """Repite la operación mientras Windows diga que el fichero está ocupado."""
+    for intento in range(REINTENTOS_OCUPADO):
+        try:
+            return operacion()
+        except PermissionError:
+            if intento == REINTENTOS_OCUPADO - 1:
+                raise
+            time.sleep(ESPERA_OCUPADO)
+
+
+def _escribir_confianza(texto: str) -> None:
+    """Se escribe aparte y se sustituye de una vez: quien lea, lee lo viejo o lo nuevo."""
+    assert _fichero is not None
+    temporal = _fichero.with_suffix(".tmp")
+    _mientras_ocupado(lambda: temporal.write_text(texto, encoding="utf-8"))
+    _mientras_ocupado(lambda: os.replace(temporal, _fichero))
+
 
 def activar_confianza(minutos: float = MINUTOS_CONFIANZA) -> datetime:
     """Enciende el modo confianza y devuelve hasta cuándo dura."""
@@ -229,7 +295,7 @@ def activar_confianza(minutos: float = MINUTOS_CONFIANZA) -> datetime:
 
     minutos = max(1.0, min(float(minutos), MAX_MINUTOS_CONFIANZA))
     hasta = _ahora() + timedelta(minutes=minutos)
-    _fichero.write_text(hasta.isoformat(), encoding="utf-8")
+    _escribir_confianza(hasta.isoformat())
     logger.warning(
         "Modo confianza activado hasta las %s UTC: lo irreversible dejará de pedir un sí.",
         hasta.strftime("%H:%M"),
@@ -243,7 +309,8 @@ def desactivar_confianza() -> None:
     # minutos en la que lo irreversible seguiría pasando solo.
     olvidar_repeticiones()
     if _fichero is not None and _fichero.exists():
-        _fichero.unlink()
+        fichero = _fichero
+        _mientras_ocupado(lambda: fichero.unlink(missing_ok=True))
         logger.info("Modo confianza apagado.")
 
 
@@ -255,9 +322,19 @@ def confianza_hasta() -> datetime | None:
     """
     if _fichero is None or not _fichero.exists():
         return None
+    fichero = _fichero
     try:
-        hasta = datetime.fromisoformat(_fichero.read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
+        texto = _mientras_ocupado(lambda: fichero.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except OSError:
+        # Ocupado de verdad, o sin permiso: ahora no se sabe, así que no hay
+        # confianza —el lado seguro—, pero el fichero NO se borra. Borrarlo
+        # por no haber podido leerlo apagaría la confianza de otro.
+        return None
+    try:
+        hasta = datetime.fromisoformat(texto.strip())
+    except ValueError:
         # Un fichero ilegible se trata como "no hay confianza", que es el lado
         # seguro, y se quita de en medio.
         desactivar_confianza()
@@ -354,9 +431,11 @@ def pide_confirmacion(
         # que hable manda». Es la otra mitad de la lección de N-3, que en la
         # cabecera de `CRITICO` se cuenta desde el otro lado.
         return True
-    if en_juego == CRITICO:
-        # Lo crítico pregunta siempre, con confianza o sin ella. Es la única
-        # puerta que no se queda abierta durante una llamada.
+    if en_juego in (CRITICO, EXTERIOR):
+        # Lo crítico pregunta siempre, con confianza o sin ella. Lo exterior
+        # también: la confianza dice «estoy delante del PC», y lo que sale de
+        # casa no lo ve el PC sino otra persona. Son las dos puertas que no se
+        # quedan abiertas durante una llamada.
         return True
     if en_juego != IRREVERSIBLE:
         return False
@@ -380,8 +459,24 @@ def hay_que_parar(
     todo lo de arriba se sigue comprobando aunque hoy no llegue a aplicarse.
     """
     if not CONFIRMACIONES:
-        return False
+        # Apagadas, salvo lo que sale de casa (ADR 0007). Es el punto medio que
+        # el ADR 0005 dejó escrito sin tomar: el resto sigue sin preguntar.
+        return nivel(agente, peticion) == EXTERIOR
     return pide_confirmacion(agente, peticion, quien)
+
+
+def nivel_de_la_pregunta(trabajo: dict[str, Any]) -> str:
+    """El nivel de lo que un trabajo parado está preguntando.
+
+    El que guardó la pregunta, si lo guardó: un recado es reversible entero y
+    se para a mitad por un «Pagar», que es exterior. Si no hay, el del trabajo
+    por la tabla, que es lo que se miraba antes de que existiera el otro.
+    """
+    confirmacion = trabajo.get("confirmacion") or {}
+    guardado = confirmacion.get("nivel") if isinstance(confirmacion, dict) else None
+    if guardado in NIVELES:
+        return str(guardado)
+    return nivel(str(trabajo.get("agente") or ""), trabajo.get("peticion"))
 
 
 def resumir(
@@ -391,6 +486,11 @@ def resumir(
     peticion = peticion or {}
     accion = str(peticion.get("accion", "")).strip()
     que = f"{agente} · {accion}" if accion else agente
+    if peticion.get("para") or peticion.get("asunto"):
+        # Un correo que sale: la tarjeta dice a quién y de qué. Es lo que dice
+        # la petición; el agente comprueba antes de enviar que el borrador es
+        # ese, y si no lo es no envía nada.
+        que += f" a {peticion.get('para') or '?'}: «{peticion.get('asunto') or 'sin asunto'}»"
     if quien is not None and not identidad.es_el_dueno(quien):
         # Quién lo pidió es LO que hay que decidir aquí, así que va en el
         # titular y no en el detalle: una visita pidiendo teclear no es la
@@ -398,4 +498,6 @@ def resumir(
         return f"Lo pide {quien}, que no eres tú. ¿Lo autorizas? ({que})"
     if nivel(agente, peticion) == CRITICO:
         return f"¿Confirmas algo que no se puede deshacer? ({que})"
+    if nivel(agente, peticion) == EXTERIOR:
+        return f"¿Confirmas algo que sale de casa? ({que})"
     return f"¿Confirmas una acción irreversible? ({que})"

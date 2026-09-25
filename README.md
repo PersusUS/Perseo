@@ -16,7 +16,7 @@ irreversible a esperar tu sí. Esa parada viene apagada: [ADR 0005](docs/adr/000
 [![Licencia MIT](https://img.shields.io/badge/licencia-MIT-black.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-black.svg)](https://www.python.org/)
 [![Tauri 2](https://img.shields.io/badge/tauri-2-black.svg)](https://tauri.app/)
-[![919 pruebas](https://img.shields.io/badge/pruebas-919-black.svg)](#verificación)
+[![1230 pruebas](https://img.shields.io/badge/pruebas-1230-black.svg)](#verificación)
 
 [Qué es](#qué-es) · [Cómo se ve](#cómo-se-ve) · [Cómo funciona](#cómo-funciona) ·
 [Instalación](#instalación) · [Privacidad](#privacidad) · [English](README.en.md)
@@ -42,9 +42,12 @@ Raspberry Pi sin reescribir una línea de la interfaz.
 | 📬 **Correo triado antes de que lo leas** | Cada mensaje cae en un cajón —ignorar, interesante, requiere acción, no seguro— decidido por un modelo **local**, en tu GPU |
 | 🧠 **Memoria de verdad** | Notas Markdown en tu vault de Obsidian. Busca, lee y **añade**; nunca sobrescribe ni borra |
 | 👤 **Sabe quién habla** | Reconoce voces y caras con modelos locales, y aprende solo a quien no conoce. Apagado de fábrica |
-| 🛑 **Clasifica por riesgo, y sabe quién lo pide** | Cuatro niveles aplicados en el trabajador, no en el prompt. Encendidos, lo irreversible se para y espera tu sí — y una orden de una visita se para aunque estés delante. **Vienen apagados** desde el 2026-09-12: [ADR 0005](docs/adr/0005-las-confirmaciones-estan-apagadas.md) |
+| 🛑 **Clasifica por riesgo, y sabe quién lo pide** | Cinco niveles aplicados en el trabajador, no en el prompt. Encendidos, lo irreversible se para y espera tu sí — y una orden de una visita se para aunque estés delante. **Vienen apagados** desde el 2026-09-12 ([ADR 0005](docs/adr/0005-las-confirmaciones-estan-apagadas.md)), salvo lo que sale de casa ([ADR 0007](docs/adr/0007-lo-que-sale-de-casa-se-para.md)) |
 | 📱 **Te sigue al móvil** | Una PWA por la VPN de casa: chat, cola, correo y estado. Sin build y en un solo fichero |
 | 🤖 **Delega código** | Encarga tareas a subagentes (Claude Code u opencode) y te cuenta por dónde van mientras trabajan |
+| 🧾 **Hace recados en la web** | «Resérvame mesa el viernes» y lo hace solo, con su propio Chrome y tus sesiones, y te llama al acabar. Las claves salen de una bóveda cifrada que el modelo nunca ve, y pagar o reservar esperan tu sí: [ADR 0007](docs/adr/0007-lo-que-sale-de-casa-se-para.md) |
+| ✉️ **Envía y apunta** | Manda el correo que te redactó y apunta citas en tu Google Calendar. Lo que llega a otra persona —el correo, la invitación— espera tu sí en la tarjeta, y el correo solo sale si es exactamente el borrador que aprobaste |
+| 👁️ **Vigila y retoma** | «Avísame cuando haya entradas» —o «resérvalo en cuanto baje»— y mira cada pocas horas hasta que pasa. Y si un correo que pedía algo lleva dos días sin respuesta tuya en Gmail, te lo recuerda una vez |
 | 🔌 **Habla MCP** | Cliente propio para servidores locales y remotos: vault, navegador, Windows, correo triado, subagentes |
 
 ---
@@ -165,11 +168,16 @@ una implementación y mañana otra, sin tocar el agente.
 |---|---|---|
 | `correo` | Tría el entrante: ignorar / interesante / requiere acción / no seguro | Gmail, o un fichero JSON |
 | `agenda` | Avisa de lo que empieza pronto, una vez por evento | Google Calendar, o un fichero JSON |
+| `recordatorios` | «Avísame en veinte minutos», «recuérdame el jueves a las cinco»: apunta, repite y avisa, también tarde si el núcleo estaba apagado | Un fichero JSON en `<datos>/` |
+| `parte` | El parte del día de una vez: agenda, correos que piden algo, recordatorios, tareas y hábitos. Opcionalmente, cada mañana | Lo que ya leen los demás |
 | `memoria` | Busca, lee y **añade** en el vault. No sobrescribe ni borra | Ficheros Markdown, o el plugin REST de Obsidian |
 | `chat` | Sostiene el chat escrito del panel y del móvil, y usa las herramientas de los demás | Gemini REST con *function calling* |
 | `dev` | Encarga tareas de código a un subagente y **cuenta por dónde va** mientras trabaja | `claude-agent-sdk`, o `claude -p`, o opencode |
 | `pc` | Abre apps, teclea, mueve el ratón. Lista blanca y sin shell | `pyautogui` (opcional) |
 | `web` | Lee páginas y busca. No alcanza la red de casa | HTTP, sin navegador |
+| `recado` | Hace un encargo entero en la web, en segundo plano: entra con tus claves de la bóveda, se para antes de pagar o reservar y sigue desde ahí con tu sí | Chrome por `@playwright/mcp` y Gemini; en las pruebas, un guion y páginas de mentira |
+| `vigilancias` | Apunta lo que hay que vigilar; un disparador lanza cada pocas horas un `recado` que mira si ya se cumple, y calla mientras no | `<datos>/vigilancias.json` |
+| `seguimiento` | Avisa una vez de los correos que pedían algo y llevan dos días sin respuesta; lo que ya contestaste en Gmail lo da por atendido | El hilo de Gmail, solo sus etiquetas |
 | `mcp` | Habla con los servidores MCP declarados: vault, navegador, Windows, tiempo, correo triado | JSON-RPC por stdio con cliente propio; los remotos, por HTTP con el SDK oficial |
 | `eco`, `simulacro` | Los dos de pruebas: devuelven lo que reciben, sin tocar nada | — |
 
@@ -206,11 +214,15 @@ agente se ejecute:
 | `irreversible` | Teclear a ciegas, y **todo lo que no esté clasificado** | Se para y pide un sí |
 
 Y hay un cuarto, `critico` —borrar, tocar el registro, matar procesos—, que
-pregunta **siempre**, con modo confianza o sin él.
+pregunta **siempre**, con modo confianza o sin él. Y un quinto, `exterior`
+—lo que llega a otra persona o gasta dinero: pagar, reservar, enviar, meter una
+tarjeta—, que pregunta siempre **y cuyo sí no puede darlo el modelo**, ni
+escribiendo ni hablando: se da en la tarjeta del panel o del móvil.
 
 > **Y un interruptor por encima de todo esto.** Desde el 2026-09-12,
 > `politica.CONFIRMACIONES` está en `False` y la columna de la derecha dice
-> «se ejecuta» en las cuatro filas: nada se para, tampoco lo `critico`. La
+> «se ejecuta» en todas las filas menos una: nada se para, tampoco lo `critico`,
+> salvo lo `exterior` ([ADR 0007](docs/adr/0007-lo-que-sale-de-casa-se-para.md)). La
 > tabla, los niveles y sus pruebas siguen enteros — lo único que no llega a
 > aplicarse es la parada. El porqué, lo que cuesta y cómo se rearma —una
 > línea, o `PERSEO_CONFIRMACIONES=1`— están en [ADR 0005](docs/adr/0005-las-confirmaciones-estan-apagadas.md).
@@ -369,13 +381,13 @@ y las rutas de la API en [`docs/API.md`](docs/API.md).
 Nada de esto se comprueba a ojo, y se comprueba de dos maneras.
 
 **Pruebas unitarias** — cada pieza por separado, sin red y sin subprocesos.
-Dicen *qué* se ha roto: **919** en total.
+Dicen *qué* se ha roto: **1230** en total.
 
 ```bash
 python commands/perseo.py comprobar    # todo, en orden de coste
 
-python -m pytest                       # 760, el núcleo y los comandos
-cd RealTime && npm test                # 159, la interfaz
+python -m pytest                       # 1026, el núcleo y los comandos
+cd RealTime && npm test                # 204, la interfaz
 cd RealTime/src-tauri && cargo check   # y que el Rust compila
 ```
 
@@ -437,7 +449,7 @@ El detalle, en [`docs/PRIVACIDAD.md`](docs/PRIVACIDAD.md).
 
 Perseo funciona y se usa a diario, pero es un proyecto personal: está pensado
 para **una** persona, en **un** ordenador con Windows, y se nota. Lo que hay
-detrás son unas 49.100 líneas, 919 pruebas y 17 verificadores.
+detrás son unas 49.100 líneas, 1230 pruebas y 19 verificadores.
 
 Si lo clonas y algo no arranca, abre un
 [issue](https://github.com/PersusUS/Perseo/issues) — y si lo arreglas, mejor

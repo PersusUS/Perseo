@@ -37,59 +37,17 @@ el trabajo.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
+
+from .catalogo_recados import RECADOS
+from .catalogo_tipos import Herramienta, Parametro
 
 #: Las dos caras que hablan con un modelo. La PWA y Telegram no declaran
 #: herramientas: encolan trabajos y ya.
 CARAS = ("voz", "chat")
 
 
-@dataclass(frozen=True)
-class Parametro:
-    """Un argumento de una herramienta.
-
-    `voz` y `chat` son la misma explicación contada para cada cara. Si solo hay
-    una, vale para las dos: que una cara no tenga texto propio no significa que
-    no tenga el parámetro.
-    """
-
-    nombre: str
-    tipo: str
-    voz: str = ""
-    chat: str = ""
-    #: El `enum` del esquema. Uno solo, y por eso ya no puede haber dos listas
-    #: de acciones distintas para `controlar_pc`.
-    opciones: tuple[str, ...] = ()
-    obligatorio: bool = False
-
-    def descripcion(self, cara: str) -> str:
-        propia = self.voz if cara == "voz" else self.chat
-        return propia or self.chat or self.voz
-
-
-@dataclass(frozen=True)
-class Herramienta:
-    """Una herramienta, con una descripción por cara.
-
-    Una cadena vacía significa **esta cara no la tiene**, y es información, no
-    un olvido: `ver_pantalla` necesita ojos y solo existe en la llamada;
-    `encargar_codigo` tarda minutos y solo existe por escrito.
-    """
-
-    nombre: str
-    voz: str = ""
-    chat: str = ""
-    parametros: tuple[Parametro, ...] = ()
-
-    def esta_en(self, cara: str) -> bool:
-        return bool(self.voz if cara == "voz" else self.chat)
-
-    def descripcion(self, cara: str) -> str:
-        return self.voz if cara == "voz" else self.chat
-
-
-CATALOGO: tuple[Herramienta, ...] = (
+_BASE: tuple[Herramienta, ...] = (
     Herramienta(
         nombre="situacion_actual",
         voz=(
@@ -350,6 +308,155 @@ CATALOGO: tuple[Herramienta, ...] = (
                     "completadas",
                     "papelera",
                 ),
+                obligatorio=True,
+            ),
+        ),
+    ),
+    Herramienta(
+        nombre="parte_del_dia",
+        voz=(
+            "El parte del día de una vez: lo que queda hoy en la agenda, los correos que "
+            "piden algo, los recordatorios de hoy y cómo van las tareas y los hábitos. "
+            "Úsala cuando pregunte «¿qué tengo hoy?», «¿cómo va el día?» o te pida el parte. "
+            "Cuéntalo resumido y por orden de urgencia, no lo leas entero. Si una sección "
+            "dice que no se pudo mirar, dilo: no es un día vacío. Solo lectura."
+        ),
+        chat=(
+            "El parte del día: agenda de hoy, correos que piden algo, recordatorios de hoy, "
+            "tareas y hábitos. Resúmelo por urgencia; si una sección no se pudo mirar, dilo."
+        ),
+    ),
+    Herramienta(
+        nombre="crear_recordatorio",
+        voz=(
+            "Apunta un recordatorio y Perseo avisará a esa hora: por el móvil, y en la "
+            "cola del panel. Úsala cuando el señor Persus diga «recuérdame», «avísame» o "
+            "«que no se me olvide» con una hora o un plazo. Di cuándo de UNA forma: "
+            "en_minutos para «dentro de veinte minutos»; hora con dias o dia_semana para "
+            "«mañana a las nueve» (hora 09:00, dias 1) o «el jueves a las cinco» (hora "
+            "17:00, dia_semana jueves) —no hace falta que sepas la fecha de hoy—; o "
+            "fecha_hora solo para una fecha concreta. La respuesta repite la hora ya "
+            "resuelta: DILA tal cual, para que él oiga si se entendió mal. Es reversible y "
+            "no gasta cuota: no pidas permiso para apuntar. NO la uses para cosas que haya "
+            "que hacer sin hora: eso es crear_tarea."
+        ),
+        chat=(
+            "Apunta un recordatorio que avisará a esa hora (móvil y panel). Cuándo, de una "
+            "forma: en_minutos; hora con dias o dia_semana («mañana a las 9» es hora 09:00 "
+            "y dias 1); o fecha_hora en hora local (AAAA-MM-DDTHH:MM) para una fecha "
+            "concreta. Repite la hora que devuelve, que es la ya resuelta. Para lo que no "
+            "tiene hora está crear_tarea."
+        ),
+        parametros=(
+            Parametro(
+                nombre="texto",
+                tipo="string",
+                voz="Qué hay que recordarle, corto y como lo diría él («llamar al fontanero»).",
+                chat="Qué hay que recordar, corto.",
+                obligatorio=True,
+            ),
+            Parametro(
+                nombre="en_minutos",
+                tipo="number",
+                voz="Dentro de cuántos minutos. Para plazos cortos: «en media hora» son 30.",
+                chat="Dentro de cuántos minutos.",
+            ),
+            Parametro(
+                nombre="hora",
+                tipo="string",
+                voz="A qué hora, HH:MM en 24 horas. Sola es la próxima vez que llega esa hora.",
+                chat="A qué hora, HH:MM. Sola es la próxima vez que llega.",
+            ),
+            Parametro(
+                nombre="dias",
+                tipo="number",
+                voz="Con hora: dentro de cuántos días. 0 hoy, 1 mañana, 2 pasado mañana.",
+                chat="Con hora: dentro de cuántos días (0 hoy, 1 mañana).",
+            ),
+            Parametro(
+                nombre="dia_semana",
+                tipo="string",
+                voz="Con hora: qué día de la semana. Si es hoy, el de la semana que viene.",
+                chat="Con hora: qué día de la semana.",
+                opciones=("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"),
+            ),
+            Parametro(
+                nombre="fecha_hora",
+                tipo="string",
+                voz="Solo para una fecha concreta: AAAA-MM-DDTHH:MM, hora local.",
+                chat="Una fecha concreta: AAAA-MM-DDTHH:MM, hora local.",
+            ),
+            Parametro(
+                nombre="repetir",
+                tipo="string",
+                voz="Si se repite. Sin nada, una sola vez.",
+                chat="Si se repite. Sin nada, una sola vez.",
+                opciones=("nunca", "diario", "laborables", "semanal"),
+            ),
+        ),
+    ),
+    Herramienta(
+        nombre="consultar_recordatorios",
+        voz=(
+            "Los recordatorios pendientes, con su hora. Úsala cuando pregunte qué tiene "
+            "apuntado o antes de quitar uno. Es de solo lectura."
+        ),
+        chat="Los recordatorios pendientes, con su hora. Solo lectura.",
+    ),
+    Herramienta(
+        nombre="cancelar_recordatorio",
+        voz=(
+            "Quita un recordatorio pendiente, buscándolo por el principio de su texto. Si "
+            "encajan dos no quita ninguno y te dirá cuáles: entonces pregúntale a cuál se "
+            "refiere."
+        ),
+        chat=(
+            "Quita un recordatorio pendiente por el principio de su texto. Si encajan dos no "
+            "quita ninguno."
+        ),
+        parametros=(
+            Parametro(
+                nombre="texto",
+                tipo="string",
+                voz="El texto del recordatorio, o su principio.",
+                chat="El texto del recordatorio, o su principio.",
+                obligatorio=True,
+            ),
+        ),
+    ),
+    Herramienta(
+        nombre="redactar_borrador",
+        voz=(
+            "Deja un BORRADOR de correo en el Gmail del señor Persus; no lo envía. Úsala "
+            "cuando te dicte un correo o te pida contestar a uno. Si es una respuesta, el "
+            "destinatario sale del correo que estabais comentando: no lo inventes. Léele el "
+            "texto antes si te lo pide. Si además quiere que salga, después enviar_borrador "
+            "con lo que te devuelva esta."
+        ),
+        chat=(
+            "Deja un borrador de correo en Gmail; no lo envía. El destinatario de una "
+            "respuesta sale del correo triado: no lo inventes. Para que salga, después "
+            "enviar_borrador con el id que devuelve."
+        ),
+        parametros=(
+            Parametro(
+                nombre="para",
+                tipo="string",
+                voz="La dirección de correo del destinatario, completa.",
+                chat="La dirección del destinatario.",
+                obligatorio=True,
+            ),
+            Parametro(
+                nombre="asunto",
+                tipo="string",
+                voz="El asunto. En una respuesta, «Re: » y el asunto original.",
+                chat="El asunto.",
+            ),
+            Parametro(
+                nombre="texto",
+                tipo="string",
+                voz="El cuerpo del correo, ya redactado, con saludo y despedida.",
+                chat="El cuerpo del correo, ya redactado.",
                 obligatorio=True,
             ),
         ),
@@ -638,6 +745,11 @@ CATALOGO: tuple[Herramienta, ...] = (
         ),
     ),
 )
+
+#: El catálogo entero. Los recados y las vigilancias viven en
+#: `catalogo_recados.py` por el techo de líneas, no por ser de otra familia: se
+#: declaran una vez igual, y aquí se juntan en el orden en que las ve el modelo.
+CATALOGO: tuple[Herramienta, ...] = _BASE[:-1] + RECADOS + _BASE[-1:]
 
 
 def esquema(herramienta: Herramienta, cara: str) -> dict[str, Any]:

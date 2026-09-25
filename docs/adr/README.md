@@ -23,6 +23,7 @@ cocer— y una decisión que solo existe en un disco no gobierna nada.
 | [0004](0004-una-copia-deliberada-de-ejecutable-real.md) | Una copia deliberada: `ejecutable_real` |
 | [0005](0005-las-confirmaciones-estan-apagadas.md) | Las confirmaciones están apagadas, y con qué se vuelven a encender |
 | [0006](0006-dos-pantallas-para-el-mismo-panel.md) | Dos pantallas para el mismo panel, y por qué no se pueden juntar |
+| [0007](0007-lo-que-sale-de-casa-se-para.md) | Lo que sale de casa se para, aunque las confirmaciones estén apagadas |
 
 ## El formato
 

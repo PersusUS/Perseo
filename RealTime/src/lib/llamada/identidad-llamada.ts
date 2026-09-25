@@ -27,7 +27,7 @@
  */
 import { useRef, useState } from 'react';
 
-import { avisoCaras, avisoHablante, esElSenor } from '../identidad/quien-hay';
+import { avisoCaras, avisoDuda, avisoHablante, esElSenor } from '../identidad/quien-hay';
 import { vigilante, type CaraDetectada } from '../identidad/identidad';
 
 /** Cuánto tiene que pasar para repetir el mismo aviso, en ms. */
@@ -118,6 +118,10 @@ export function useIdentidad(opciones: Opciones) {
         // delante de la cámara. Ver `quien-hay.ts`.
         avisar(avisoHablante(nombre, opciones.perfilDueno()));
       }
+    };
+    vigilante.onDuda = () => {
+      hablanteRef.current = null;
+      avisar(avisoDuda());
     };
     vigilante.onCaras = (lista) => {
       setCaras(lista);

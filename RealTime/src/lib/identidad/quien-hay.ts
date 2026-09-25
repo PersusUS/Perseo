@@ -89,6 +89,24 @@ export function etiquetaPersona(nombre: string, perfilPersus: string): string {
   return `${nombre} (NO es ${TRATO_DUENO})`;
 }
 
+/**
+ * El aviso de cuando el reconocimiento no sabe quién habla.
+ *
+ * Sin él, el modelo seguía con el último aviso que tuviera —«quien habla es el
+ * señor Persus»— aunque ahora hablara otro, y así se le llamaba señor Persus a
+ * la visita. Que no se sepa también es un dato, y hay que darlo.
+ */
+export function avisoDuda(): string {
+  return (
+    `[IDENTIDAD] No reconozco con seguridad a quien habla ahora. No le llames ${TRATO_COMILLAS} ` +
+    'hasta que un aviso diga que es él: trátale de usted, sin nombre.'
+  );
+}
+
+/** Lo que se le dice al modelo al abrir la llamada si el reconocimiento está apagado. */
+export const AVISO_SIN_RECONOCIMIENTO =
+  `[IDENTIDAD] El reconocimiento de personas está apagado en este ordenador: quien te habla es ${TRATO_DUENO}.`;
+
 /** El aviso de quién habla ahora, listo para `informarIdentidad`. */
 export function avisoHablante(nombre: string, perfilPersus: string): string {
   if (esElSenor(nombre, perfilPersus)) {

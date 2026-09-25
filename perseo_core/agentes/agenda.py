@@ -31,10 +31,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
-from ..infra import disparadores
-from ..servicios import google_api
-from ..infra.router import registrar
+from ..infra import disparadores, politica
+from ..servicios import google_api, recordatorios
+from ..infra.router import NecesitaConfirmacion, aprobado, registrar
 from ..dominio.evento import Evento
+from ..dominio.niveles import EXTERIOR
 from ..infra.configuracion import Configuracion
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,21 @@ class CalendarioFalso:
         # tarde es ruido, no información.
         dentro = [e for e in eventos if e.momento is not None and ahora <= e.momento <= limite]
         return sorted(dentro, key=lambda e: e.momento or ahora)
+
+    async def crear(
+        self, titulo: str, inicio: datetime, fin: datetime, lugar: str = "",
+        descripcion: str = "", invitados: tuple[str, ...] = (),
+    ) -> dict[str, str]:
+        """Lo añade al JSON: es lo que deja probar el circuito entero sin Google."""
+        def escribir() -> dict[str, str]:
+            crudo = json.loads(self._ruta.read_text(encoding="utf-8") or "[]") if self._ruta.exists() else []
+            nuevo = Evento(id=f"falso-{len(crudo) + 1}", titulo=titulo, inicio=inicio.isoformat(),
+                           fin=fin.isoformat(), lugar=lugar)
+            crudo.append({**nuevo.a_dict(), "invitados": list(invitados)})
+            self._ruta.write_text(json.dumps(crudo, ensure_ascii=False, indent=1), encoding="utf-8")
+            return {"id": nuevo.id, "enlace": ""}
+
+        return await asyncio.to_thread(escribir)
 
 
 def abrir_calendario(cfg: Configuracion) -> Calendario | None:
@@ -146,14 +162,17 @@ def calendario() -> Calendario | None:
 async def _agenda(trabajo: dict[str, Any]) -> dict[str, Any]:
     """Prepara el aviso de lo que viene, o lee lo próximo si se le pide.
 
-    Solo lee y ordena: no crea ni mueve nada. Crear y mover son de la Fase E y
-    pasarán por `NecesitaConfirmacion`, porque mover el evento equivocado en el
-    calendario de alguien no tiene deshacer cómodo.
+    Lee y ordena, y desde el 2026-09-24 también apunta (`crear`). Mover y
+    borrar siguen sin estar: mover el evento equivocado en el calendario de
+    alguien no tiene deshacer cómodo.
     """
     peticion = trabajo.get("peticion") or {}
 
-    if str(peticion.get("accion", "avisar")).strip().lower() == "proximos":
+    accion = str(peticion.get("accion", "avisar")).strip().lower()
+    if accion == "proximos":
         return await _proximos(peticion)
+    if accion == "crear":
+        return await _crear(trabajo, peticion)
 
     crudos = peticion.get("eventos") or []
     eventos = [Evento.desde_dict(e) for e in crudos if isinstance(e, dict)]
@@ -186,6 +205,72 @@ async def _proximos(peticion: dict[str, Any]) -> dict[str, Any]:
         "horas": horas,
         "eventos": [e.a_dict() for e in eventos],
         "titular": titular(eventos),
+    }
+
+
+#: La duración si no se dice: la de una cita cualquiera.
+DURACION_POR_DEFECTO = 60
+
+
+def _inicio(crudo: Any, ahora: datetime) -> datetime:
+    texto = str(crudo or "").strip().replace(" ", "T", 1)
+    try:
+        inicio = datetime.fromisoformat(texto)
+    except ValueError:
+        raise ValueError(f"«{crudo}» no es una fecha y hora (AAAA-MM-DDTHH:MM)") from None
+    if inicio.tzinfo is None:
+        inicio = inicio.replace(tzinfo=ahora.tzinfo)
+    if inicio < ahora - timedelta(hours=1):
+        raise ValueError(f"el {inicio:%d/%m a las %H:%M} ya ha pasado")
+    return inicio
+
+
+async def _crear(trabajo: dict[str, Any], peticion: dict[str, Any]) -> dict[str, Any]:
+    """Apunta un evento. Con invitados, antes pregunta: les llega un correo en su nombre.
+
+    La pregunta la hace el agente y no el trabajador por la cara de voz: su
+    tabla de Rust fija una sola acción por herramienta, y crear con o sin
+    invitados es la misma herramienta. Se pregunta **antes** de tocar nada, así
+    que tras el sí, empezar desde el principio no repite ningún evento.
+    """
+    calendario_activo = calendario()
+    crear = getattr(calendario_activo, "crear", None)
+    if crear is None:
+        raise RuntimeError("No hay calendario donde apuntar: hace falta PERSEO_AGENDA=google (o falso).")
+    ahora = recordatorios.ahora_local()
+    titulo = " ".join(str(peticion.get("titulo") or "").split())[:200]
+    if not titulo:
+        return {"texto": "No se ha apuntado: falta el título."}
+    try:
+        inicio = _inicio(peticion.get("inicio"), ahora)
+        minutos = max(5, min(int(float(peticion.get("duracion_min") or DURACION_POR_DEFECTO)), 24 * 60))
+    except (TypeError, ValueError) as e:
+        return {"texto": f"No se ha apuntado: {e}."}
+    crudos = peticion.get("invitados") or []
+    if isinstance(crudos, str):
+        crudos = crudos.replace(";", ",").split(",")
+    invitados = tuple(sorted({str(c).strip().lower() for c in crudos if "@" in str(c)}))
+
+    cuando = recordatorios.describir(inicio, ahora)
+    if invitados and not aprobado(trabajo) and politica.hay_que_parar(
+        "agenda", {"accion": "invitar"}, trabajo.get("quien")
+    ):
+        raise NecesitaConfirmacion(
+            f"¿Invitar a {', '.join(invitados)} a «{titulo}» {cuando}? Les llegará la invitación de Google.",
+            f"Evento: {titulo}\nCuándo: {inicio.isoformat()} ({minutos} min)",
+            nivel=EXTERIOR,
+        )
+    creado = await crear(
+        titulo, inicio, inicio + timedelta(minutes=minutos),
+        str(peticion.get("lugar") or ""), str(peticion.get("descripcion") or ""), invitados,
+    )
+    con_quien = f", con invitación a {', '.join(invitados)}" if invitados else ""
+    return {
+        "accion": "crear",
+        "texto": f"Apuntado en tu calendario: «{titulo}» {cuando}, {minutos} min{con_quien}.",
+        "id": creado.get("id", ""),
+        # Por Telegram, sin el título: es contenido suyo.
+        "titular": "Evento apuntado en el calendario",
     }
 
 
@@ -226,7 +311,10 @@ async def _vigilar_calendario(ctx: disparadores.Contexto) -> None:
         ).cargar()
     assert _avisados is not None
 
-    eventos = await _calendario.proximos(timedelta(minutes=ctx.cfg.agenda_antelacion))
+    try:
+        eventos = await _calendario.proximos(timedelta(minutes=ctx.cfg.agenda_antelacion))
+    except google_api.SinCredenciales as e:
+        raise disparadores.Degradado("google", str(e), google_api.ARREGLO) from e
     pendientes = set(_avisados.sin_ver([e.id for e in eventos]))
     nuevos = [e for e in eventos if e.id in pendientes][:TOPE_LOTE]
     if not nuevos:

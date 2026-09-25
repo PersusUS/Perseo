@@ -30,8 +30,11 @@ def test_las_herramientas_estan_completas_y_con_forma() -> None:
         "situacion_actual", "consultar_correo", "detalle_correo",
         "consultar_agenda", "consultar_habitos",
         "consultar_tareas", "crear_tarea", "mover_tarea",
+        "crear_recordatorio", "consultar_recordatorios", "cancelar_recordatorio",
+        "redactar_borrador", "parte_del_dia",
         "buscar_en_memoria", "leer_nota", "guardar_recuerdo",
         "buscar_en_web", "leer_pagina", "controlar_pc", "encargar_codigo",
+        "encargar_recado", "vigilancias", "enviar_borrador", "crear_evento",
         "consultar_trabajo",
         "listar_mcp", "usar_mcp", "responder_confirmacion",
     }

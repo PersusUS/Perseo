@@ -138,6 +138,10 @@ class Configuracion:
     #: el puerto de siempre no cambia la dirección, la rompe — y con ella los
     #: accesos directos que ya hay guardados. Ver `_donde_escuchar`.
     tls_puerto: int
+    #: A qué hora sale solo el parte del día (HH:MM). **Vacío = apagado**, que es
+    #: lo de fábrica: un aviso diario al móvil que nadie ha pedido se desactiva
+    #: el segundo día. Pedido a mano, el parte sale siempre.
+    parte_hora: str = ""
 
     @property
     def telegram_configurado(self) -> bool:
@@ -371,7 +375,7 @@ def cargar_configuracion() -> Configuracion:
     # token. Se puede acotar la lista, o vaciarla, con `PERSEO_DISPARADORES=`.
     disparadores = tuple(
         pieza.strip()
-        for pieza in var("PERSEO_DISPARADORES", "correo,agenda").split(",")
+        for pieza in var("PERSEO_DISPARADORES", "correo,agenda,recordatorios,parte,vigilancias,seguimiento").split(",")
         if pieza.strip()
     )
 
@@ -391,6 +395,8 @@ def cargar_configuracion() -> Configuracion:
         intervalos={
             "correo": float(var("PERSEO_CORREO_INTERVALO", "300")),
             "agenda": float(var("PERSEO_AGENDA_INTERVALO", "600")),
+            "recordatorios": float(var("PERSEO_RECORDATORIOS_INTERVALO", "30")),
+            "vigilancias": float(var("PERSEO_VIGILANCIAS_INTERVALO", "60")),
         },
         correo_buzon=var("PERSEO_CORREO", "").strip().lower(),
         correo_falso=var("PERSEO_CORREO_FALSO", str(directorio / "buzon.json")),
@@ -416,6 +422,7 @@ def cargar_configuracion() -> Configuracion:
         tls_certificado=var("PERSEO_TLS_CERT", ""),
         tls_clave=var("PERSEO_TLS_CLAVE", ""),
         tls_puerto=int(var("PERSEO_TLS_PUERTO", str(puerto + 1))),
+        parte_hora=var("PERSEO_PARTE_HORA", "").strip(),
     )
 
 

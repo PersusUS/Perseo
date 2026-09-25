@@ -118,6 +118,42 @@ def test_apagar_la_confianza() -> None:
     assert not politica.hay_confianza()
 
 
+def test_apagar_con_el_fichero_ocupado_reintenta_y_no_revienta(monkeypatch) -> None:
+    """El 500 del 2026-09-21: dos `POST /confianza` a la vez, y Windows que no
+    deja borrar un fichero que otro hilo tiene abierto (`WinError 32`)."""
+    politica.activar_confianza(30)
+    real = Path.unlink
+    intentos = []
+
+    def ocupado_dos_veces(self, *args, **kwargs):
+        intentos.append(1)
+        if len(intentos) <= 2:
+            raise PermissionError(32, "El proceso no tiene acceso al archivo")
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(politica, "ESPERA_OCUPADO", 0)
+    monkeypatch.setattr(Path, "unlink", ocupado_dos_veces)
+    politica.desactivar_confianza()
+    assert len(intentos) == 3
+    assert not politica.hay_confianza()
+
+
+def test_no_poder_leer_el_fichero_no_lo_borra(tmp_path: Path, monkeypatch) -> None:
+    """Ocupado no es ilegible: borrarlo por no poder leerlo apagaría la confianza de otro."""
+    politica.iniciar(tmp_path)
+    politica.activar_confianza(30)
+
+    def siempre_ocupado(self, *args, **kwargs):
+        raise PermissionError(32, "ocupado")
+
+    monkeypatch.setattr(politica, "ESPERA_OCUPADO", 0)
+    monkeypatch.setattr(Path, "read_text", siempre_ocupado)
+    assert politica.confianza_hasta() is None
+    monkeypatch.undo()
+    assert (tmp_path / "confianza.txt").exists()
+    assert politica.hay_confianza()
+
+
 def test_el_resumen_dice_que_es_sin_soltar_el_detalle() -> None:
     """Sale por Telegram, donde solo va el titular."""
     resumen = politica.resumir("pc", {"accion": "escribir_teclado", "parametro": "mi contraseña"})

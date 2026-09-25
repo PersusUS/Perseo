@@ -1,5 +1,6 @@
 /**
- * La pantalla, vista por el modelo: una captura cada dos segundos.
+ * La pantalla, vista por el modelo: una captura cada dos segundos, que solo se
+ * manda si ha cambiado (`pantalla-cambio.ts`).
  * La captura no la hace el navegador sino Rust (`capture_screen_base64`, con
  * `xcap`), porque el WebView embebido no puede grabar el escritorio que lo
  * contiene. Aquí solo está el reloj: pedir el JPEG, mandarlo a la sesión de
@@ -14,17 +15,20 @@ import { invoke } from '@tauri-apps/api/core';
 import { geminiClient } from './gemini-live';
 import { defaultConfig } from '../datos/config';
 import { apuntar } from './diagnostico';
+import { CambioDePantalla, miniatura } from './pantalla-cambio';
 
 class ScreenManager {
   private intervalId: number | null = null;
   private isCapturing = false;
   private isRunning = false;
   public onFrameReady: ((base64: string) => void) | null = null;
+  private cambio = new CambioDePantalla();
 
   start() {
     if (this.intervalId) return;
     
     this.isRunning = true;
+    this.cambio.olvidar();
 
     const fps = defaultConfig.screenFps;
     const intervalMs = 1000 / fps;
@@ -49,6 +53,10 @@ class ScreenManager {
       const traida = performance.now();
 
       // Checking again in case stop() was called while we were waiting for invoke
+      if (!this.isRunning) return;
+
+      // Igual que la última que se mandó: el modelo ya la tiene.
+      if (!this.cambio.merece(await miniatura(base64Jpeg), Date.now())) return;
       if (!this.isRunning) return;
 
       geminiClient.sendVideoChunk(base64Jpeg);
@@ -78,6 +86,11 @@ class ScreenManager {
     if (this.intervalId) {
       window.clearInterval(this.intervalId);
       this.intervalId = null;
+      // Al cuaderno: es la cifra que dice si la comparación ahorra algo.
+      const { mandadas, ahorradas } = this.cambio;
+      if (mandadas + ahorradas > 0) {
+        apuntar(`pantalla: ${mandadas} mandadas, ${ahorradas} iguales sin mandar`);
+      }
     }
   }
 }

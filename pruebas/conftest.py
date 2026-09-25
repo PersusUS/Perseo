@@ -26,6 +26,12 @@ from perseo_core.infra import almacen, politica  # noqa: E402
 from perseo_core.infra.configuracion import Configuracion, cargar_configuracion  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _marcador_apartado(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ninguna prueba deja el marcador de llamada donde lo vigila la app de verdad."""
+    monkeypatch.setenv("PERSEO_MARCADOR_DIR", str(tmp_path))
+
+
 @pytest.fixture()
 def datos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Un directorio de datos aislado, con el entorno apuntando ahí.

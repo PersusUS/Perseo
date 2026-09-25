@@ -159,6 +159,7 @@ jobs:
       # Fuera de la lista, y no por olvido:
       #   verificar_router      necesita Ollama con un modelo cargado.
       #   verificar_palabra_clave  necesita la voz de Windows y un modelo de audio.
+      #   verificar_recado      necesita Windows (la bóveda cifra con DPAPI), Node y Chrome.
       # El de la Fase D se queda: sin Ollama salta solas las comprobaciones que
       # dependen del modelo y comprueba el resto.
       - name: Verificadores

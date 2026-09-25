@@ -19,6 +19,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from ..dominio.mensaje import es_automatico
+
 #: Cuántos trabajos de correo hechos se miran hacia atrás como mucho. Un lote
 #: son 20 mensajes (TOPE_LOTE en perseo_core/agentes/correo.py); con 40 trabajos hay
 #: correo de sobra y la consulta sigue siendo instantánea.
@@ -89,15 +91,20 @@ def cargar_correos(ruta_db: Path, tope_trabajos: int = TOPE_TRABAJOS) -> list[di
             if not id_mensaje or id_mensaje in vistos:
                 continue
             original = mensajes.get(id_mensaje) or {}
+            remitente = str(clasificado.get("remitente") or original.get("remitente") or "")
             vistos[id_mensaje] = {
                 "id": id_mensaje,
-                "remitente": str(clasificado.get("remitente") or original.get("remitente") or ""),
+                "remitente": remitente,
                 "asunto": str(clasificado.get("asunto") or original.get("asunto") or ""),
                 "extracto": str(original.get("extracto") or ""),
                 "fecha": str(original.get("fecha") or ""),
+                "hilo": str(original.get("hilo") or ""),
                 "clase": str(clasificado.get("clase") or ""),
                 "motivo": str(clasificado.get("motivo") or ""),
                 "hecho": marcas.get(id_mensaje, ""),
+                # Los triados antes de pedir las cabeceras de envío no traen la
+                # marca: para esos, lo que diga la dirección.
+                "automatico": bool(original.get("automatico")) or es_automatico(remitente),
             }
     return list(vistos.values())
 

@@ -41,7 +41,7 @@ from typing import Any
 import aiohttp
 
 from ..dominio.evento import Evento
-from ..dominio.mensaje import Mensaje
+from ..dominio.mensaje import CABECERAS_DE_ENVIO, Mensaje, es_automatico
 from ..infra.configuracion import Configuracion, cargar_configuracion
 
 logger = logging.getLogger(__name__)
@@ -71,6 +71,24 @@ class SinCredenciales(Exception):
     """No hay con qué hablar con Google. No es un error: es algo sin configurar."""
 
 
+#: La orden que lo arregla, escrita una vez: la dicen el estado, el registro y
+#: el aviso al móvil.
+ARREGLO = "python -m perseo_core.servicios.autorizar_google"
+
+
+class TestigoCaducado(SinCredenciales):
+    """Las credenciales están, pero Google ya no las acepta (`invalid_grant`).
+
+    Es lo que pasa cada siete días mientras el proyecto de Cloud siga «En
+    pruebas» (H-39), o si se revoca el permiso. Es su propia clase porque es el
+    único caso que se arregla solo con volver a autorizar, y porque entre el 6 y
+    el 23 de septiembre de 2026 estuvo pasando sin que nadie se enterara: 1.460
+    trazas en el registro, ni un aviso, diecisiete días sin correo ni agenda.
+    """
+
+    __test__ = False  # que pytest no la tome por una clase de pruebas
+
+
 @dataclass(frozen=True)
 class Credenciales:
     """Lo que hace falta para refrescar el acceso, y nada más.
@@ -83,6 +101,10 @@ class Credenciales:
     client_id: str
     client_secret: str
     refresh_token: str
+    #: De dónde se leyeron y cómo estaba el fichero entonces. Sirve para notar
+    #: que alguien ha vuelto a autorizar y recogerlo sin reiniciar el núcleo.
+    ruta: Path | None = None
+    firma: float = 0.0
 
     @classmethod
     def desde_fichero(cls, ruta: Path) -> "Credenciales":
@@ -103,7 +125,16 @@ class Credenciales:
             client_id=str(datos["client_id"]),
             client_secret=str(datos["client_secret"]),
             refresh_token=str(datos["refresh_token"]),
+            ruta=ruta,
+            firma=_firma(ruta),
         )
+
+
+def _firma(ruta: Path) -> float:
+    try:
+        return ruta.stat().st_mtime
+    except OSError:
+        return 0.0
 
 
 class Sesion:
@@ -130,6 +161,12 @@ class Sesion:
         }
         async with self._http.post(f"{URL_TESTIGO()}/token", data=carga) as respuesta:
             datos = await respuesta.json()
+            if respuesta.status != 200 and datos.get("error") == "invalid_grant":
+                raise TestigoCaducado(
+                    "Google ya no acepta el permiso guardado: caducó o se revocó "
+                    f"({datos.get('error_description') or 'invalid_grant'}). "
+                    f"Vuelve a autorizar con `{ARREGLO}`."
+                )
             if respuesta.status != 200:
                 raise SinCredenciales(
                     f"Google no dio testigo ({respuesta.status}): "
@@ -166,9 +203,11 @@ class Sesion:
     async def mandar(self, url: str, cuerpo: dict[str, Any]) -> dict[str, Any]:
         """POST autenticado. Mismo trato del 401 que `pedir`.
 
-        Existe por una sola cosa: crear borradores. Todo lo demás que hace este
-        módulo lee, y eso no es casualidad — el testigo pide `gmail.compose`, que
-        escribe borradores y **no** envía.
+        Crea borradores, envía el que se aprobó y apunta eventos. Lo que puede
+        hacer el testigo lo dicen sus ámbitos (`autorizar_google.AMBITOS`), y ojo:
+        `gmail.compose` **sí envía** —«Manage drafts and send emails», dice
+        Google—. Que nada salga sin su sí no lo garantiza el permiso sino la
+        política: enviar es `correo.enviar`, nivel `exterior` (ADR 0007).
         """
         if not self._testigo or time.monotonic() >= self._caduca:
             await self._refrescar()
@@ -185,8 +224,8 @@ class Sesion:
                     if respuesta.status == 403:
                         raise RuntimeError(
                             f"Google respondió 403: {mensaje}. Si habla de permisos, el "
-                            "testigo es de antes de gmail.compose: vuelve a ejecutar "
-                            "`python -m perseo_core.servicios.autorizar_google`."
+                            "testigo es de antes de que se pidiera este ámbito: vuelve a "
+                            "ejecutar `python -m perseo_core.servicios.autorizar_google`."
                         )
                     raise RuntimeError(f"Google respondió {respuesta.status}: {mensaje}")
                 return datos
@@ -216,10 +255,34 @@ class ClienteGoogle:
         self._sesion: Sesion | None = None
 
     async def _abrir(self) -> Sesion:
+        self._recargar_si_cambiaron()
         if self._sesion is None:
             self._http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
             self._sesion = Sesion(self._credenciales, self._http)
         return self._sesion
+
+    def _recargar_si_cambiaron(self) -> None:
+        """Si el fichero de credenciales cambió, se leen otra vez.
+
+        Hasta el 2026-09-23 el buzón y el calendario se quedaban con el
+        `refresh_token` con el que nacieron: reautorizar escribía el nuevo en
+        disco y el núcleo seguía con el caducado hasta que alguien lo
+        reiniciaba, cosa que nadie sabía que hacía falta.
+        """
+        ruta = self._credenciales.ruta
+        if ruta is None or _firma(ruta) == self._credenciales.firma:
+            return
+        try:
+            nuevas = Credenciales.desde_fichero(ruta)
+        except SinCredenciales as e:
+            # A medio escribir, o roto: se sigue con las de antes y se mira en
+            # la siguiente vuelta.
+            logger.warning("Las credenciales de Google cambiaron pero no se pueden leer: %s", e)
+            return
+        self._credenciales = nuevas
+        if self._sesion is not None and self._http is not None:
+            self._sesion = Sesion(nuevas, self._http)
+        logger.info("Credenciales de Google recargadas de %s.", ruta)
 
     async def cerrar(self) -> None:
         if self._http is not None:
@@ -256,24 +319,59 @@ class BuzonGmail(ClienteGoogle):
             hilo = str(referencia.get("threadId", ""))
             detalle = await sesion.pedir(
                 f"{URL_GMAIL()}/gmail/v1/users/me/messages/{identificador}",
-                # `metadata` y tres cabeceras: el cuerpo no se descarga.
+                # `metadata` y unas pocas cabeceras: el cuerpo no se descarga.
+                # Las de envío dicen si hay una persona detrás, no qué dice.
                 {
                     "format": "metadata",
-                    "metadataHeaders": ["From", "Subject", "Date"],
+                    "metadataHeaders": ["From", "Subject", "Date", *CABECERAS_DE_ENVIO],
                 },
             )
             cabeceras = (detalle.get("payload") or {}).get("headers") or []
+            remitente = _cabecera(cabeceras, "From")
             mensajes.append(
                 Mensaje(
                     id=identificador,
-                    remitente=_cabecera(cabeceras, "From"),
+                    remitente=remitente,
                     asunto=_cabecera(cabeceras, "Subject"),
                     extracto=str(detalle.get("snippet", "")),
                     fecha=_cabecera(cabeceras, "Date"),
                     hilo=hilo,
+                    automatico=es_automatico(
+                        remitente, {n: _cabecera(cabeceras, n) for n in CABECERAS_DE_ENVIO}
+                    ),
                 )
             )
         return mensajes
+
+    async def respondido(self, hilo: str) -> bool:
+        """Si el último mensaje del hilo lo mandó él: la etiqueta `SENT` lo dice.
+
+        `format=minimal` trae los ids y las etiquetas de cada mensaje del hilo,
+        sin cabeceras ni cuerpo: para saber quién habló el último no hace falta
+        leer qué dijo. Cabe en el `gmail.readonly` que ya estaba.
+        """
+        sesion = await self._abrir()
+        datos = await sesion.pedir(
+            f"{URL_GMAIL()}/gmail/v1/users/me/threads/{hilo}", {"format": "minimal"}
+        )
+        mensajes = datos.get("messages") or []
+        return bool(mensajes) and "SENT" in (mensajes[-1].get("labelIds") or [])
+
+    async def leer_borrador(self, borrador: str) -> dict[str, str]:
+        """A quién va y con qué asunto, leído de Gmail y no de quien pide enviarlo."""
+        sesion = await self._abrir()
+        datos = await sesion.pedir(
+            f"{URL_GMAIL()}/gmail/v1/users/me/drafts/{urllib.parse.quote(borrador)}",
+            {"format": "metadata"},
+        )
+        cabeceras = ((datos.get("message") or {}).get("payload") or {}).get("headers") or []
+        return {"para": _cabecera(cabeceras, "To"), "asunto": _cabecera(cabeceras, "Subject")}
+
+    async def enviar_borrador(self, borrador: str) -> dict[str, str]:
+        """Envía un borrador que ya existe. Quien llama ha comprobado antes que es el aprobado."""
+        sesion = await self._abrir()
+        respuesta = await sesion.mandar(f"{URL_GMAIL()}/gmail/v1/users/me/drafts/send", {"id": borrador})
+        return {"id": str(respuesta.get("id", "")), "hilo": str(respuesta.get("threadId", ""))}
 
     async def crear_borrador(
         self,
@@ -282,13 +380,14 @@ class BuzonGmail(ClienteGoogle):
         cuerpo: str,
         hilo: str = "",
     ) -> dict[str, Any]:
-        """Deja un borrador en Gmail. **No lo envía, y no puede.**
+        """Deja un borrador en Gmail. **No lo envía**: eso es `enviar_borrador`.
 
-        El testigo pide `gmail.compose`, que es el ámbito más pequeño capaz de
-        escribir un borrador. No incluye `send`, así que aunque alguien —el
-        modelo, un correo con instrucciones dentro, un fallo de este código—
-        intentara enviarlo, Google responde 403. La garantía no está en el
-        cuidado de quien programa: está en el permiso que se concedió.
+        Hasta el 2026-09-24 aquí ponía que no podía enviarlo porque `gmail.compose`
+        «no incluye send», y era falso: Google describe ese ámbito como «Manage
+        drafts and send emails», y `drafts.send` lo acepta. Lo que impide que un
+        borrador salga sin su sí no es el permiso, es que enviar es otra acción,
+        `correo.enviar`, de nivel `exterior`: se para aunque las confirmaciones
+        estén apagadas, y ese sí no lo puede dar el modelo (ADR 0007).
 
         Si se pasa `hilo`, el borrador cuelga de esa conversación y le llega al
         destinatario como una respuesta y no como un correo suelto.
@@ -360,6 +459,38 @@ class CalendarioGoogle(ClienteGoogle):
                 )
             )
         return eventos
+
+    async def crear(
+        self,
+        titulo: str,
+        inicio: datetime,
+        fin: datetime,
+        lugar: str = "",
+        descripcion: str = "",
+        invitados: tuple[str, ...] = (),
+    ) -> dict[str, str]:
+        """Apunta un evento. Con invitados, Google les manda la invitación (`sendUpdates=all`).
+
+        Pide el ámbito `calendar.events`, que llegó el 2026-09-24: un testigo de
+        antes contesta 403 hasta que se vuelve a pasar por `autorizar_google`.
+        """
+        cuerpo: dict[str, Any] = {
+            "summary": titulo,
+            "start": {"dateTime": inicio.isoformat()},
+            "end": {"dateTime": fin.isoformat()},
+        }
+        if lugar:
+            cuerpo["location"] = lugar
+        if descripcion:
+            cuerpo["description"] = descripcion
+        if invitados:
+            cuerpo["attendees"] = [{"email": correo} for correo in invitados]
+        url = f"{URL_CALENDAR()}/calendar/v3/calendars/{urllib.parse.quote(self._calendario)}/events"
+        if invitados:
+            url += "?sendUpdates=all"
+        sesion = await self._abrir()
+        respuesta = await sesion.mandar(url, cuerpo)
+        return {"id": str(respuesta.get("id", "")), "enlace": str(respuesta.get("htmlLink", ""))}
 
 
 # --------------------------------------------------------------------------- #

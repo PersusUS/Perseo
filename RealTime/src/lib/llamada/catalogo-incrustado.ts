@@ -165,6 +165,118 @@ export const CATALOGO_INCRUSTADO: HerramientaNeutra[] = [
     }
   },
   {
+    "name": "parte_del_dia",
+    "description": "El parte del día de una vez: lo que queda hoy en la agenda, los correos que piden algo, los recordatorios de hoy y cómo van las tareas y los hábitos. Úsala cuando pregunte «¿qué tengo hoy?», «¿cómo va el día?» o te pida el parte. Cuéntalo resumido y por orden de urgencia, no lo leas entero. Si una sección dice que no se pudo mirar, dilo: no es un día vacío. Solo lectura.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "crear_recordatorio",
+    "description": "Apunta un recordatorio y Perseo avisará a esa hora: por el móvil, y en la cola del panel. Úsala cuando el señor Persus diga «recuérdame», «avísame» o «que no se me olvide» con una hora o un plazo. Di cuándo de UNA forma: en_minutos para «dentro de veinte minutos»; hora con dias o dia_semana para «mañana a las nueve» (hora 09:00, dias 1) o «el jueves a las cinco» (hora 17:00, dia_semana jueves) —no hace falta que sepas la fecha de hoy—; o fecha_hora solo para una fecha concreta. La respuesta repite la hora ya resuelta: DILA tal cual, para que él oiga si se entendió mal. Es reversible y no gasta cuota: no pidas permiso para apuntar. NO la uses para cosas que haya que hacer sin hora: eso es crear_tarea.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "texto": {
+          "type": "string",
+          "description": "Qué hay que recordarle, corto y como lo diría él («llamar al fontanero»)."
+        },
+        "en_minutos": {
+          "type": "number",
+          "description": "Dentro de cuántos minutos. Para plazos cortos: «en media hora» son 30."
+        },
+        "hora": {
+          "type": "string",
+          "description": "A qué hora, HH:MM en 24 horas. Sola es la próxima vez que llega esa hora."
+        },
+        "dias": {
+          "type": "number",
+          "description": "Con hora: dentro de cuántos días. 0 hoy, 1 mañana, 2 pasado mañana."
+        },
+        "dia_semana": {
+          "type": "string",
+          "description": "Con hora: qué día de la semana. Si es hoy, el de la semana que viene.",
+          "enum": [
+            "lunes",
+            "martes",
+            "miércoles",
+            "jueves",
+            "viernes",
+            "sábado",
+            "domingo"
+          ]
+        },
+        "fecha_hora": {
+          "type": "string",
+          "description": "Solo para una fecha concreta: AAAA-MM-DDTHH:MM, hora local."
+        },
+        "repetir": {
+          "type": "string",
+          "description": "Si se repite. Sin nada, una sola vez.",
+          "enum": [
+            "nunca",
+            "diario",
+            "laborables",
+            "semanal"
+          ]
+        }
+      },
+      "required": [
+        "texto"
+      ]
+    }
+  },
+  {
+    "name": "consultar_recordatorios",
+    "description": "Los recordatorios pendientes, con su hora. Úsala cuando pregunte qué tiene apuntado o antes de quitar uno. Es de solo lectura.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "cancelar_recordatorio",
+    "description": "Quita un recordatorio pendiente, buscándolo por el principio de su texto. Si encajan dos no quita ninguno y te dirá cuáles: entonces pregúntale a cuál se refiere.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "texto": {
+          "type": "string",
+          "description": "El texto del recordatorio, o su principio."
+        }
+      },
+      "required": [
+        "texto"
+      ]
+    }
+  },
+  {
+    "name": "redactar_borrador",
+    "description": "Deja un BORRADOR de correo en el Gmail del señor Persus; no lo envía. Úsala cuando te dicte un correo o te pida contestar a uno. Si es una respuesta, el destinatario sale del correo que estabais comentando: no lo inventes. Léele el texto antes si te lo pide. Si además quiere que salga, después enviar_borrador con lo que te devuelva esta.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "para": {
+          "type": "string",
+          "description": "La dirección de correo del destinatario, completa."
+        },
+        "asunto": {
+          "type": "string",
+          "description": "El asunto. En una respuesta, «Re: » y el asunto original."
+        },
+        "texto": {
+          "type": "string",
+          "description": "El cuerpo del correo, ya redactado, con saludo y despedida."
+        }
+      },
+      "required": [
+        "para",
+        "texto"
+      ]
+    }
+  },
+  {
     "name": "buscar_en_memoria",
     "description": "Busca DENTRO del texto de las notas del vault de Obsidian y devuelve las que hablan de eso, con su ruta y un extracto. Es la memoria a largo plazo del señor Persus y la tuya: úsala SIEMPRE que la pregunta sea sobre lo que él tiene apuntado —sus proyectos, sus gustos, su salud, vuestras conversaciones— antes de decir que no lo sabes. Las carpetas 01_ a 09_ son cosas suyas; 10_PERSEO/ son las tuyas. No confundir con el servidor MCP 'vault', que maneja ficheros y solo busca por nombre.",
     "parameters": {
@@ -300,6 +412,130 @@ export const CATALOGO_INCRUSTADO: HerramientaNeutra[] = [
     "parameters": {
       "type": "object",
       "properties": {}
+    }
+  },
+  {
+    "name": "encargar_recado",
+    "description": "Encarga un recado en la web que Perseo hace solo, en segundo plano, con su propio navegador: reservar mesa, buscar y comparar, rellenar un formulario, comprar algo concreto. Tarda minutos; vuelve al momento con el número del trabajo y avisa al acabar. Lo que sale de casa —pagar, reservar, enviar— se para a esperar su sí, que él da en la tarjeta del panel o del móvil, NO hablando. Úsala solo con una orden suya, y con el encargo completo: qué, dónde, cuándo, para cuántos y hasta cuánto.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "texto": {
+          "type": "string",
+          "description": "El encargo entero, con todos los datos que haya dado."
+        }
+      },
+      "required": [
+        "texto"
+      ]
+    }
+  },
+  {
+    "name": "vigilancias",
+    "description": "Vigilar una web hasta que pase algo: «avísame cuando haya entradas para…», «dime si baja el vuelo de 80 €», «resérvalo en cuanto haya mesa». Perseo mira ahora y luego cada pocas horas, solo, hasta que se cumpla o caduque; al cumplirse te avisa, o lo hace si al_cumplirse es 'hacer' (y lo que se pague espera su sí en la tarjeta). que=crear con objetivo y condicion; que=listar para decir qué vigila; que=cancelar con objetivo para dejar de vigilar algo. Como mucho cinco a la vez.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "que": {
+          "type": "string",
+          "description": "crear, listar o cancelar.",
+          "enum": [
+            "crear",
+            "listar",
+            "cancelar"
+          ]
+        },
+        "objetivo": {
+          "type": "string",
+          "description": "Qué y dónde se mira, con todos los datos: la web, el evento, las fechas. Al cancelar, su principio."
+        },
+        "condicion": {
+          "type": "string",
+          "description": "Cuándo avisar o actuar, dicho claro: «hay entradas a la venta», «el precio baja de 80 €»."
+        },
+        "cada_horas": {
+          "type": "number",
+          "description": "Cada cuántas horas mirar. Mínimo una; si no lo dice, tres."
+        },
+        "dias": {
+          "type": "number",
+          "description": "Durante cuántos días vigilar. Si no lo dice, siete; como mucho treinta."
+        },
+        "al_cumplirse": {
+          "type": "string",
+          "description": "avisar (por defecto) o hacer, si ha pedido que lo haga en cuanto se pueda.",
+          "enum": [
+            "avisar",
+            "hacer"
+          ]
+        }
+      },
+      "required": [
+        "que"
+      ]
+    }
+  },
+  {
+    "name": "enviar_borrador",
+    "description": "Envía un borrador que ya dejaste con redactar_borrador, cuando el señor Persus pida que salga. Pásale el id, el destinatario y el asunto EXACTOS que devolvió redactar_borrador. No sale al momento: espera su sí, que él da en la tarjeta del panel o del móvil, NO hablando. Díselo así, y no lo des por enviado.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "borrador": {
+          "type": "string",
+          "description": "El id del borrador."
+        },
+        "para": {
+          "type": "string",
+          "description": "El destinatario, tal cual."
+        },
+        "asunto": {
+          "type": "string",
+          "description": "El asunto, tal cual."
+        }
+      },
+      "required": [
+        "borrador",
+        "para",
+        "asunto"
+      ]
+    }
+  },
+  {
+    "name": "crear_evento",
+    "description": "Apunta una cita en el calendario de Google del señor Persus: «apúntame cena el viernes a las nueve». Averigua antes la fecha de hoy con la hora si hace falta, y repite en voz alta el día y la hora que apuntas. Si hay invitados, a ellos les llega una invitación de Google, así que eso espera su sí en la tarjeta.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "titulo": {
+          "type": "string",
+          "description": "Qué es, corto."
+        },
+        "inicio": {
+          "type": "string",
+          "description": "Día y hora de empezar, en ISO local: 2026-09-26T21:00."
+        },
+        "duracion_min": {
+          "type": "number",
+          "description": "Cuánto dura, en minutos. Sin decirlo, una hora."
+        },
+        "lugar": {
+          "type": "string",
+          "description": "Dónde, si lo dice."
+        },
+        "descripcion": {
+          "type": "string",
+          "description": "Una nota, si la hay."
+        },
+        "invitados": {
+          "type": "string",
+          "description": "Correos de los invitados separados por comas, solo si lo pide."
+        }
+      },
+      "required": [
+        "titulo",
+        "inicio"
+      ]
     }
   }
 ];

@@ -15,7 +15,10 @@ queda y dónde está cada cosa.
 |---|---|---|
 | **Google — Gemini Live** | El audio del micrófono y, si la enciendes, la imagen de la cámara y de la pantalla | Solo durante una llamada |
 | **Google — Gemini (REST)** | El texto del chat escrito, y lo que las herramientas devuelven | Solo si escribes en el panel o en el móvil |
-| **Google — Gmail y Calendar** | Nada tuyo: se **leen** cabeceras de correo y eventos | Solo con `PERSEO_CORREO=gmail` / `PERSEO_AGENDA=google` |
+| **Google — Gemini (REST), en un recado** | El encargo y las páginas que visita el navegador de los recados, **con las contraseñas y tarjetas tapadas** | Solo mientras hay un recado en marcha |
+| **Las webs de tus recados** | Lo que el recado teclea en ellas, también las claves de la bóveda —solo en los sitios de cada entrada— | Solo con un recado que tú encargaste, y pagar o enviar esperan tu sí |
+| **Google — Gmail y Calendar** | Nada tuyo: se **leen** cabeceras de correo (quién, asunto, fecha y si es un envío masivo o automático) y eventos, y de los hilos que piden seguimiento solo sus etiquetas (¿el último es tuyo?) | Solo con `PERSEO_CORREO=gmail` / `PERSEO_AGENDA=google` |
+| **Google — Gmail y Calendar, escribiendo** | Un correo que enviaste desde un borrador, o una cita que apuntaste; a los invitados les llega la invitación de Google | Solo con tu sí en la tarjeta, y el correo solo si es exactamente el borrador que aprobaste |
 | **Telegram** | El **recuento**: «3 correos, 1 requiere acción». Nunca el asunto ni el cuerpo | Solo con el bot configurado |
 
 Y uno que está **apagado de fábrica**: `PERSEO_MODELO_SUPLENTE`. Es un modelo
@@ -33,12 +36,21 @@ producto», no hay servicio de embeddings y no hay copia en la nube.
 - **Los perfiles biométricos.** Los vectores de voz y cara viven en
   `<datos>/perfiles.json`. El reconocimiento corre **en tu ordenador**, con
   ECAPA-TDNN y YuNet + SFace. Ningún trozo de audio o imagen se manda a nadie
-  para identificar a alguien.
+  para identificar a alguien. Y **nadie se guarda sin nombre**: un desconocido
+  lleva una etiqueta provisional mientras dura la sesión y se olvida al
+  reiniciar, salvo que alguien diga cómo se llama. Cada cosa que se guarda de
+  alguien queda anotada en `<datos>/personas.log`.
 - **El cuerpo de tus correos.** Del buzón se leen las cabeceras y el extracto
   que da la propia API. El cuerpo **no se descarga**, porque para triar no hace
   falta — y lo que no se baja no se puede filtrar por accidente.
 - **La cola.** Guarda el texto literal de lo que le pides. Vive en SQLite, en
   tu disco, en una carpeta que está fuera de git.
+- **Los valores de la bóveda, hacia ningún modelo.** Las contraseñas y tarjetas
+  de `<datos>/boveda.json` van cifradas con DPAPI, atadas a tu cuenta de
+  Windows. El modelo trabaja con referencias (`{{boveda:resy.clave}}`); el valor
+  se pone en el núcleo justo antes de teclearlo, y todo lo que vuelve de la
+  página se tapa antes de llegar al modelo, a la cola o al registro. Se guardan
+  desde la terminal (`perseo boveda`), nunca por el chat ni por la voz.
 
 ---
 
@@ -91,6 +103,13 @@ Pero un prompt no es una defensa, así que debajo hay dos más:
 | `<datos>/token.txt` | La credencial que abre la API |
 | `<datos>/estado.sqlite3` | La cola: el texto literal de lo que le pides |
 | `<datos>/perfiles.json` | Los vectores de voz y cara |
+| `<datos>/personas.log` | A quién se ha aprendido y cuándo: una línea por alta, nombre, muestra nueva o borrado. Sin números |
+| `<datos>/recordatorios.json` | Lo que le pediste que te recordara, con su hora |
+| `<datos>/boveda.json` | Contraseñas y tarjetas de los recados, cifradas con DPAPI. En claro solo nombres, sitios y nombres de campo |
+| `<datos>/navegador/` | El perfil de Chrome de los recados: las sesiones de los sitios donde entraste a mano |
+| `<datos>/recados/` | Por dónde iba un recado que espera tu sí: la conversación con el modelo, ya tapada. Se borra al acabar |
+| `<datos>/vigilancias.json` | Lo que le pediste vigilar, con la condición y lo que vio la última vez |
+| `<datos>/seguimiento_avisados.json` | Los ids de los correos de los que ya te recordó que seguían sin respuesta |
 | `<datos>/google.json` | El `refresh_token` que abre tu buzón |
 | `<datos>/gemini.txt` · `telegram.txt` · `obsidian.txt` | Claves sueltas |
 | `<datos>/nucleo.log` · `vigilante.log` | Los registros |

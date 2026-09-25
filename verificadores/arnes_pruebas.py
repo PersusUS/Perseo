@@ -129,6 +129,8 @@ class Nucleo:
         entorno = {
             **os.environ,
             "PERSEO_CORE_DATOS": str(self.datos),
+            # Que un recordatorio o un encargo de prueba no haga sonar la app.
+            "PERSEO_MARCADOR_DIR": str(self.datos),
             "PERSEO_CORE_PUERTO": str(self.puerto),
             "PYTHONIOENCODING": "utf-8",
             **self._entorno_extra,

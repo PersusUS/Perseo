@@ -24,6 +24,8 @@ cuando quieres mirar si está todo en pie sin acordarte de las cinco rutas.
     perseo comprobar  pasa todo lo que tiene que estar verde antes de un commit
     perseo cuentas    los números que cita la documentación, medidos
     perseo catalogo   las herramientas que ve cada cara; --incrustar regenera la copia
+    perseo boveda     contraseñas y tarjetas de los recados, sin valores a la vista
+    perseo navegador  abre el navegador de los recados para entrar a mano en tus sitios
 
 `perseo` a secas sigue siendo `perseo on`, que es como se ha escrito siempre en
 esta bitácora.
@@ -59,6 +61,7 @@ RAIZ = AQUI.parent
 sys.path.insert(0, str(AQUI))
 
 import manage_startup  # noqa: E402
+import ollama_local  # noqa: E402
 import presencia  # noqa: E402
 
 #: Dónde puede estar la app construida, de la más buena a la menos.
@@ -179,14 +182,6 @@ def _corriendo(fragmento: str) -> bool:
     return any(fragmento in linea for linea in salida.splitlines())
 
 
-def _ollama() -> bool:
-    try:
-        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=3) as r:
-            return r.status == 200
-    except (urllib.error.URLError, OSError):
-        return False
-
-
 def _obsidian() -> bool:
     """Si el plugin de Obsidian contesta. Sin clave da 401, que también vale:
     lo que se quiere saber es si Obsidian está abierto."""
@@ -260,6 +255,16 @@ def arrancar_nucleo() -> bool:
         print("  [ya estaba]  El núcleo responde en", manage_startup.url_salud())
         return False
 
+    # Cuándo dejó de escribir el que había. Un núcleo que muere de un
+    # TerminateProcess —el portátil que duerme, un job que se cierra— no deja ni
+    # una línea, y sin esta el registro solo decía «arrancando», sin fecha de
+    # la caída con la que cruzar los eventos de energía de Windows.
+    registro_nucleo = RAIZ / "perseo_core" / "datos" / "nucleo.log"
+    try:
+        calla = datetime.fromtimestamp(registro_nucleo.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        print(f"  [caído]      El núcleo no responde; su registro calla desde {calla}")
+    except OSError:
+        pass
     print("  [arrancando] El núcleo, con su vigilante")
     _sin_consola([_pythonw(), str(AQUI / "vigilante.py")])
 
@@ -290,9 +295,19 @@ def arrancar_ollama() -> bool:
     Se espera al 11434 y no a que aparezca la ventana: el triaje llama por HTTP,
     y una bandeja abierta con el servidor todavía cargando falla igual que si no
     estuviera. Son unos segundos en frío.
+
+    Y que conteste no basta: tiene que tener el modelo del router. Si el 11434
+    lo tiene un Ollama sin él, se avisa y **no** se arranca el de Windows: el
+    puerto ya está cogido y llegaría tarde. Apagar al otro no lo decide este
+    comando.
     """
-    if _ollama():
-        print("  [ya estaba]  Ollama responde en el 11434")
+    modelo = ollama_local.modelo_router(_directorio_datos())
+    modelos = ollama_local.modelos()
+    if modelos is not None:
+        if ollama_local.tiene_el_modelo(modelos, modelo):
+            print(f"  [ya estaba]  Ollama responde en el 11434, con {modelo}")
+        else:
+            ollama_local.avisar_sin_modelo(modelo)
         return False
 
     binario = OLLAMA_BANDEJA if OLLAMA_BANDEJA.is_file() else None
@@ -312,8 +327,11 @@ def arrancar_ollama() -> bool:
 
     for _ in range(30):
         time.sleep(0.5)
-        if _ollama():
+        modelos = ollama_local.modelos()
+        if modelos is not None:
             print("  [listo]      Ollama responde")
+            if not ollama_local.tiene_el_modelo(modelos, modelo):
+                ollama_local.avisar_sin_modelo(modelo)
             return True
     print("  [ojo]        Ollama no contesta todavía en el 11434; sin él no hay triaje")
     return True
@@ -630,8 +648,9 @@ def estado() -> None:
     # igual de rota que un Obsidian cerrado, y son dos arreglos distintos.
     obsidian_abierto = _exe_vivo("Obsidian.exe")
     obsidian_plugin = _obsidian()
+    modelos = ollama_local.modelos()
     for nombre, vivo, sin_el in (
-        ("Ollama", _ollama(), "sin él no hay triaje de correo"),
+        ("Ollama", modelos is not None, "sin él no hay triaje de correo"),
         (
             "Obsidian",
             obsidian_abierto,
@@ -642,6 +661,11 @@ def estado() -> None:
     ):
         marca = "[activo]  " if vivo else "[PARADO]  "
         print(f"  {marca}   {nombre} — {sin_el}")
+    # «Activo» solo dice que el 11434 contesta. Si quien contesta es el Ollama
+    # de WSL, el triaje está igual de parado, y aquí es donde se mira primero.
+    modelo = ollama_local.modelo_router(_directorio_datos())
+    if modelos is not None and not ollama_local.tiene_el_modelo(modelos, modelo):
+        ollama_local.avisar_sin_modelo(modelo)
 
     print()
     detector = "[activo]  " if _corriendo("clap_detector.py") else "[PARADO]  "
@@ -774,6 +798,18 @@ def _catalogo() -> None:
     raise SystemExit(modulo.catalogo_cli(sys.argv[2:]))
 
 
+def _boveda() -> None:
+    import boveda as modulo
+
+    raise SystemExit(modulo.boveda_cli(sys.argv[2:]))
+
+
+def _navegador() -> None:
+    import boveda as modulo
+
+    raise SystemExit(modulo.navegador_cli(sys.argv[2:]))
+
+
 #: Las órdenes, con sus sinónimos. `on` y `off` son las que pidió el señor
 #: Persus el 2026-08-21; `perseo` a secas se queda como `on` porque es lo que
 #: dice la bitácora entera, y `parar` porque apagar dejando el detector vivo
@@ -793,6 +829,8 @@ ORDENES = {
     "comprobar": _comprobar,
     "cuentas": _cuentas,
     "catalogo": _catalogo,
+    "boveda": _boveda,
+    "navegador": _navegador,
 }
 
 

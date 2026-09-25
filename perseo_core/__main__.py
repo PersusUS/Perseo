@@ -21,22 +21,50 @@ import sys
 # tapa al otro. El sintoma es un AttributeError en `web.AppRunner` al arrancar.
 from aiohttp import web as servidor
 
-from .agentes import agenda, chat, correo, dev, memoria, pc, web
+from .agentes import (
+    agenda,
+    chat,
+    correo,
+    dev,
+    memoria,
+    parte,
+    pc,
+    recado,
+    recordatorios,
+    seguimiento,
+    vigilancias,
+    web,
+)
 from .caras import api
 from .infra import almacen, politica
 from .servicios import mcp
+from .servicios.llamada_saliente import Avisador
 from .infra.router import Router, Trabajador
 from .infra.bus import Bus
 from .infra.disparadores import Planificador
 from .caras.telegram import Telegram
 from .infra.configuracion import Configuracion, LOCALES, cargar_configuracion
 
-# Estos siete se importan por sus efectos: al cargarse registran sus agentes —y
-# `correo` y `agenda`, además, sus disparadores—. Sin el import el registro está
+# Estos doce se importan por sus efectos: al cargarse registran sus agentes
+# —y `correo`, `agenda`, `recordatorios` y `parte`, además, sus disparadores—.
+# Sin el import el registro está
 # vacío y el núcleo arranca sin agentes sin decir por qué.
-_ = (agenda, chat, correo, dev, memoria, pc, web)
+_ = (agenda, chat, correo, dev, memoria, parte, pc, recado, recordatorios, seguimiento, vigilancias, web)
 
 logger = logging.getLogger("perseo_core")
+
+
+#: Rutas que se sondean solas y no dicen nada cuando contestan bien. Medido el
+#: 2026-09-23: de 4.624 líneas de acceso en `nucleo.log`, 3.318 eran el
+#: `POST /tareas/recoger` que la app hace cada ocho segundos. Un sondeo que
+#: falla sí se sigue viendo: solo se callan los 200.
+SONDEOS_CALLADOS = ('"POST /tareas/recoger ', '"GET /salud ')
+
+
+class _SinSondeos(logging.Filter):
+    def filter(self, registro: logging.LogRecord) -> bool:
+        mensaje = registro.getMessage()
+        return not any(ruta in mensaje and '" 200 ' in mensaje for ruta in SONDEOS_CALLADOS)
 
 
 def _configurar_registro() -> None:
@@ -45,6 +73,7 @@ def _configurar_registro() -> None:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         stream=sys.stderr,
     )
+    logging.getLogger("aiohttp.access").addFilter(_SinSondeos())
 
 
 def _tls(cfg: Configuracion) -> ssl.SSLContext | None:
@@ -188,12 +217,17 @@ async def arrancar() -> None:
     router = Router(cfg)
     await router.abrir()
 
-    # Tres carriles. `dev` puede tardar minutos, y con un solo trabajador un
+    # Tres carriles (cuatro, con el de los recados). `dev` puede tardar minutos, y con un solo trabajador un
     # encargo de código dejaba el correo sin triar mientras durase. El chat
     # tiene el suyo porque un turno puede irse a los dos minutos entre
     # herramientas, y no debe frenar ni al triaje ni a la cola general.
-    trabajador = Trabajador(bus, excluir=("dev", "chat"), nombre="general")
+    trabajador = Trabajador(bus, excluir=("dev", "chat", "recado"), nombre="general")
     tarea_trabajador = asyncio.create_task(trabajador.ejecutar(), name="trabajador")
+
+    # Y un cuarto para los recados, por lo mismo que `dev`: uno puede llevarse
+    # diez minutos navegando, y los avisos de la agenda no pueden esperarle.
+    trabajador_recado = Trabajador(bus, agentes=("recado",), nombre="recado")
+    tarea_recado = asyncio.create_task(trabajador_recado.ejecutar(), name="trabajador-recado")
 
     trabajador_dev = Trabajador(bus, agentes=("dev",), nombre="dev")
     tarea_dev = asyncio.create_task(trabajador_dev.ejecutar(), name="trabajador-dev")
@@ -206,12 +240,20 @@ async def arrancar() -> None:
     memoria.iniciar(cfg)
     dev.iniciar(cfg)
     web.iniciar(cfg)
+    recado.iniciar(cfg)
+    vigilancias.iniciar(cfg)
+    seguimiento.iniciar(cfg)
     agenda.iniciar(cfg)
+    recordatorios.iniciar(cfg)
+    parte.iniciar(cfg)
     chat.iniciar(cfg, router)
 
     # Sin token configurado se retira sola tras avisar: es un canal más.
     telegram = Telegram(cfg, bus)
     tarea_telegram = asyncio.create_task(telegram.ejecutar(), name="telegram")
+
+    # El que llama cuando un encargo termina y nadie lo está esperando.
+    tarea_avisador = asyncio.create_task(Avisador(bus).ejecutar(), name="avisador")
 
     # Los disparadores que no tengan de dónde tirar se retiran solos.
     planificador = Planificador(cfg, bus)
@@ -248,9 +290,19 @@ async def arrancar() -> None:
         trabajador.detener()
         trabajador_dev.detener()
         trabajador_chat.detener()
+        trabajador_recado.detener()
         telegram.detener()
         planificador.detener()
-        for tarea in (tarea_trabajador, tarea_dev, tarea_chat, tarea_telegram, tarea_disparadores):
+        tareas = (
+            tarea_trabajador,
+            tarea_dev,
+            tarea_chat,
+            tarea_recado,
+            tarea_telegram,
+            tarea_disparadores,
+            tarea_avisador,
+        )
+        for tarea in tareas:
             tarea.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await tarea
@@ -260,6 +312,7 @@ async def arrancar() -> None:
         await memoria.detener()
         dev.detener()
         await web.detener()
+        await recado.detener()
         await agenda.detener()
         await chat.detener()
         await mcp.detener()
