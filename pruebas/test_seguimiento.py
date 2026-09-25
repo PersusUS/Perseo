@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from perseo_core.agentes import correo, seguimiento
+from perseo_core.dominio.mensaje import Mensaje, es_automatico
 from perseo_core.infra import almacen, disparadores
 from perseo_core.infra.bus import Bus
 from perseo_core.infra.router import REGISTRO
@@ -44,6 +45,45 @@ def test_solo_lo_que_pide_algo_sin_marcar_y_entre_dos_y_catorce_dias() -> None:
         _correo("f", 5),
     ]
     assert [c["id"] for c in seguimiento.candidatos(correos, AHORA, avisados={"f"})] == ["a"]
+
+
+def test_lo_que_mando_una_maquina_no_llama() -> None:
+    """La primera llamada de verdad nombró un evento de Luma, el CI y Stripe."""
+    correos = [_correo("a", 3), {**_correo("b", 3), "automatico": True}]
+    assert [c["id"] for c in seguimiento.candidatos(correos, AHORA, avisados=set())] == ["a"]
+
+
+@pytest.mark.parametrize(
+    "remitente",
+    [
+        "Jaime <usr-eF4akgGDvMGcFP7@user.luma-mail.com>",
+        "Persus <notifications@github.com>",
+        "Kickbacks <support@stripe.com>",
+        "Banco <no-reply@banco.es>",
+        "noreply+avisos@empresa.com",
+    ],
+)
+def test_los_remitentes_de_maquina_se_reconocen_por_la_direccion(remitente: str) -> None:
+    assert es_automatico(remitente)
+
+
+@pytest.mark.parametrize(
+    "remitente", ["Ana López <ana.lopez@gmail.com>", "profesor@us.es", "Info Pérez <jinfo@empresa.com>", "", "Ana"]
+)
+def test_una_persona_no_se_toma_por_maquina(remitente: str) -> None:
+    assert not es_automatico(remitente)
+
+
+def test_las_cabeceras_de_envio_delatan_un_boletin_aunque_la_direccion_parezca_de_persona() -> None:
+    assert es_automatico("ana@tienda.com", {"List-Unsubscribe": "<mailto:baja@tienda.com>"})
+    assert es_automatico("ana@tienda.com", {"Precedence": "bulk"})
+    assert es_automatico("ana@tienda.com", {"Auto-Submitted": "auto-replied"})
+    assert not es_automatico("ana@tienda.com", {"Auto-Submitted": "no", "Precedence": ""})
+
+
+def test_un_mensaje_viejo_sin_la_marca_se_lee_como_de_persona() -> None:
+    assert Mensaje.desde_dict({"id": "1", "remitente": "a", "asunto": "b"}).automatico is False
+    assert Mensaje.desde_dict({"id": "1", "remitente": "a", "asunto": "b", "automatico": True}).automatico
 
 
 class BuzonConHilos:

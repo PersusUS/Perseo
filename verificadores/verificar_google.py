@@ -231,6 +231,7 @@ def main() -> None:
                 comprobar("Con remitente", mensajes[0].remitente == "obra@example.com")
                 comprobar("Con asunto", mensajes[0].asunto.startswith("Presupuesto"))
                 comprobar("Y con extracto", "presupuesto" in mensajes[0].extracto.lower())
+                comprobar("Y de una persona, no de una máquina", not mensajes[0].automatico)
 
             comprobar(
                 "Se pide un solo testigo para todas las peticiones",
@@ -245,10 +246,12 @@ def main() -> None:
                 formatos and all(f == "metadata" for f in formatos),
                 str(formatos),
             )
+            # Las de envío dicen si lo mandó una máquina, no qué dice.
             comprobar(
-                "Y solo tres cabeceras",
+                "Y solo las cabeceras de quién, qué asunto, cuándo y cómo se envió",
                 all(
-                    set(p.get("metadataHeaders", [])) <= {"From", "Subject", "Date"}
+                    set(p.get("metadataHeaders", []))
+                    <= {"From", "Subject", "Date", "List-Unsubscribe", "List-Id", "Auto-Submitted", "Precedence"}
                     for p in falso.parametros
                     if "metadataHeaders" in p
                 ),

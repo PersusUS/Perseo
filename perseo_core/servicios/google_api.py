@@ -41,7 +41,7 @@ from typing import Any
 import aiohttp
 
 from ..dominio.evento import Evento
-from ..dominio.mensaje import Mensaje
+from ..dominio.mensaje import CABECERAS_DE_ENVIO, Mensaje, es_automatico
 from ..infra.configuracion import Configuracion, cargar_configuracion
 
 logger = logging.getLogger(__name__)
@@ -319,21 +319,26 @@ class BuzonGmail(ClienteGoogle):
             hilo = str(referencia.get("threadId", ""))
             detalle = await sesion.pedir(
                 f"{URL_GMAIL()}/gmail/v1/users/me/messages/{identificador}",
-                # `metadata` y tres cabeceras: el cuerpo no se descarga.
+                # `metadata` y unas pocas cabeceras: el cuerpo no se descarga.
+                # Las de envío dicen si hay una persona detrás, no qué dice.
                 {
                     "format": "metadata",
-                    "metadataHeaders": ["From", "Subject", "Date"],
+                    "metadataHeaders": ["From", "Subject", "Date", *CABECERAS_DE_ENVIO],
                 },
             )
             cabeceras = (detalle.get("payload") or {}).get("headers") or []
+            remitente = _cabecera(cabeceras, "From")
             mensajes.append(
                 Mensaje(
                     id=identificador,
-                    remitente=_cabecera(cabeceras, "From"),
+                    remitente=remitente,
                     asunto=_cabecera(cabeceras, "Subject"),
                     extracto=str(detalle.get("snippet", "")),
                     fecha=_cabecera(cabeceras, "Date"),
                     hilo=hilo,
+                    automatico=es_automatico(
+                        remitente, {n: _cabecera(cabeceras, n) for n in CABECERAS_DE_ENVIO}
+                    ),
                 )
             )
         return mensajes

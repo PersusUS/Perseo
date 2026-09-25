@@ -19,6 +19,12 @@ Gmail, marcar y avisar lo hace el agente, en la cola, a la vista.
 (`<datos>/seguimiento_avisados.json`), y el disparador solo encola entre las
 nueve y las nueve: un «llevas dos días sin contestar» a las tres de la mañana no
 es seguimiento, es ruido.
+
+**Solo por personas.** La primera llamada de verdad nombró el recordatorio de un
+evento de hacía diez días, un fallo del CI y un aviso de Stripe: el triaje los
+marcó «requiere acción», y lo eran, pero ninguno es un hilo que se cae, porque
+no hay nadie al otro lado esperando respuesta. Lo que mandó una máquina
+(`Mensaje.automatico`) no llama ni avisa: se queda en el panel de correo.
 """
 
 from __future__ import annotations
@@ -78,10 +84,12 @@ def edad(fecha: str, ahora: datetime) -> timedelta | None:
 
 
 def candidatos(correos: list[dict[str, Any]], ahora: datetime, avisados: set[str]) -> list[dict[str, Any]]:
-    """Los que piden algo, siguen sin marcar y llevan entre 2 y 14 días."""
+    """Los que piden algo, los mandó una persona, siguen sin marcar y llevan entre 2 y 14 días."""
     salida = []
     for c in correos:
         if c.get("clase") != "requiere_accion" or c.get("hecho") or c.get("id") in avisados:
+            continue
+        if c.get("automatico"):
             continue
         cuanto = edad(str(c.get("fecha") or ""), ahora)
         if cuanto is None or not timedelta(days=DIAS_SIN_RESPUESTA) <= cuanto <= timedelta(days=DIAS_TOPE):

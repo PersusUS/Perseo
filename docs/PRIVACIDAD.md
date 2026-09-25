@@ -17,7 +17,7 @@ queda y dónde está cada cosa.
 | **Google — Gemini (REST)** | El texto del chat escrito, y lo que las herramientas devuelven | Solo si escribes en el panel o en el móvil |
 | **Google — Gemini (REST), en un recado** | El encargo y las páginas que visita el navegador de los recados, **con las contraseñas y tarjetas tapadas** | Solo mientras hay un recado en marcha |
 | **Las webs de tus recados** | Lo que el recado teclea en ellas, también las claves de la bóveda —solo en los sitios de cada entrada— | Solo con un recado que tú encargaste, y pagar o enviar esperan tu sí |
-| **Google — Gmail y Calendar** | Nada tuyo: se **leen** cabeceras de correo y eventos, y de los hilos que piden seguimiento solo sus etiquetas (¿el último es tuyo?) | Solo con `PERSEO_CORREO=gmail` / `PERSEO_AGENDA=google` |
+| **Google — Gmail y Calendar** | Nada tuyo: se **leen** cabeceras de correo (quién, asunto, fecha y si es un envío masivo o automático) y eventos, y de los hilos que piden seguimiento solo sus etiquetas (¿el último es tuyo?) | Solo con `PERSEO_CORREO=gmail` / `PERSEO_AGENDA=google` |
 | **Google — Gmail y Calendar, escribiendo** | Un correo que enviaste desde un borrador, o una cita que apuntaste; a los invitados les llega la invitación de Google | Solo con tu sí en la tarjeta, y el correo solo si es exactamente el borrador que aprobaste |
 | **Telegram** | El **recuento**: «3 correos, 1 requiere acción». Nunca el asunto ni el cuerpo | Solo con el bot configurado |
 

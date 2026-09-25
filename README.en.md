@@ -17,7 +17,7 @@ see [ADR 0005](docs/adr/0005-las-confirmaciones-estan-apagadas.md).
 [![MIT licence](https://img.shields.io/badge/licence-MIT-black.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-black.svg)](https://www.python.org/)
 [![Tauri 2](https://img.shields.io/badge/tauri-2-black.svg)](https://tauri.app/)
-[![1193 tests](https://img.shields.io/badge/tests-1193-black.svg)](#verification)
+[![1212 tests](https://img.shields.io/badge/tests-1212-black.svg)](#verification)
 
 [What it is](#what-it-is) · [What it looks like](#what-it-looks-like) ·
 [How it works](#how-it-works) · [Install](#install) · [Privacy](#privacy) ·
@@ -388,12 +388,12 @@ the tables read fine in any language.
 None of this is checked by eye, and it's checked two ways.
 
 **Unit tests** — each piece on its own, no network, no subprocesses. They tell
-you *what* broke: **1193** in total.
+you *what* broke: **1212** in total.
 
 ```bash
 python commands/perseo.py comprobar    # everything, cheapest first
 
-python -m pytest                       # 989, core and commands
+python -m pytest                       # 1008, core and commands
 cd RealTime && npm test                # 204, the interface
 cd RealTime/src-tauri && cargo check   # and that the Rust compiles
 ```
@@ -445,7 +445,7 @@ details are in [`docs/PRIVACIDAD.md`](docs/PRIVACIDAD.md).
 
 Perseo works and gets used daily, but it's a personal project: built for
 **one** person on **one** Windows machine, and it shows. Behind it are roughly
-49,100 lines, 1193 tests and 19 verifiers.
+49,100 lines, 1212 tests and 19 verifiers.
 
 If you clone it and something won't start, open an
 [issue](https://github.com/PersusUS/Perseo/issues) — and if you fix it, even

@@ -20,6 +20,8 @@ import urllib.parse
 import webbrowser
 from pathlib import Path
 
+from . import ventanas
+
 logger = logging.getLogger(__name__)
 
 
@@ -59,6 +61,24 @@ APLICACIONES_PERMITIDAS: dict[str, tuple[str, str]] = {
     "steam": ("uri", "steam:"),
 }
 
+#: De qué ejecutable son las ventanas de lo que se abre por protocolo, para
+#: traerlas al frente cuando el programa ya estaba abierto y no nace ninguna
+#: nueva. Los de la tienda llevan los dos nombres que han tenido.
+PROCESOS_DE_URI: dict[str, tuple[str, ...]] = {
+    "microsoft-edge:": ("msedge.exe",),
+    "obsidian:": ("Obsidian.exe",),
+    "ms-word:": ("WINWORD.EXE",),
+    "ms-excel:": ("EXCEL.EXE",),
+    "ms-powerpoint:": ("POWERPNT.EXE",),
+    "vscode:": ("Code.exe",),
+    "whatsapp:": ("WhatsApp.exe", "WhatsApp.Root.exe"),
+    "telegram:": ("Telegram.exe",),
+    "steam:": ("steam.exe", "steamwebhelper.exe"),
+}
+
+#: Una URL acaba en el navegador que haya, y casi siempre ya está abierto.
+NAVEGADORES = ("chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe")
+
 ESQUEMAS_URL_PERMITIDOS = frozenset({"http", "https"})
 
 
@@ -80,7 +100,9 @@ def abrir_url(url: str) -> str:
     if not partes.netloc:
         return "Error: la URL no tiene un dominio válido."
 
+    antes = ventanas.instantanea()
     webbrowser.open(url)
+    ventanas.al_frente_en_segundo_plano(antes, NAVEGADORES)
     return f"Éxito: se ha abierto '{url}' en el navegador."
 
 
@@ -125,9 +147,12 @@ def resolver_ejecutable(objetivo: str) -> str | None:
 
 
 def lanzar(tipo: str, objetivo: str) -> None:
-    """Lanza una aplicación sin shell. `objetivo` viene de la lista blanca."""
+    """Lanza una aplicación sin shell, y la trae delante. `objetivo` viene de la
+    lista blanca."""
+    antes = ventanas.instantanea()
     if tipo == "uri":
         webbrowser.open(objetivo)
+        ventanas.al_frente_en_segundo_plano(antes, PROCESOS_DE_URI.get(objetivo, ()))
         return
 
     # Con la ruta completa y no con el nombre: `Popen(["chrome.exe"])` solo
@@ -136,3 +161,4 @@ def lanzar(tipo: str, objetivo: str) -> None:
     if ruta is None:
         raise FileNotFoundError(f"No se encuentra '{objetivo}' en esta máquina.")
     subprocess.Popen([ruta], shell=False)
+    ventanas.al_frente_en_segundo_plano(antes, (Path(ruta).name,))

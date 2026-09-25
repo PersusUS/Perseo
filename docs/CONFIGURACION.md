@@ -257,6 +257,12 @@ entre las nueve y las nueve. Antes mira el hilo en Gmail: si el último mensaje
 es tuyo, ya contestaste, y lo marca como atendido sin decir nada. No hace falta
 configurarlo; con el buzón de mentira no hay hilos que mirar y avisa igual.
 
+Solo llama por correos **de personas**. Lo que manda una máquina —boletines,
+avisos de plataformas, `noreply@`, `notifications@`, `support@`, eventos de
+Luma— no llama ni avisa: se queda en el panel de correo. Se reconoce por las
+cabeceras de envío (`List-Unsubscribe`, `List-Id`, `Auto-Submitted`,
+`Precedence`) y, si faltan, por la dirección.
+
 ---
 
 ## El detector
