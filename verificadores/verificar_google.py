@@ -361,9 +361,15 @@ def comprobar_consentimiento(falso: FalsoGoogle) -> None:
         recogedor = autorizar_google.Recogedor()
         url = autorizar_google.url_de_consentimiento("id-de-prueba", recogedor.redireccion)
         comprobar("Se piden los dos ámbitos de solo lectura", "gmail.readonly" in url and "calendar.readonly" in url)
+        # Desde el 2026-09-24 se escribe, y a propósito: borradores y su envío
+        # (`gmail.compose`, que sí envía) y citas (`calendar.events`). Lo que lo
+        # frena es la política —enviar e invitar son `exterior`—, no el permiso.
+        # Lo que sigue sin pedirse: `send` suelto, `modify` (archiva y borra) y
+        # el calendario entero (comparte y borra calendarios).
+        comprobar("Y para escribir, solo borradores y citas", "gmail.compose" in url and "calendar.events" in url)
         comprobar(
-            "Y ninguno que escriba",
-            not any(a in url for a in ("gmail.send", "gmail.modify", "auth/calendar%20", "calendar.events")),
+            "Y nada que borre ni comparta",
+            not any(a in url for a in ("gmail.send", "gmail.modify", "auth/calendar%20", "auth/calendar&")),
             url[:80],
         )
         comprobar("Se pide acceso sin conexión", "access_type=offline" in url)
