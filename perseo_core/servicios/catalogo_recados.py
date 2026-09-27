@@ -1,4 +1,8 @@
-"""Las herramientas que actúan fuera: recados, vigilancias, correo que sale y citas.
+"""Las herramientas que actúan fuera: recados, vigilancias, correo, citas, teléfono.
+
+Y las que unen las caras: el hilo principal y la ubicación. Desde el ADR 0008
+la voz ejecuta por el núcleo las que Rust no conoce, así que declarar una aquí
+basta para que exista en la voz y en el chat.
 
 Son parte del catálogo de `catalogo.py`, declaradas una vez como todas; viven
 aquí porque aquel fichero llegaba a su techo de 900 líneas. `catalogo.CATALOGO`
@@ -144,5 +148,61 @@ RECADOS: tuple[Herramienta, ...] = (
                 chat="Correos separados por comas.",
             ),
         ),
+    ),
+    Herramienta(
+        nombre="hilo_reciente",
+        voz=(
+            "Lo último que habéis hablado por escrito —el panel, el móvil, Telegram, WhatsApp— y "
+            "en llamadas anteriores: es la misma conversación. Úsala al empezar una llamada si "
+            "hace falta contexto, o cuando él diga «lo que te dije antes» y no lo tengas."
+        ),
+        chat="Lo último del hilo principal, incluido lo hablado en llamadas. Solo lectura.",
+    ),
+    Herramienta(
+        nombre="mi_ubicacion",
+        voz=(
+            "Dónde está él, si la ha compartido: coordenadas, desde cuándo y un enlace al mapa. "
+            "Si es vieja, pregúntale si sigue ahí. Para «algo cerca», «cuánto tardo»."
+        ),
+        chat="Su última ubicación compartida, con su antigüedad. Solo lectura.",
+    ),
+    Herramienta(
+        nombre="llamar_por_telefono",
+        voz=(
+            "Llama por teléfono a un negocio en nombre del señor Persus —reservar, preguntar "
+            "horario, cambiar una cita— y al colgar cuenta cómo fue. Se presenta como asistente "
+            "de inteligencia artificial. Marcar espera su sí en la tarjeta del panel o del móvil, "
+            "NO hablando. Hace falta el número completo con prefijo y el encargo entero."
+        ),
+        chat=(
+            "Llama a un negocio en su nombre (se presenta como IA) y cuenta cómo fue. Marcar "
+            "espera su sí en la tarjeta. Número con prefijo y encargo completo."
+        ),
+        parametros=(
+            Parametro(nombre="numero", tipo="string", voz="Con prefijo: +34 954 00 00 00.", chat="Con prefijo.", obligatorio=True),
+            Parametro(
+                nombre="objetivo",
+                tipo="string",
+                voz="Qué hay que conseguir, con todos los datos: día, hora, personas, a nombre de quién.",
+                chat="Qué hay que conseguir, completo.",
+                obligatorio=True,
+            ),
+            Parametro(nombre="negocio", tipo="string", voz="Cómo se llama el sitio.", chat="Nombre del sitio."),
+        ),
+    ),
+    Herramienta(
+        nombre="llamarme",
+        voz="Le llama a su móvil, con el motivo. Para cuando pida que le llames luego o fuera de casa.",
+        chat="Llama a su móvil con un motivo; al descolgar puede seguir hablando con Perseo.",
+        parametros=(Parametro(nombre="motivo", tipo="string", voz="De qué le llamas.", chat="De qué le llamas."),),
+    ),
+    Herramienta(
+        nombre="mandarme_mensaje",
+        voz=(
+            "Le manda un mensaje a su móvil —por Telegram, o por WhatsApp si no hay Telegram—: una "
+            "dirección, un enlace, una lista para la compra. Solo a él."
+        ),
+        chat="Le manda un mensaje a su móvil (Telegram o WhatsApp). Solo a él.",
+        parametros=(Parametro(nombre="texto", tipo="string", voz="Lo que se le manda.", chat="El mensaje.", obligatorio=True),),
     ),
 )

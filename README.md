@@ -16,7 +16,7 @@ irreversible a esperar tu sí. Esa parada viene apagada: [ADR 0005](docs/adr/000
 [![Licencia MIT](https://img.shields.io/badge/licencia-MIT-black.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-black.svg)](https://www.python.org/)
 [![Tauri 2](https://img.shields.io/badge/tauri-2-black.svg)](https://tauri.app/)
-[![1230 pruebas](https://img.shields.io/badge/pruebas-1230-black.svg)](#verificación)
+[![1262 pruebas](https://img.shields.io/badge/pruebas-1262-black.svg)](#verificación)
 
 [Qué es](#qué-es) · [Cómo se ve](#cómo-se-ve) · [Cómo funciona](#cómo-funciona) ·
 [Instalación](#instalación) · [Privacidad](#privacidad) · [English](README.en.md)
@@ -47,6 +47,7 @@ Raspberry Pi sin reescribir una línea de la interfaz.
 | 🤖 **Delega código** | Encarga tareas a subagentes (Claude Code u opencode) y te cuenta por dónde van mientras trabajan |
 | 🧾 **Hace recados en la web** | «Resérvame mesa el viernes» y lo hace solo, con su propio Chrome y tus sesiones, y te llama al acabar. Las claves salen de una bóveda cifrada que el modelo nunca ve, y pagar o reservar esperan tu sí: [ADR 0007](docs/adr/0007-lo-que-sale-de-casa-se-para.md) |
 | ✉️ **Envía y apunta** | Manda el correo que te redactó y apunta citas en tu Google Calendar. Lo que llega a otra persona —el correo, la invitación— espera tu sí en la tarjeta, y el correo solo sale si es exactamente el borrador que aprobaste |
+| 📞 **Le escribes y le llamas desde el móvil** | Un solo hilo de conversación para el panel, el móvil, Telegram, WhatsApp y el teléfono, y lo que hablaste en una llamada sigue ahí por escrito. Llama a un negocio en tu nombre —diciendo que es una IA— con tu sí. Todo apagado hasta que lo enciendes: [ADR 0009](docs/adr/0009-canales-de-fuera.md) |
 | 👁️ **Vigila y retoma** | «Avísame cuando haya entradas» —o «resérvalo en cuanto baje»— y mira cada pocas horas hasta que pasa. Y si un correo que pedía algo lleva dos días sin respuesta tuya en Gmail, te lo recuerda una vez |
 | 🔌 **Habla MCP** | Cliente propio para servidores locales y remotos: vault, navegador, Windows, correo triado, subagentes |
 
@@ -178,6 +179,7 @@ una implementación y mañana otra, sin tocar el agente.
 | `recado` | Hace un encargo entero en la web, en segundo plano: entra con tus claves de la bóveda, se para antes de pagar o reservar y sigue desde ahí con tu sí | Chrome por `@playwright/mcp` y Gemini; en las pruebas, un guion y páginas de mentira |
 | `vigilancias` | Apunta lo que hay que vigilar; un disparador lanza cada pocas horas un `recado` que mira si ya se cumple, y calla mientras no | `<datos>/vigilancias.json` |
 | `seguimiento` | Avisa una vez de los correos que pedían algo y llevan dos días sin respuesta; lo que ya contestaste en Gmail lo da por atendido | El hilo de Gmail, solo sus etiquetas |
+| `telefono` | Llama a un negocio en tu nombre (con tu sí, presentándose como IA), te llama a ti o te escribe al móvil | Twilio: llamadas por turnos con `<Say>` y `<Gather>` |
 | `mcp` | Habla con los servidores MCP declarados: vault, navegador, Windows, tiempo, correo triado | JSON-RPC por stdio con cliente propio; los remotos, por HTTP con el SDK oficial |
 | `eco`, `simulacro` | Los dos de pruebas: devuelven lo que reciben, sin tocar nada | — |
 
@@ -381,12 +383,12 @@ y las rutas de la API en [`docs/API.md`](docs/API.md).
 Nada de esto se comprueba a ojo, y se comprueba de dos maneras.
 
 **Pruebas unitarias** — cada pieza por separado, sin red y sin subprocesos.
-Dicen *qué* se ha roto: **1230** en total.
+Dicen *qué* se ha roto: **1262** en total.
 
 ```bash
 python commands/perseo.py comprobar    # todo, en orden de coste
 
-python -m pytest                       # 1026, el núcleo y los comandos
+python -m pytest                       # 1058, el núcleo y los comandos
 cd RealTime && npm test                # 204, la interfaz
 cd RealTime/src-tauri && cargo check   # y que el Rust compila
 ```
@@ -449,7 +451,7 @@ El detalle, en [`docs/PRIVACIDAD.md`](docs/PRIVACIDAD.md).
 
 Perseo funciona y se usa a diario, pero es un proyecto personal: está pensado
 para **una** persona, en **un** ordenador con Windows, y se nota. Lo que hay
-detrás son unas 49.100 líneas, 1230 pruebas y 19 verificadores.
+detrás son unas 49.100 líneas, 1262 pruebas y 20 verificadores.
 
 Si lo clonas y algo no arranca, abre un
 [issue](https://github.com/PersusUS/Perseo/issues) — y si lo arreglas, mejor

@@ -55,6 +55,7 @@ from typing import Any, Protocol
 import aiohttp
 
 from ..infra.router import registrar
+from ..servicios import hilo
 from ..infra.configuracion import Configuracion, LOCALES, RAIZ, cargar_configuracion
 
 logger = logging.getLogger(__name__)
@@ -568,8 +569,13 @@ def ruta_vault(cfg: Configuracion | None = None) -> Path:
     return Path(os.environ.get("OBSIDIAN_VAULT_PATH", RAIZ.parent / "obsidian_vault"))
 
 
+#: Donde vive el hilo principal, que recibe lo hablado en cada llamada.
+_directorio_datos: Path | None = None
+
+
 def iniciar(cfg: Configuracion) -> Vault:
-    global _vault
+    global _vault, _directorio_datos
+    _directorio_datos = Path(cfg.directorio_datos)
     if _vault is None:
         _vault = _elegir_respaldo(cfg)
     return _vault
@@ -808,6 +814,13 @@ async def _memoria(trabajo: dict[str, Any]) -> dict[str, Any]:
             return {"accion": accion, "ruta": None, "titular": None}
         titulo = f"Conversacion {datetime.now().strftime('%Y-%m-%d %H%M')}"
         ruta = await _vault.anotar(titulo, "\n\n".join(lineas), CARPETA_CONVERSACIONES)
+        # Y al hilo principal, para que por escrito se siga donde se dejó
+        # hablando (servicios/hilo.py). Que falle no estropea lo del vault.
+        if _directorio_datos is not None:
+            try:
+                await asyncio.to_thread(hilo.anotar_voz, _directorio_datos, mensajes)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("No se pudo pasar la llamada al hilo principal: %s", e)
         return {"accion": accion, "ruta": ruta, "mensajes": len(lineas), "titular": None}
 
     if accion == "leer":

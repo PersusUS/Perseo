@@ -32,6 +32,7 @@ from .agentes import (
     recado,
     recordatorios,
     seguimiento,
+    telefono,
     vigilancias,
     web,
 )
@@ -43,13 +44,15 @@ from .infra.router import Router, Trabajador
 from .infra.bus import Bus
 from .infra.disparadores import Planificador
 from .caras.telegram import Telegram
+from .caras.telegram_conversa import TelegramConversa
+from .caras.twilio import CaraTwilio
 from .infra.configuracion import Configuracion, LOCALES, cargar_configuracion
 
-# Estos doce se importan por sus efectos: al cargarse registran sus agentes
+# Estos trece se importan por sus efectos: al cargarse registran sus agentes
 # —y `correo`, `agenda`, `recordatorios` y `parte`, además, sus disparadores—.
 # Sin el import el registro está
 # vacío y el núcleo arranca sin agentes sin decir por qué.
-_ = (agenda, chat, correo, dev, memoria, parte, pc, recado, recordatorios, seguimiento, vigilancias, web)
+_ = (agenda, chat, correo, dev, memoria, parte, pc, recado, recordatorios, seguimiento, telefono, vigilancias, web)
 
 logger = logging.getLogger("perseo_core")
 
@@ -221,12 +224,13 @@ async def arrancar() -> None:
     # encargo de código dejaba el correo sin triar mientras durase. El chat
     # tiene el suyo porque un turno puede irse a los dos minutos entre
     # herramientas, y no debe frenar ni al triaje ni a la cola general.
-    trabajador = Trabajador(bus, excluir=("dev", "chat", "recado"), nombre="general")
+    trabajador = Trabajador(bus, excluir=("dev", "chat", "recado", "telefono"), nombre="general")
     tarea_trabajador = asyncio.create_task(trabajador.ejecutar(), name="trabajador")
 
     # Y un cuarto para los recados, por lo mismo que `dev`: uno puede llevarse
     # diez minutos navegando, y los avisos de la agenda no pueden esperarle.
-    trabajador_recado = Trabajador(bus, agentes=("recado",), nombre="recado")
+    # Las llamadas a un negocio también: el agente espera a que cuelguen.
+    trabajador_recado = Trabajador(bus, agentes=("recado", "telefono"), nombre="recado")
     tarea_recado = asyncio.create_task(trabajador_recado.ejecutar(), name="trabajador-recado")
 
     trabajador_dev = Trabajador(bus, agentes=("dev",), nombre="dev")
@@ -243,6 +247,7 @@ async def arrancar() -> None:
     recado.iniciar(cfg)
     vigilancias.iniciar(cfg)
     seguimiento.iniciar(cfg)
+    telefono.iniciar(cfg)
     agenda.iniciar(cfg)
     recordatorios.iniciar(cfg)
     parte.iniciar(cfg)
@@ -251,6 +256,13 @@ async def arrancar() -> None:
     # Sin token configurado se retira sola tras avisar: es un canal más.
     telegram = Telegram(cfg, bus)
     tarea_telegram = asyncio.create_task(telegram.ejecutar(), name="telegram")
+
+    # Los canales para hablarle desde fuera: Telegram de dos sentidos y Twilio
+    # (WhatsApp, SMS y teléfono). Los dos vienen apagados y se retiran solos.
+    conversa = TelegramConversa(cfg, bus)
+    tarea_conversa = asyncio.create_task(conversa.ejecutar(), name="telegram-conversa")
+    cara_twilio = CaraTwilio(cfg, bus)
+    tarea_twilio = asyncio.create_task(cara_twilio.ejecutar(), name="twilio")
 
     # El que llama cuando un encargo termina y nadie lo está esperando.
     tarea_avisador = asyncio.create_task(Avisador(bus).ejecutar(), name="avisador")
@@ -292,6 +304,8 @@ async def arrancar() -> None:
         trabajador_chat.detener()
         trabajador_recado.detener()
         telegram.detener()
+        conversa.detener()
+        cara_twilio.detener()
         planificador.detener()
         tareas = (
             tarea_trabajador,
@@ -299,6 +313,8 @@ async def arrancar() -> None:
             tarea_chat,
             tarea_recado,
             tarea_telegram,
+            tarea_conversa,
+            tarea_twilio,
             tarea_disparadores,
             tarea_avisador,
         )
@@ -313,6 +329,7 @@ async def arrancar() -> None:
         dev.detener()
         await web.detener()
         await recado.detener()
+        await telefono.detener()
         await agenda.detener()
         await chat.detener()
         await mcp.detener()

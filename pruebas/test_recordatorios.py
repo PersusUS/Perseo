@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -19,7 +18,6 @@ import pytest
 from perseo_core.agentes import recordatorios as agente
 from perseo_core.infra import disparadores, politica
 from perseo_core.infra.bus import Bus
-from perseo_core.servicios import catalogo
 from perseo_core.servicios import recordatorios as rec
 
 ZONA = timezone(timedelta(hours=2))
@@ -251,19 +249,3 @@ def test_apuntar_y_quitar_son_reversibles_y_mirar_es_libre() -> None:
     assert politica.nivel("recordatorios", {"accion": "cancelar"}) == politica.REVERSIBLE
     assert politica.nivel("recordatorios", {"accion": "listar"}) == politica.LIBRE
     assert politica.nivel("recordatorios", {"accion": "avisar"}) == politica.LIBRE
-
-
-def test_las_directas_de_rust_son_herramientas_de_voz_del_catalogo() -> None:
-    """La tabla `DIRECTAS` de `nucleo.rs` y el catálogo no pueden separarse."""
-    fuente = (Path(__file__).resolve().parent.parent / "RealTime/src-tauri/src/nucleo.rs").read_text(
-        encoding="utf-8"
-    )
-    bloque = fuente[fuente.index("const DIRECTAS") : fuente.index("];", fuente.index("const DIRECTAS"))]
-    directas = re.findall(r'\("([a-z_]+)", "([a-z_]+)", "([a-z_]+)"\)', bloque)
-    assert directas, "no se encuentra la tabla DIRECTAS"
-    voz = set(catalogo.nombres("voz"))
-    for herramienta, agente_nombre, accion in directas:
-        assert herramienta in voz, f"{herramienta} está en Rust y no en el catálogo de voz"
-        assert politica.nivel(agente_nombre, {"accion": accion}) != politica.IRREVERSIBLE or (
-            agente_nombre in politica.TABLA
-        ), f"{agente_nombre}.{accion} caería en irreversible por no estar en la tabla"

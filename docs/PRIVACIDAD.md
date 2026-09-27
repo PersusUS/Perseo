@@ -20,6 +20,8 @@ queda y dónde está cada cosa.
 | **Google — Gmail y Calendar** | Nada tuyo: se **leen** cabeceras de correo (quién, asunto, fecha y si es un envío masivo o automático) y eventos, y de los hilos que piden seguimiento solo sus etiquetas (¿el último es tuyo?) | Solo con `PERSEO_CORREO=gmail` / `PERSEO_AGENDA=google` |
 | **Google — Gmail y Calendar, escribiendo** | Un correo que enviaste desde un borrador, o una cita que apuntaste; a los invitados les llega la invitación de Google | Solo con tu sí en la tarjeta, y el correo solo si es exactamente el borrador que aprobaste |
 | **Telegram** | El **recuento**: «3 correos, 1 requiere acción». Nunca el asunto ni el cuerpo | Solo con el bot configurado |
+| **Telegram, conversando** | **La conversación entera**: lo que le escribes y lo que contesta, con lo que haga falta de tus correos o tu agenda | Solo con `PERSEO_TELEGRAM_CONVERSAR=1` |
+| **Twilio (y Meta, por WhatsApp)** | Lo que le escribes o le dices por teléfono y lo que contesta; en una llamada a un negocio, lo que se habla con ellos | Solo con la cuenta de Twilio puesta |
 
 Y uno que está **apagado de fábrica**: `PERSEO_MODELO_SUPLENTE`. Es un modelo
 de fuera que clasifica correo cuando Ollama no responde, y es lo único del
@@ -108,6 +110,9 @@ Pero un prompt no es una defensa, así que debajo hay dos más:
 | `<datos>/boveda.json` | Contraseñas y tarjetas de los recados, cifradas con DPAPI. En claro solo nombres, sitios y nombres de campo |
 | `<datos>/navegador/` | El perfil de Chrome de los recados: las sesiones de los sitios donde entraste a mano |
 | `<datos>/recados/` | Por dónde iba un recado que espera tu sí: la conversación con el modelo, ya tapada. Se borra al acabar |
+| `<datos>/ubicacion.json` | La última ubicación que compartiste, y solo esa |
+| `<datos>/llamadas/` | Las llamadas por teléfono: con quién, para qué y lo que se dijo |
+| `<datos>/hilo_principal.json` | Cuál es la conversación principal (el hilo vive en la cola, con el resto del chat) |
 | `<datos>/vigilancias.json` | Lo que le pediste vigilar, con la condición y lo que vio la última vez |
 | `<datos>/seguimiento_avisados.json` | Los ids de los correos de los que ya te recordó que seguían sin respuesta |
 | `<datos>/google.json` | El `refresh_token` que abre tu buzón |

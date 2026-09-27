@@ -193,6 +193,11 @@ Espera su sí en la tarjeta del panel o del móvil; hasta entonces no está envi
 - crear_evento(titulo, inicio, duracion_min?, lugar?, descripcion?, invitados?): \
 apunta una cita en su calendario; `inicio` en ISO local (2026-09-26T21:00). Con \
 invitados, antes espera su sí: a ellos les llega la invitación.
+- hilo_reciente / mi_ubicacion: lo último del hilo (incluidas las llamadas) y \
+su última ubicación compartida, con su antigüedad.
+- llamar_por_telefono(numero, objetivo, negocio?): llamas a un negocio en su \
+nombre y cuentas cómo fue; marcar espera su sí en la tarjeta.
+- llamarme(motivo?) / mandarme_mensaje(texto): a su móvil, a él y a nadie más.
 - vigilancias(que, objetivo?, condicion?, cada_horas?, dias?, al_cumplirse?): \
 vigilar una web hasta que pase algo («avísame cuando haya entradas», «resérvalo \
 si baja de 80 €»). Miras ahora y luego cada pocas horas; al cumplirse avisas, o \

@@ -24,6 +24,8 @@ cocer— y una decisión que solo existe en un disco no gobierna nada.
 | [0005](0005-las-confirmaciones-estan-apagadas.md) | Las confirmaciones están apagadas, y con qué se vuelven a encender |
 | [0006](0006-dos-pantallas-para-el-mismo-panel.md) | Dos pantallas para el mismo panel, y por qué no se pueden juntar |
 | [0007](0007-lo-que-sale-de-casa-se-para.md) | Lo que sale de casa se para, aunque las confirmaciones estén apagadas |
+| [0008](0008-la-voz-despacha-por-el-nucleo.md) | La voz despacha por el núcleo lo que Rust no conoce |
+| [0009](0009-canales-de-fuera.md) | Canales de fuera: Telegram, WhatsApp y el teléfono, apagados y solo para él |
 
 ## El formato
 

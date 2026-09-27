@@ -28,6 +28,7 @@ _parte
 _recado
 _vigilancias
 _seguimiento
+_telefono
 
 # --------------------------------------------------------------------------- #
 # Callbacks de bibliotecas: el nombre es el contrato

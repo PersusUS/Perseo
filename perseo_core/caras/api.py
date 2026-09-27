@@ -45,7 +45,7 @@ from ..agentes import dev
 from ..infra import almacen, politica
 from ..servicios import catalogo, grafo, habitos, llamada_saliente, proyectos, tareas
 from ..infra.router import REGISTRO, Router
-from . import api_biometria
+from . import api_biometria, api_canales
 from .api_comun import CLAVE_BUS, CLAVE_CFG, CLAVE_ROUTER, cuerpo_json, fallo
 from ..infra.bus import Bus
 from ..infra.configuracion import Configuracion
@@ -839,6 +839,11 @@ def crear_app(cfg: Configuracion, bus: Bus, router: Router) -> web.Application:
             web.post("/tareas", _tareas_espejo),
             web.get("/tareas", _tareas_ver),
             web.post("/tareas/recoger", _tareas_recoger),
+            web.post("/herramientas/{nombre}", api_canales.ejecutar_herramienta),
+            web.get("/hilo", api_canales.ver_hilo),
+            web.post("/ubicacion", api_canales.guardar_ubicacion),
+            web.get("/ubicacion", api_canales.ver_ubicacion),
+            web.delete("/ubicacion", api_canales.olvidar_ubicacion),
             web.get("/biometria", api_biometria.biometria_estado),
             web.post("/biometria/voz", api_biometria.biometria_voz),
             web.post("/biometria/cara", api_biometria.biometria_cara),

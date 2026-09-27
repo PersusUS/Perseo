@@ -17,12 +17,13 @@ exactamente lo que este fichero sabe despachar.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 from typing import Any
 
 from ..infra import almacen, politica
 from ..infra.configuracion import Configuracion
-from ..servicios import correo_lectura, habitos, llamada_saliente, tareas, triaje
+from ..servicios import correo_lectura, habitos, hilo, llamada_saliente, recordatorios, tareas, triaje, ubicacion
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,25 @@ def iniciar(cfg: Configuracion) -> None:
     _cfg = cfg
 
 
+#: Por qué puerta entró la herramienta y quién habló. El chat escrito no lo
+#: pone —es «texto» y no se sabe la voz—; la voz, que desde el ADR 0008 pasa por
+#: aquí las herramientas que Rust no conoce, sí: sin esto, lo que pidiera una
+#: visita llegaría a la política como si lo hubiera escrito el dueño.
+_origen: contextvars.ContextVar[str] = contextvars.ContextVar("origen_herramienta", default="texto")
+_quien: contextvars.ContextVar[str | None] = contextvars.ContextVar("quien_herramienta", default=None)
+
+
+async def ejecutar_desde(origen: str, quien: str | None, nombre: str, argumentos: dict[str, Any]) -> str:
+    """Ejecuta una herramienta del catálogo como si la pidiera `origen` y hablara `quien`."""
+    marca_origen = _origen.set(origen)
+    marca_quien = _quien.set(quien)
+    try:
+        return await _ejecutar_herramienta(nombre, argumentos)
+    finally:
+        _origen.reset(marca_origen)
+        _quien.reset(marca_quien)
+
+
 # --------------------------------------------------------------------------- #
 # Ejecución de herramientas: encolar y esperar, como hace la voz
 # --------------------------------------------------------------------------- #
@@ -51,7 +71,7 @@ async def _encolar_y_esperar(agente: str, peticion: dict[str, Any], espera: floa
     """Encola el trabajo y espera su resultado, con el mismo criterio que la app
     de voz: hecho → resumen; esperando → se lo dices al modelo para que pregunte
     el sí; pasado el plazo → sigue en marcha, que no es un fallo."""
-    trabajo = await asyncio.to_thread(almacen.encolar, agente, peticion, "texto")
+    trabajo = await asyncio.to_thread(almacen.encolar, agente, peticion, _origen.get(), _quien.get())
     id_trabajo = int(trabajo["id"])
     limite = asyncio.get_running_loop().time() + espera
     while True:
@@ -416,6 +436,18 @@ async def _ejecutar_herramienta(nombre: str, argumentos: dict[str, Any]) -> str:
         # Veinte segundos: lo justo para contar el #N con lo que ya sepa. Un
         # recado de verdad dura minutos, y al acabar llama solo.
         return await _encolar_y_esperar("recado", {"texto": texto, "accion": "hacer"}, 20)
+
+    if nombre == "hilo_reciente":
+        return await asyncio.to_thread(hilo.reciente, cfg.directorio_datos)
+    if nombre == "mi_ubicacion":
+        dato = await asyncio.to_thread(ubicacion.ultima, cfg.directorio_datos)
+        return ubicacion.describir(dato, recordatorios.ahora_local())
+    if nombre == "llamar_por_telefono":
+        return await _encolar_y_esperar("telefono", {**argumentos, "accion": "negocio"}, 20)
+    if nombre == "llamarme":
+        return await _encolar_y_esperar("telefono", {**argumentos, "accion": "movil"}, 20)
+    if nombre == "mandarme_mensaje":
+        return await _encolar_y_esperar("telefono", {**argumentos, "accion": "mensaje"}, 20)
 
     if nombre == "enviar_borrador":
         return await _encolar_y_esperar("correo", {**argumentos, "accion": "enviar"}, 20)

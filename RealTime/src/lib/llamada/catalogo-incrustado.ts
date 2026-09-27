@@ -537,5 +537,75 @@ export const CATALOGO_INCRUSTADO: HerramientaNeutra[] = [
         "inicio"
       ]
     }
+  },
+  {
+    "name": "hilo_reciente",
+    "description": "Lo último que habéis hablado por escrito —el panel, el móvil, Telegram, WhatsApp— y en llamadas anteriores: es la misma conversación. Úsala al empezar una llamada si hace falta contexto, o cuando él diga «lo que te dije antes» y no lo tengas.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "mi_ubicacion",
+    "description": "Dónde está él, si la ha compartido: coordenadas, desde cuándo y un enlace al mapa. Si es vieja, pregúntale si sigue ahí. Para «algo cerca», «cuánto tardo».",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "llamar_por_telefono",
+    "description": "Llama por teléfono a un negocio en nombre del señor Persus —reservar, preguntar horario, cambiar una cita— y al colgar cuenta cómo fue. Se presenta como asistente de inteligencia artificial. Marcar espera su sí en la tarjeta del panel o del móvil, NO hablando. Hace falta el número completo con prefijo y el encargo entero.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "numero": {
+          "type": "string",
+          "description": "Con prefijo: +34 954 00 00 00."
+        },
+        "objetivo": {
+          "type": "string",
+          "description": "Qué hay que conseguir, con todos los datos: día, hora, personas, a nombre de quién."
+        },
+        "negocio": {
+          "type": "string",
+          "description": "Cómo se llama el sitio."
+        }
+      },
+      "required": [
+        "numero",
+        "objetivo"
+      ]
+    }
+  },
+  {
+    "name": "llamarme",
+    "description": "Le llama a su móvil, con el motivo. Para cuando pida que le llames luego o fuera de casa.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "motivo": {
+          "type": "string",
+          "description": "De qué le llamas."
+        }
+      }
+    }
+  },
+  {
+    "name": "mandarme_mensaje",
+    "description": "Le manda un mensaje a su móvil —por Telegram, o por WhatsApp si no hay Telegram—: una dirección, un enlace, una lista para la compra. Solo a él.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "texto": {
+          "type": "string",
+          "description": "Lo que se le manda."
+        }
+      },
+      "required": [
+        "texto"
+      ]
+    }
   }
 ];

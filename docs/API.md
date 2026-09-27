@@ -63,6 +63,7 @@ iconos. `/salud` no devuelve nada sensible.
 | `GET /salud` | Que está vivo, y qué agentes carga |
 | `GET /estado` | De qué está capado el sistema hoy: piezas, cuota, disparadores, **la máquina** (CPU, RAM, disco, red, batería) y **la presencia**. Con token: junta, esa información es el mapa de por dónde entrar |
 | `GET /eventos` | Flujo SSE con todo lo que pasa |
+| `POST /herramientas/{nombre}` | Ejecuta una herramienta del catálogo como la voz: `{"argumentos": {...}, "quien": "Persus"}`. Es por donde la app ejecuta las que Rust no conoce ([ADR 0008](adr/0008-la-voz-despacha-por-el-nucleo.md)); lo que encola lleva origen `voz` y la voz de quien habló |
 | `GET /herramientas` | El catálogo de herramientas de una cara (`?cara=voz` o `?cara=chat`): nombre, descripción y esquema de cada una. Está declarado **una sola vez** en el núcleo; la app de voz lo pide al conectar y lleva una copia incrustada por si el núcleo tarda |
 
 ### El correo triado
@@ -93,6 +94,14 @@ iconos. `/salud` no devuelve nada sensible.
 | `GET /grafo` · `GET /grafo/datos` | El grafo del vault |
 | `POST /grafo/abrir` | Abre una nota en Obsidian. Por aquí viaja **cuál**, y el id se busca entre los ficheros reales del vault |
 
+### El hilo y la ubicación
+
+| Ruta | Qué hace |
+|---|---|
+| `GET /hilo` | La conversación principal —la que comparten el panel, el móvil, Telegram, WhatsApp, el teléfono y lo hablado en llamadas— y lo último que hay en ella |
+| `POST /ubicacion` | Guarda dónde está él: `{"latitud": 37.38, "longitud": -5.98, "precision": 20}`. Pensada para un atajo del iPhone. Solo se guarda la última |
+| `GET /ubicacion` · `DELETE /ubicacion` | La última compartida, o la olvida |
+
 ### Biometría
 
 Solo responden con el reconocimiento encendido. Los vectores no salen nunca:
@@ -110,11 +119,18 @@ por aquí van audio o imagen, y vuelve un nombre.
 
 ## Lo que la API **no** hace
 
-No expone herramientas. No hay un `POST /ejecutar` ni un `POST /shell`.
+No hay un `POST /ejecutar` ni un `POST /shell`.
 
 Por HTTP se encola **un trabajo para un agente**, y qué puede hacer ese agente
 lo decide el núcleo con su lista blanca y su política de niveles. Quien
 consiga el token consigue encolar, no consigue una consola.
+
+Desde el 2026-09-25 se expone además **el catálogo de herramientas**
+(`POST /herramientas/{nombre}`), porque la voz ejecuta por ahí las que Rust no
+conoce. Tampoco es una consola: cada herramienta del catálogo lee, o encola un
+trabajo con la política de siempre (lo exterior sigue esperando el sí en la
+tarjeta, y aprobarlo no se puede desde aquí). Ver el
+[ADR 0008](adr/0008-la-voz-despacha-por-el-nucleo.md).
 
 ---
 

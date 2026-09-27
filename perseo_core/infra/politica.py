@@ -152,6 +152,11 @@ TABLA: dict[str, str] = {
     # El seguimiento mira hilos de Gmail (leer) y marca como atendido lo que ya
     # tiene respuesta suya, que se desmarca en el panel.
     "seguimiento": REVERSIBLE,
+    # Llamar a un negocio es hablar con un tercero en su nombre: se para antes
+    # de marcar. Llamarle a él o escribirle a su móvil es de casa.
+    "telefono.negocio": EXTERIOR,
+    "telefono.movil": REVERSIBLE,
+    "telefono.mensaje": REVERSIBLE,
 }
 
 #: **Si el sistema para algo alguna vez, o no para nunca.**
@@ -491,6 +496,11 @@ def resumir(
         # la petición; el agente comprueba antes de enviar que el borrador es
         # ese, y si no lo es no envía nada.
         que += f" a {peticion.get('para') or '?'}: «{peticion.get('asunto') or 'sin asunto'}»"
+    if peticion.get("numero") and peticion.get("objetivo"):
+        # Una llamada que sale: a qué número y para qué. La primera frase la
+        # pone el código y dice que es una IA (agentes/telefono.py).
+        negocio = f" ({peticion['negocio']})" if peticion.get("negocio") else ""
+        que += f" al {peticion['numero']}{negocio}: «{peticion['objetivo']}»"
     if quien is not None and not identidad.es_el_dueno(quien):
         # Quién lo pidió es LO que hay que decidir aquí, así que va en el
         # titular y no en el detalle: una visita pidiendo teclear no es la

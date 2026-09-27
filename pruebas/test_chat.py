@@ -35,6 +35,7 @@ def test_las_herramientas_estan_completas_y_con_forma() -> None:
         "buscar_en_memoria", "leer_nota", "guardar_recuerdo",
         "buscar_en_web", "leer_pagina", "controlar_pc", "encargar_codigo",
         "encargar_recado", "vigilancias", "enviar_borrador", "crear_evento",
+        "hilo_reciente", "mi_ubicacion", "llamar_por_telefono", "llamarme", "mandarme_mensaje",
         "consultar_trabajo",
         "listar_mcp", "usar_mcp", "responder_confirmacion",
     }

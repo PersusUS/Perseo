@@ -163,6 +163,7 @@ mezclado con tus notas, y **nunca sobrescribe ni borra**: solo añade.
 | `PERSEO_TELEGRAM_TOKEN` | *(vacío)* | Token del bot. Si no está, se lee `<datos>/telegram.txt` |
 | `PERSEO_TELEGRAM_CHAT` | *(vacío)* | Tu `chat_id`. Si no está, `<datos>/telegram_chat.txt` |
 | `PERSEO_TELEGRAM_API` | `https://api.telegram.org` | Se apunta a otro sitio para probar sin Telegram |
+| `PERSEO_TELEGRAM_CONVERSAR` | *(vacío)* | `1` = además de avisar, **contesta**: le escribes al bot y habla contigo en el hilo principal. Solo atiende tu chat. Una ubicación compartida se guarda. Ver el [ADR 0009](adr/0009-canales-de-fuera.md) |
 
 Por este canal sale **el recuento y nunca el contenido**: «3 correos, 1
 requiere acción». El detalle se lee en la web.
@@ -264,6 +265,53 @@ cabeceras de envío (`List-Unsubscribe`, `List-Id`, `Auto-Submitted`,
 `Precedence`) y, si faltan, por la dirección.
 
 ---
+
+## El teléfono y WhatsApp
+
+Con una cuenta de Twilio, Perseo tiene un número de teléfono y un WhatsApp: le
+escribes o le llamas desde el móvil, te llama él, y llama a un negocio en tu
+nombre. Todo **apagado** hasta que pongas la cuenta; ver el
+[ADR 0009](adr/0009-canales-de-fuera.md).
+
+La cuenta va en `<datos>/twilio.json` (o en las variables del mismo nombre):
+
+```json
+{
+  "sid": "AC…",
+  "token": "…",
+  "numero": "+34…",
+  "whatsapp": "+14155238886",
+  "dueno": "+34600…",
+  "url_publica": "https://tu-pc.tu-tailnet.ts.net"
+}
+```
+
+| Clave | Variable | Para qué |
+|---|---|---|
+| `sid` · `token` | `PERSEO_TWILIO_SID` · `PERSEO_TWILIO_TOKEN` | La cuenta. El token firma lo que llega: sin él no se atiende nada |
+| `numero` | `PERSEO_TWILIO_NUMERO` | El número de Perseo, para llamar y para SMS |
+| `whatsapp` | `PERSEO_TWILIO_WHATSAPP` | El remitente de WhatsApp de la cuenta (el del *sandbox* sirve para probar) |
+| `dueno` | `PERSEO_TELEFONO_DUENO` | **Tu** móvil. Es el único que puede hablarle; el resto oye que no |
+| `url_publica` | `PERSEO_TWILIO_URL_PUBLICA` | Por dónde llega Twilio a este PC |
+| — | `PERSEO_TWILIO_PUERTO` | El puerto local de la cara de Twilio (`8788`) |
+| — | `PERSEO_TWILIO_VOZ` | La voz de las llamadas (`Polly.Lucia`) |
+
+Twilio tiene que llegar a este PC desde internet. Se publica **solo** el puerto
+de Twilio, no el núcleo:
+
+```bash
+tailscale funnel 8788
+```
+
+Y en la consola de Twilio, las direcciones: `https://…/twilio/whatsapp` para los
+mensajes (WhatsApp y SMS) y `https://…/twilio/voz` para las llamadas entrantes.
+
+## La ubicación
+
+Perseo no sigue tu posición: sabe dónde estás **cuando la compartes**, y guarda
+solo la última. Llega por Telegram (con la conversación encendida) o por
+WhatsApp (adjuntar → ubicación), o por `POST /ubicacion` desde un atajo del
+iPhone. La herramienta `mi_ubicacion` se la da al modelo con su antigüedad.
 
 ## El detector
 
