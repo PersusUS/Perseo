@@ -5,6 +5,11 @@ ajustes que editar ni asistente que rellenar: todas son opcionales, todas
 traen un valor por defecto que funciona, y el sistema arranca aunque no
 pongas ninguna.
 
+Para que valgan también cuando Perseo arranca solo —con el PC o con el aplauso, que
+no traen las variables de tu terminal—, se escriben en `<datos>/entorno.json`
+como `{"VARIABLE": "valor"}`. Todas las de esta página valen ahí; la variable de
+la terminal, si la hay, manda sobre el fichero.
+
 La regla al leerlas: **lo que falta no rompe nada, se apaga.** Sin Ollama, el
 router encola en vez de decidir. Sin Gmail, no hay correo. Sin Telegram, no hay
 avisos. Y la pestaña **Estado** —en el panel y en el móvil— te dice cuál de

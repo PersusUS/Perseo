@@ -353,6 +353,23 @@ def ajustes_guardados(directorio: Path) -> dict[str, str]:
     return {str(c): str(v) for c, v in crudo.items()}
 
 
+def exportar_ajustes(directorio: Path) -> list[str]:
+    """Pone lo de `entorno.json` en el entorno del proceso, sin pisar lo que ya haya.
+
+    `cargar_configuracion` lo lee para sus campos, pero hay piezas que miran el
+    entorno directamente —los interruptores de los recados, de Telegram de dos
+    sentidos, del puerto de Twilio— porque son suyas y no del núcleo entero.
+    Sin esto, ponerlas en `entorno.json`, que es donde se documenta que va la
+    configuración, no hacía nada, y nada decía por qué. Devuelve lo que puso.
+    """
+    puestas = []
+    for nombre, valor in ajustes_guardados(directorio).items():
+        if nombre not in os.environ:
+            os.environ[nombre] = valor
+            puestas.append(nombre)
+    return puestas
+
+
 def cargar_configuracion() -> Configuracion:
     directorio = _directorio_datos()
     guardados = ajustes_guardados(directorio)

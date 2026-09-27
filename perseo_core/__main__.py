@@ -46,7 +46,7 @@ from .infra.disparadores import Planificador
 from .caras.telegram import Telegram
 from .caras.telegram_conversa import TelegramConversa
 from .caras.twilio import CaraTwilio
-from .infra.configuracion import Configuracion, LOCALES, cargar_configuracion
+from .infra.configuracion import Configuracion, LOCALES, cargar_configuracion, exportar_ajustes
 
 # Estos trece se importan por sus efectos: al cargarse registran sus agentes
 # —y `correo`, `agenda`, `recordatorios` y `parte`, además, sus disparadores—.
@@ -189,6 +189,9 @@ def _ya_contesta_otro_nucleo(cfg: Configuracion) -> bool:
 
 async def arrancar() -> None:
     cfg = cargar_configuracion()
+    # Lo de `entorno.json` también para quien mira el entorno a pelo (ver la
+    # función): la variable de la terminal sigue mandando sobre el fichero.
+    exportar_ajustes(cfg.directorio_datos)
 
     if await asyncio.to_thread(_ya_contesta_otro_nucleo, cfg):
         # Salida limpia a propósito: para el vigilante, un código 0 es una orden
