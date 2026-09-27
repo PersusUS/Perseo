@@ -109,10 +109,41 @@ def pid_anunciado() -> int | None:
     return None
 
 
+def _nombre_del_proceso(pid: int) -> str | None:
+    """El ejecutable de un proceso, o `None` si no se puede saber (fuera de Windows)."""
+    if sys.platform != "win32" or pid <= 0 or pid > 0xFFFF_FFFF:
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    kernel32 = ctypes.windll.kernel32
+    manejador = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not manejador:
+        return None
+    try:
+        memoria = ctypes.create_unicode_buffer(1024)
+        tamano = wintypes.DWORD(len(memoria))
+        if not kernel32.QueryFullProcessImageNameW(manejador, 0, memoria, ctypes.byref(tamano)):
+            return None
+        return memoria.value
+    finally:
+        kernel32.CloseHandle(manejador)
+
+
 def app_viva() -> bool:
-    """Si Perseo está abierto ahora mismo."""
+    """Si Perseo está abierto ahora mismo.
+
+    Que el PID anunciado siga vivo no basta: Windows **reutiliza** los números.
+    El 2026-09-27 la marca apuntaba a un PID que ya era de un `msedgewebview2.exe`
+    de otra cosa, y `perseo on` decía «ya estaba» sin abrir nada. Si se puede
+    saber el ejecutable, tiene que ser el de Perseo.
+    """
     pid = pid_anunciado()
-    return _proceso_vivo(pid) if pid is not None else False
+    if pid is None or not _proceso_vivo(pid):
+        return False
+    nombre = _nombre_del_proceso(pid)
+    return nombre is None or Path(nombre).name.lower() == "perseo.exe"
 
 
 def limpiar_marca_rancia() -> None:

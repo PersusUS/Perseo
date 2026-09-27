@@ -66,6 +66,9 @@ def test_la_app_esta_viva_si_el_pid_lo_esta(tmp_path: Path, monkeypatch) -> None
     marca = tmp_path / presencia.FICHERO
     marca.write_text(str(os.getpid()), encoding="utf-8")
     monkeypatch.setattr(presencia, "rutas", lambda: [marca])
+    # El PID es el de pytest, así que se le dice que es el de Perseo: lo que
+    # se prueba aquí es el PID vivo, y el nombre tiene su propia prueba abajo.
+    monkeypatch.setattr(presencia, "_nombre_del_proceso", lambda pid: "perseo.exe")
     assert presencia.app_viva()
 
 
@@ -109,3 +112,16 @@ def test_el_nombre_del_fichero_es_el_mismo_que_en_rust() -> None:
         / "presencia.rs"
     ).read_text(encoding="utf-8")
     assert f'pub const FICHERO: &str = "{presencia.FICHERO}";' in rust
+
+
+def test_un_pid_reutilizado_por_otro_programa_no_es_perseo(monkeypatch) -> None:
+    """Windows reutiliza los PID: el 2026-09-27 la marca apuntaba a un WebView2 ajeno."""
+    monkeypatch.setattr(presencia, "pid_anunciado", lambda: 4242)
+    monkeypatch.setattr(presencia, "_proceso_vivo", lambda pid: True)
+    monkeypatch.setattr(presencia, "_nombre_del_proceso", lambda pid: r"C:\EdgeWebView\msedgewebview2.exe")
+    assert not presencia.app_viva()
+    monkeypatch.setattr(presencia, "_nombre_del_proceso", lambda pid: r"C:\Perseo\target\release\perseo.exe")
+    assert presencia.app_viva()
+    # Donde no se puede saber el ejecutable, manda el PID, como antes.
+    monkeypatch.setattr(presencia, "_nombre_del_proceso", lambda pid: None)
+    assert presencia.app_viva()
