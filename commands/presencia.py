@@ -143,7 +143,9 @@ def app_viva() -> bool:
     if pid is None or not _proceso_vivo(pid):
         return False
     nombre = _nombre_del_proceso(pid)
-    return nombre is None or Path(nombre).name.lower() == "perseo.exe"
+    # Por las dos barras: la ruta es de Windows, y `Path` en Linux (las pruebas
+    # del CI) no parte por la invertida.
+    return nombre is None or nombre.replace("\\", "/").rsplit("/", 1)[-1].lower() == "perseo.exe"
 
 
 def limpiar_marca_rancia() -> None:
